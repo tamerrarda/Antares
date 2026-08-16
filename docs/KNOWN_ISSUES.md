@@ -6,7 +6,7 @@ is worse for everyone.
 
 Format: what it is, why we accept it (or what would change our mind), and its status.
 
-Last reviewed: 2026-08-16 (design stage — no code exists yet).
+Last reviewed: 2026-08-17 (design stage — no code exists yet).
 
 ---
 
@@ -100,13 +100,34 @@ the faucet, at literally zero cost.
 conditional again, both cost more than the problem: the first taxes honest depositors, the second
 re-opens the free-option hole D-37 just closed. Revisit if it actually happens.
 
-### A-6 · One epoch at a time, one asset, one strategy
+### A-6 · One epoch at a time per vault, one asset, one strategy
 
-No concurrent epochs, XLM only, covered calls only.
+Within a vault, one epoch at a time. XLM only, covered calls only. (Several *vaults* run
+concurrently on different terms — that is five instances of the same contract, not concurrent
+epochs inside one.)
 
 **Why accepted.** Every one of these is a product decision that can be revisited later without
 changing the accounting model. Solving them now would be building for a market that has not
 appeared yet.
+
+### A-10 · A round nobody closes in time costs an in-the-money buyer his payout
+
+The price feed keeps roughly 18 hours of history. Past that, the expiry window cannot be read by
+anyone, so the round finalizes *unresolved*: the premium stays with depositors and the payout is
+zero. A buyer who was in the money and did not close the round loses the payout as well as the
+premium; a buyer who was out of the money ends exactly where a settlement would have left him.
+
+**Why accepted.** The alternative is to refund the premium, and that pays the buyer to wait — out
+of the money, letting the clock run out returns 100 % of it, and the bounty is a capped fraction of
+that same premium, so no incentive we can fund outbids it. Retaining the premium is the only rule
+under which no party gains by delay, which is what makes the outcome a function of history instead
+of a race. Closing is permissionless, pays a bounty, and the buyer is the party who knows whether
+he is in the money. The residual is the narrow case where the feed was genuinely dead at expiry
+*and* nobody annulled the round during the roughly six hours when annulment was available.
+
+**What would change our mind.** A feed with materially deeper history, or a second source, would
+widen the window enough that this stops being reachable in practice. It is stated in
+[`BIDDER.md`](BIDDER.md) rather than left for a counterparty to discover.
 
 ---
 
@@ -180,7 +201,7 @@ which is the entire argument for the review process that found them.
 
 | Issue | Found | Resolution |
 |---|---|---|
-| Lapsed rounds skipped withdrawal-queue accounting → reachable solvency violation | 2026-08-16 | All three outcomes now finalize through one shared code path |
+| Lapsed rounds skipped withdrawal-queue accounting → reachable solvency violation | 2026-08-16 | Every outcome now finalizes through one shared code path |
 | Testnet parameters priced the option 6–90× below the auction floor — no rational buyer could ever have filled | 2026-08-16 | Parameters corrected; fair-value coherence is now a deployment gate |
 | Circuit breaker compared across epochs, so a genuine sustained price move would have annulled valid rounds and confiscated earned payouts | 2026-08-16 | Breaker now compares two windows of the same moment: fires on feed malfunction, never on real moves |
 | Bidder payouts were pushed at settlement → unbounded iteration on the exit path | 2026-08-16 | Pull-based claims; settlement is constant-cost |
@@ -193,6 +214,14 @@ which is the entire argument for the review process that found them.
 | Anchoring settlement to expiry (a fix for timing extraction) let an out-of-the-money bidder wait out the clock and reclaim his entire premium | 2026-08-16 | Void reads the same anchored history as settle, so the outcome is fixed at expiry and cannot be elected afterwards; feed-retention constraint now actually validated |
 | The same anchoring turned the circuit breaker into a confiscation device: an artifact in a frozen window could never clear, voiding valid rounds | 2026-08-16 | Median instead of mean — the estimator carries the artifact resistance the retry loop used to |
 | Only settlements opened the mint/exit window, so a vault with no bidders had none at all — and a never-settled vault could not accept a second depositor | 2026-08-16 | Every outcome opens the window; the deadlock this was avoiding is solved by having `open_epoch` return rather than revert |
-| Nobody was paid to settle: in the common case the only motivated caller preferred that nobody did | 2026-08-16 | Settlement and voiding pay the caller a small bounty from the round's premium |
+| Nobody was paid to settle: in the common case the only motivated caller preferred that nobody did | 2026-08-16 | Closing a round pays the caller a small bounty from the round's premium — on settlement and on the unresolved path, where the premium stays in the pool and is the source. Voiding pays none: a void refunds the premium in full, so a bounty could only come out of the refund or out of collateral |
 | The auction floor sat 5–17× below fair value, so the expected case — an uncontested auction — was a systematic transfer to a lone bidder | 2026-08-16 | The floor is now a validated reserve price (at least half of fair value) |
 | The project's own stop condition could fire in eight hours, because an empty round ends in one | 2026-08-16 | It now requires calendar time as well as epochs, and coherent parameters |
+| The strike and premium band were chosen against an assumed volatility rather than a measured one; at XLM's real 30-day volatility every planned vault priced below its own reserve | 2026-08-16 | Volatility is measured at deploy time and the strike moved to 3 % out of the money, where fair value is robust across the observed range |
+| Two of the five parameter sets could not have been deployed: one failed the deviation-vs-strike check, the other failed its own band, its floor rule *and* the minimum-idle-window validation | 2026-08-17 | Every instance now carries its own band and bounds, each verified against all four gates; the deploy script refuses the whole set if any one instance fails |
+| Settlement anchored at expiry became unreadable after ~18 hours, at which point a healthy feed produced an annulment — refunding an out-of-the-money buyer his entire premium for waiting | 2026-08-17 | A third terminal outcome: past that horizon the round finalizes with the premium retained. No bounty could have fixed this, since the buyer's alternative was 100 % of the premium the bounty is paid from |
+| The oracle adapter ignored the window parameters it was given: one setting silently measured a third of the intended window, another returned nothing at all and would have annulled every round | 2026-08-17 | The sampling grid is derived from the windows, and the adapter answers whether a window is usable at all — the vault asks, and never learns the feed's tick length |
+| A garbage price at expiry would have been treated as "nobody looked in time", handing depositors a windfall from an oracle failure; and a transient adapter failure could have annulled a settleable round | 2026-08-17 | The read distinguishes a fact about the expiry window from a fact about the present ledger; only the first can annul a round |
+| The Phase-2 clearing gate was satisfied by an auction that filled entirely at the floor — the exact failure it was written to detect — because the floor is defined as at least half of fair value and the gate asked for half | 2026-08-17 | Threshold raised to three quarters of fair value, and its dependence on the floor rule recorded so the two cannot drift apart again |
+| The constructor could not populate seven of the thirteen configuration fields, and the share token's identity had nowhere to live | 2026-08-17 | Nine explicit arguments; fee, pause and allowlist are genesis constants, which also makes "the fee ships at zero" checkable on-chain rather than a claim |
+| The auction window was two hours, and the project's own stop condition was written against a one-hour round that no longer existed | 2026-08-17 | Window shortened to 45 minutes on published evidence that long windows widen the gap between clearing price and fair value; the stop condition's arithmetic corrected |

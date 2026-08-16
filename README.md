@@ -23,7 +23,7 @@ Stellar's DeFi stack has filled in from the bottom up:
 
 The next layer up — options — is barely populated: one live testnet protocol (Lusty, see below), no options protocol in Stellar's DeFi TVL rankings, and **no on-chain price discovery for an option anywhere on the network.** Every attempt so far has priced the option off-chain. This is not a niche gap: on Ethereum and Solana, covered-call vaults (Ribbon/Opyn, Friktion/Katana) became a standard way for holders to earn income on assets they were already holding.
 
-Antares builds that primitive: one asset, one strategy, one vault — designed as a system that can hold real value.
+Antares builds that primitive: one asset, one strategy — designed as a system that can hold real value. (The counterparty phase runs five instances of the same contract side by side on different terms, so that a run of empty auctions can tell "wrong terms" apart from "no buyer"; see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §12.)
 
 ### Ecosystem gap scan
 
@@ -72,7 +72,7 @@ The trade-off is symmetric and honest: you earn premium every epoch, and in exch
                           │  • settlement    │
                           └──────────────────┘
                                    ▲
-                                   │  open_epoch() / settle()
+                                   │  open_epoch() / close_round()
                                    │  permissionless — anyone may call
                           ┌────────┴─────────┐
                           │  Keeper (script) │  convenience only,
@@ -83,11 +83,15 @@ The trade-off is symmetric and honest: you earn premium every epoch, and in exch
 ### Epoch state machine
 
 ```
-IDLE ──open_epoch()──▶ AUCTION ──bid() fills──▶ ACTIVE ──settle()──────▶ SETTLED ──▶ IDLE
+IDLE ──open_epoch()──▶ AUCTION ──bid() fills──▶ ACTIVE ──close_round()──▶ SETTLED ──▶ IDLE
                           │                        │
-                          │                        └── oracle dead ────▶ VOIDED ──▶ IDLE
-                          └── floor reached, no bid ──────────────────▶ LAPSED ──▶ IDLE
+                          │                        ├── feed dead at expiry ─▶ VOIDED ──▶ IDLE
+                          │                        └── closed too late ─────▶ UNRESOLVED ▶ IDLE
+                          └── auction ended, no bid ────────────────────────▶ LAPSED ──▶ IDLE
 ```
+
+One call closes a round and the caller does not choose which arrow it takes: `close_round()` reads
+the feed as it stood at expiry and dispatches on what it finds.
 
 `LAPSED` is a normal path, not an error. If no bidder appears, the premium for that epoch is zero, collateral stays exactly where it was, share price is unchanged, and the next epoch opens. **An epoch with no buyer costs depositors nothing.**
 
@@ -103,15 +107,15 @@ Settled before the first line of contract code, because each one is expensive to
 | Buyer capital | **Premium only** | A bidder never posts strike × notional — only the premium. This lowers the capital barrier to being a counterparty by roughly 20×, which matters most in a thin market. |
 | Price discovery | **Dutch auction on-chain, with an in-the-money guard** | A fixed premium is not viable with real capital — it hands the bidder free optionality whenever volatility rises. A descending-price auction discovers the premium without requiring a volatility oracle, which Stellar does not have. Bids are refused the moment spot reaches the strike: a descending curve cannot price intrinsic value, and an empty auction costs depositors nothing. |
 | Premium accounting | **Recognised at fill, never at offer** | In an auction the clearing price is only known when a bid lands. Accounting that assumes a known premium at offer time breaks the day the auction is introduced. |
-| Buyer access | **Permissionless `bid()`**, with a disableable allowlist | Mainnet cannot choose its counterparties. The allowlist is a launch control, not a design assumption — the code path is permissionless. |
+| Buyer access | **Permissionless `bid()`**, with an allowlist that **expires on a timestamp fixed at deployment** | Mainnet cannot choose its counterparties. The allowlist is a launch control, not a design assumption. It has no extension setter, so "this opens to everyone on date X" is a number you can read out of the deployment record rather than a promise we make — and the one gate that can end this project cannot be frozen by leaving a launch control on. |
 | Share accounting | **Epoch-based: pending deposits, withdrawal queue, price-per-share per epoch** | Capital arriving mid-epoch must not dilute the premium earned by capital that was actually at risk. Retrofitting this is a rewrite, not a patch. |
 | Contract count | **One contract** | Vault, auction and settlement share the same state. Splitting them buys cross-contract auth and state-sync problems and nothing else. Module boundaries live in the code, not at addresses. |
 | Epoch length | **Parameter, not a constant** | Weekly is a product choice, not a protocol constraint. Short epochs also make end-to-end tests fast. |
-| `open_epoch()` / `settle()` | **Permissionless** | A dead keeper must never be able to lock user funds. The keeper is a convenience, not an authority. |
+| `open_epoch()` / `close_round()` | **Permissionless, and the caller never names the outcome** | A dead keeper must never be able to lock user funds. One entry point closes a round and dispatches on the price feed as it stood at expiry — settled, annulled, or unresolved — so which way it ends is a function of history rather than of who transacted first. |
 | Fills | **Partial fills supported** | In a thin market, all-or-nothing means no fills at all. |
 | Oracle | `PriceSource` interface · Reflector's deep CEX & DEX XLM/USD feed (never a thin on-chain market) · TWAP · staleness bound · self-consistency circuit breaker · defined dead-oracle policy | Settlement correctness rests entirely on the price feed. Every failure mode gets a defined behaviour, and none of them lock funds. Feed *selection* is part of the security model, not plumbing. |
-| Admin surface | **Admin role, pause, deposit cap, fee parameter (set to 0) — present from day one** | All four touch storage layout and auth. Adding them later means a migration. Shipping them unused costs nothing. |
-| Pause semantics | **Pause can never trap funds** | Pause stops deposits, bids and new epochs — nothing else. Settlement, epoch void and the entire withdrawal path are unpausable, so a paused vault always unwinds to cash with bounded delay. No pause timeout is needed; the exit path simply cannot be closed. |
+| Admin surface | **Admin role, pause, deposit cap, fee parameter (0 at genesis) — present from day one** | All four touch storage layout and auth. Adding them later means a migration. Shipping them unused costs nothing. The fee is 0 because no transaction ever set it — not because a deploy argument happened to be zero — so any non-zero fee leaves a public transaction behind. There is no setter for the oracle or the asset at all. |
+| Pause semantics | **Pause can never trap funds** | Pause stops deposits, bids and new epochs — nothing else. Closing a round and the entire withdrawal path are unpausable, so a paused vault always unwinds to cash with bounded delay. No pause timeout is needed; the exit path simply cannot be closed. |
 | Upgradeability | **Upgradeable v1** — admin-gated `upgrade()`, versioned `migrate()` | Pre-audit, the ability to fix a bug outweighs the stronger trust statement of immutability. Testnet admin is a single documented address; **before mainnet it becomes a timelocked multisig** whose delay exceeds a full epoch, so users can always exit at the old code. This is the protocol's one real trust concentration and it is disclosed, not disguised. |
 | Storage | Typed for mainnet rent: user balances persistent, config instance, **nothing holding value in temporary** | An archived entry on mainnet is a user who cannot reach their funds. Restore paths are part of the design, not an afterthought. |
 
@@ -169,18 +173,20 @@ Beyond that: OpenZeppelin ships Soroban vault primitives, and established yield 
 | Phase | Goal | Gate to the next phase |
 |---|---|---|
 | **1 — Mechanism** (current) | The full system runs end to end on testnet with mainnet semantics, verifiable from public transaction hashes | A closed epoch: deposit → auction → fill → settle → premium distributed, with every invariant tested — **at parameters where the option's fair value actually falls inside the auction's price band**, so the fill means something |
-| **2 — Counterparty** | Find out whether an independent bidder will pay a premium, and at what price | **All three:** ≥3 addresses outside our control fill; ≥4 consecutive epochs with a fill; notional-weighted average clearing at least a quarter of the way up the auction curve |
+| **2 — Counterparty** | Find out whether an independent bidder will pay a premium, and at what price | **All three:** ≥3 addresses outside our control fill; ≥4 consecutive epochs with a fill; notional-weighted average clearing at least **three quarters of Black-Scholes fair value** at the volatility the epoch actually realized |
 | **3 — Mainnet** | Audit, findings resolved, capped launch | Audit complete; deposit cap and pause verified live |
 
 Phase 2 is a market question, not an engineering one. It cannot be answered by writing more code, and progress on it is reported as findings — including refusals — rather than as metrics.
 
-The third condition is the one that can fail us. An uncontested Dutch auction always walks toward its floor; if clearing prices cluster at the bottom of the curve, price discovery never happened and the mechanism has quietly degenerated into a fixed premium that hands the buyer a free timing option. That would falsify a load-bearing design assumption, and we would report it as falsification rather than as a fill count. (The condition is weighted by notional and requires a material margin, because the obvious phrasings — "at least one fill above the floor" — turn out to be satisfiable by every possible fill, and therefore falsify nothing.)
+The third condition is the one that can fail us. An uncontested Dutch auction always walks toward its floor; if clearing prices cluster at the bottom of the curve, price discovery never happened and the mechanism has quietly degenerated into a fixed premium that hands the buyer a free timing option. That would falsify a load-bearing design assumption, and we would report it as falsification rather than as a fill count.
+
+Getting this condition right took four attempts, and the first three were each satisfiable by the failure they were meant to detect: "at least one fill above the floor" is true of every possible fill; "a quarter of the way up the curve" is an absolute number while fair value moves with volatility, so a perfectly competitive market could have failed it; and "half of fair value" is cleared by the auction floor itself, since the floor is defined as at least half of fair value. The threshold is 0.75 because it sits clear of the floor and below the only competitive vault auctions anyone has measured — Ribbon's cleared at 0.83–0.98 of fair value. A lone bidder walks the curve to the floor and fails it; a second bidder forces the clear earlier and passes. The gate measures whether anyone was competing.
 
 ### The stop gate
 
 Every gate above is a *go* gate. Here is the one that ends the project:
 
-> **If 8 consecutive epochs *and* at least 30 calendar days pass with the bidder allowlist disabled and no independent fill, development stops.** Both conditions are required because an empty round ends in an hour, not a week — eight of them could otherwise elapse overnight, against evidence gathered while no counterparty was awake. The allowlist must be disabled within 14 days of the first testnet epoch, so the one gate that can end the project cannot be frozen by leaving a launch control on. We publish what happened — how many epochs, at what parameters, what premiums were on offer, how many counterparties we approached and what they told us — and then choose, explicitly and publicly: pivot, park the code, or close.
+> **If 8 consecutive epochs *and* at least 30 calendar days pass with the bidder allowlist disabled and no independent fill, development stops.** Both conditions are required because an empty round ends in 45 minutes, not a week — eight of them could otherwise elapse overnight, against evidence gathered while no counterparty was awake. The allowlist expires on a timestamp fixed when the vault is deployed — capped at 30 days, with no setter to extend it — so the one gate that can end the project cannot be frozen by leaving a launch control on. Disabling it earlier is still the intended path; the expiry is what makes it not depend on us. We publish what happened — how many epochs, at what parameters, what premiums were on offer, how many counterparties we approached and what they told us — and then choose, explicitly and publicly: pivot, park the code, or close.
 
 At a weekly epoch that is about two months. A project without a stop condition cannot tell you it was wrong, and this product category has been wrong before.
 
@@ -188,6 +194,8 @@ At a weekly epoch that is about two months. A project without a stop condition c
 
 ```
 contracts/          Soroban contracts (Rust): vault, Reflector adapter, mock price source
+deployments/        Committed record per network: contract ids, wasm hashes, constructor args
+packages/           Shared TypeScript (network config, generated bindings)
 reference/          Python differential reference for settlement math (written from spec)
 keeper/             Off-chain epoch trigger (TypeScript) — convenience, never authority
 bidder/             Open-source reference bidder (TypeScript)

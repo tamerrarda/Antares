@@ -39,12 +39,22 @@ deliberate design choice that makes being a counterparty possible in a thin mark
 
 ## 1b. There is more than one auction
 
-During the counterparty phase several vaults run **concurrently**, identical in every respect
-except their terms — how long the option runs and how far out of the money the strike sits. Each
-issues its own share token and runs its own auction, so you can price them against each other and
-fill only the terms that work for you. That is the whole point: we do not know which duration and
-which moneyness a real counterparty wants, and asking five questions at once is faster than asking
-the same one five times. If none of them are priced attractively, the useful answer is to tell us
+During the counterparty phase **five vaults run concurrently** — the same contract, identical in
+every respect except their terms, each with its own share token (`aXLM-A` … `aXLM-E`) and its own
+auction, so you can price them against each other and fill only the terms that work for you:
+
+| | Duration | Strike |
+|---|---|---|
+| **A** | 7 days | 3 % out of the money — the mainnet-target configuration |
+| **B** | 7 days | 5 % |
+| **C** | 3 days | 2 % — the nearest to the money |
+| **D** | 14 days | 5 % |
+| **E** | 3 days | 3 % |
+
+That is the whole point: we do not know which duration and which moneyness a real counterparty
+wants, and asking five questions at once is faster than asking the same one five times. Each vault
+carries its own premium band, sized to its own fair value — a set of terms nobody could profitably
+fill would test nothing. If none of them are priced attractively, the useful answer is to tell us
 which one came closest and by how much.
 
 ## 2. The auction
@@ -56,7 +66,9 @@ opens (`strike = TWAP × (1 + strike_bps_otm)`), through a **descending-price Du
 premium_bps(t) = start_bps − (start_bps − floor_bps) × elapsed / auction_duration
 ```
 
-The price starts high and falls linearly to a floor over the auction window. There is no fixed
+The price starts high and falls linearly to a floor over the auction window, which is **45
+minutes**. It was two hours in an earlier draft; Ribbon's published data showed long windows
+widening the gap between clearing price and fair value, so it was shortened. There is no fixed
 premium: the clearing price is whatever a bidder accepts, and it is recognized **at fill**, not
 at offer.
 
@@ -85,9 +97,9 @@ bid(bidder: Address, notional: i128, max_premium_bps: u32) -> i128  // returns f
 | `BelowMinFill` | dust guard; exception: the final sliver of an offer may be smaller |
 | `ZeroPremium` | a fill so small the premium rounds to zero — a free option, refused |
 | `SoldOut` | the offer is fully subscribed |
-| `AuctionClosed` / `WrongPhase` | the auction window has passed |
+| `WrongPhase` | the auction window has passed — the phase moves before a late bid is evaluated, so this is the only code you will see for it |
 | `OracleUnreachable` | the price check the in-the-money guard depends on could not be read. Distinct from `InTheMoney` on purpose: an outage is not a market signal, and we count the two separately so a feed failure is never recorded as absent demand |
-| `AllowlistForbidden` | launch control only; the code path is permissionless and the allowlist is disabled publicly (the disabling transaction is itself on-chain evidence) |
+| `AllowlistForbidden` | launch control only, and it **expires on a timestamp fixed when the vault was deployed** — read it from `config()` before you spend any time on this. The admin can open bidding earlier (that transaction is itself on-chain evidence) but has no way to extend the gate; past the expiry this rejection cannot occur |
 
 ---
 
@@ -119,37 +131,65 @@ no pro-rata math, no rounding loss.
 Settlement uses a **TWAP** from Reflector's external CEX & DEX XLM/USD feed — aggregated deep
 off-chain markets, never a thin on-chain order book. A single tick never decides a settlement.
 
-Three guards sit in front of it, and all three are permissionless to retry:
+**What protects the number, at settlement:**
 
-1. **Staleness** — if the feed is older than the bound, `settle()` reverts. Anyone may retry.
-2. **Self-consistency** — the short TWAP is compared against a longer guard TWAP of the same
-   moment, at the point in time settlement is anchored to. A feed artifact skews the short window
-   and not the long one; a real market move carries both. **It does not trigger on genuine price
-   moves** — a real rally settles normally and pays you. Settlement itself takes the **median** of
-   several samples in each window, so a single bad print cannot decide your payout.
-3. **Sanity bound** — a coarse 100× check against the last settled price.
+1. **A median, not an average.** Several samples are taken across each window and reduced to a
+   median, so a single bad print cannot move your payout. This is what replaces a circuit breaker
+   here: the expiry window is frozen history, so a rejected read could never "clear" on a retry —
+   a breaker at settlement could only ever convert a settleable round into an annulled one and
+   confiscate a payout you had earned. The estimator absorbs the artifact instead.
+2. **Sanity bound** — a coarse 100× check against the last settled price.
+
+The staleness bound and the self-consistency breaker run when an epoch *opens*, where "the feed is
+current" is a meaningful question and a rejection can be retried into a good read. Neither runs at
+settlement, and that is deliberate rather than an omission.
 
 **The price is fixed at expiry, not at the moment someone calls.** Settlement reads the feed as it
-stood when the option expired, so calling early, late, or not at all cannot change what you are
-paid — and nobody can improve their outcome by waiting. `settle()` is permissionless and pays its
-caller a small bounty out of the round's premium, so if the keeper disappears you can settle the
-round yourself, get paid for doing it, and claim. Nobody can withhold your payout.
+stood when the option expired, so calling early or late cannot change what you are paid.
+`close_round()` is permissionless and pays its caller a small bounty out of the round's premium, so
+if the keeper disappears you can close the round yourself, get paid for doing it, and claim. Nobody
+can withhold your payout.
+
+**But there is a deadline, and it is yours as much as ours — read §5.**
 
 ---
 
 ## 5. Ways an epoch ends without paying you
 
-Both are normal states, not failures — and both are defined in advance:
+All three are normal states, not failures — and all three are defined in advance:
 
 - **LAPSED** — nobody bid. There is no option, no premium, nothing happened. Irrelevant to you
   if you didn't fill.
-- **VOIDED** — the oracle was unusable past a defined bound after expiry. The epoch is annulled:
-  **your premium is refunded in full**, payout is zero, depositors gain nothing. An oracle
-  failure is nobody's fault and nobody profits from it. `void_epoch()` is permissionless and only
-  possible when the feed was unusable **around expiry** — a fact fixed by history that no later
-  event changes. So settling and voiding are mutually exclusive from the moment the option
-  expires, and neither side can elect the outcome by choosing when to transact. **You cannot be
-  voided out of a payout by a working oracle, and you cannot recover a premium by waiting.**
+- **VOIDED** — the feed was unusable **at expiry**, and a grace period has passed. The epoch is
+  annulled: **your premium is refunded in full**, payout is zero, depositors gain nothing. An
+  oracle failure is nobody's fault and nobody profits from it. This is a fact fixed by history that
+  no later event changes, so you cannot be voided out of a payout by a working oracle, and you
+  cannot manufacture a void by waiting.
+- **UNRESOLVED** — nobody closed the round while expiry was still readable. **This one can cost
+  you, and you should read it carefully.**
+
+### The deadline, stated plainly
+
+The price feed keeps a bounded history — roughly **18 hours** at the current parameters. Past that,
+the expiry window can no longer be read by anyone, so the round cannot be decided on evidence. It
+then finalizes as **UNRESOLVED**: the premium stays with depositors, the payout is zero.
+
+If the round was out of the money, that is exactly where a normal settlement would have left you.
+**If it was in the money, you lose the payout as well as the premium.** Closing the round is
+permissionless and pays a bounty, so you can do it yourself at any point in those 18 hours — and
+you are the party who knows whether you are in the money.
+
+The narrow case where this bites through no fault of yours: the feed was genuinely dead at expiry
+*and* nobody annulled the round during the window when voiding was available — from the end of the
+grace period until the history ages out, about **six hours**. `close_round()` is open to you
+throughout.
+
+**Why the rule is written this way**, since it is not written in your favour: the alternative is to
+refund the premium, and that pays you to wait. Out of the money, letting the clock run out would
+return 100 % of your premium — and no bounty funded out of that same premium can ever be large
+enough to outbid it. Retaining the premium is the only version under which **no party gains by
+delay**, which is what makes the outcome a function of history rather than of who stayed awake. We
+would rather tell you about a real cost than claim a property we cannot back.
 
 ---
 

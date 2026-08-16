@@ -4,7 +4,7 @@ The properties that must hold in **every** reachable state, under **every** orde
 This file is the single canonical definition: `ARCHITECTURE.md` links here rather than restating
 them, and the test suite asserts exactly this list.
 
-Each invariant carries three things: what it says, why it exists (what breaks without it), and
+Each of the ten invariants carries three things: what it says, why it exists (what breaks without it), and
 how it is verified. An invariant nobody can test is a wish, not an invariant.
 
 Notation: amounts are `i128` stroops (7 decimals). `PRECISION = 10_000_000`. `pps` is
@@ -28,12 +28,16 @@ not yet converted, withdrawals awaiting claim, bidder payouts/refunds awaiting c
 protocol fee awaiting claim.
 
 Every outbound amount in this protocol is **pulled, never pushed** — depositors, bidders and the
-fee recipient all claim their own. Settlement therefore moves numbers between these buckets and
+fee recipient all claim their own. Closing a round therefore moves numbers between these buckets and
 makes exactly one transfer: a small bounty to whoever called it, paid to an address the caller
 names. That exception is deliberate — settlement must not depend on altruism — and it is safe
 because an address that cannot receive is the caller's own problem, not a wedge for everyone else.
-Voiding a round pays no bounty at all — the bidder is already motivated to call it, since voiding
-is how he recovers his premium.
+The bounty is paid when a round settles and when it finalizes unresolved — in both cases the
+premium stays in the pool and is the source. **Voiding pays none**, because a void refunds the
+premium in full and leaves `pps` untouched, so the money could only come out of the refund
+(breaking the exact-refund promise made to bidders) or out of collateral (breaking "a void costs
+depositors nothing"). The bidder is in any case the party motivated to void, since voiding is how
+he recovers his premium.
 
 The inequality is deliberately `≥`, not `=`. Two sources of slack are expected and harmless:
 rounding dust that accrues to the pool (every division floors in the vault's favour — see
@@ -153,7 +157,7 @@ they never change), plus explicit double-settle and double-finalize tests.
 
 These all succeed while `paused == true`, in every state where they would succeed unpaused:
 
-`settle` · `void_epoch` · `request_withdraw` · `claim_withdraw` · `claim_payout` ·
+`close_round` · `request_withdraw` · `claim_withdraw` · `claim_payout` ·
 `claim_refund` · `claim_fee` · `cancel_pending_deposit` · `redeem_shares` · `restore_position`
 
 `restore_position` belongs here because it is permissionless storage maintenance — and because a
@@ -161,7 +165,7 @@ paused vault whose entries are archiving must still be reachable.
 
 Pause blocks exactly three things: `deposit`, `bid`, `open_epoch`.
 
-**Why.** This is the property that makes "pause" safe to hold. A paused vault still settles its
+**Why.** This is the property that makes "pause" safe to hold. A paused vault still closes its
 live round (permissionlessly), still lets every depositor exit at the settled price, and still
 lets every bidder claim. Pause can stop new risk from entering; it can never trap what is already
 inside. That is also why no pause timeout is needed — a timeout would imply pause *can* hold
@@ -188,6 +192,34 @@ where the first few exits are paid and the rest bounce.
 mint adds `amount` to assets against shares worth `⌊amount·P/pps⌋ · pps ≤ amount · P`, and each
 Idle burn removes `⌊shares·pps/P⌋ ≤ shares·pps/P`. Floor division always errs in the pool's
 favour, so the inequality is preserved by every operation.
+
+---
+
+## I10 — Closing a round is a function of history, not of the caller
+
+Once a round is past expiry, **at most one** terminal outcome is ever reachable, and which one it
+is does not depend on who calls `close_round()` or when.
+
+**Why.** This is the property that makes the protocol worth using without trusting anyone. The
+price is read as it stood *at expiry*, so calling early or late cannot change it; the outcome is
+selected by what that read returns, so no caller can name it. The three answers partition
+cleanly — the feed answered (settle), the feed was demonstrably dead at expiry and we can still
+see that it was (void), or expiry has left the feed's reachable history (unresolved) — and the
+rule for the third is chosen so that **no party gains by delay**. Without that last part the
+invariant would still hold formally while paying an out-of-the-money buyer his whole premium back
+for doing nothing.
+
+Two states are deliberately non-terminating and both clear with time: a *transient* failure (the
+adapter trapped this ledger, which says nothing about expiry) and the grace period before a dead
+feed may annul a round. Both revert and may be retried by anyone.
+
+**Verified by.** A property test sweeping every read outcome against every elapsed time, asserting
+one reachable outcome per cell and the declared gaps as the only gaps; plus an economic property
+test asserting a bidder's total recovery under the unresolved path is never greater than under a
+normal settlement.
+
+**If it breaks.** The outcome becomes negotiable by whoever transacts first, which is the thing
+this protocol exists to avoid.
 
 ---
 
@@ -220,7 +252,9 @@ Stated explicitly, because their absence is a design choice rather than an overs
   guarantee; earning them something is not.
 - **There is no guarantee that settlement happens on time.** If the oracle is stale, settlement
   reverts and may be retried by anyone, indefinitely. Late is a defined state; wrong is not.
-- **There is no guarantee that a round settles at all.** If the feed stays unusable past the
-  dead-oracle bound, the round is annulled and premiums are refunded. Nobody profits from an
-  oracle failure — and nobody is trapped by one.
+- **There is no guarantee that a round settles at all.** If the feed was unusable at expiry past
+  the dead-oracle bound, the round is annulled and premiums are refunded. And if nobody closes the
+  round before expiry leaves the feed's reachable history, it finalizes *unresolved*: the premium
+  stays with depositors and the payout is zero. Nobody profits from an oracle failure, nobody is
+  trapped by one, and — the reason the third outcome exists at all — **nobody profits by waiting**.
 - **There is no guarantee about returns.** See the README's stance on yield numbers.

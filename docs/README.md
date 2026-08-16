@@ -43,14 +43,16 @@ Start with the document written for what you are trying to do.
 | **Share / `pps`** | Your claim on the pool, and its value in XLM (`price per share`). Changes only when a round finishes. |
 | **Pending deposit** | XLM deposited during a live round. Not yet shares, not backing the option, cancellable. |
 | **Lapsed** | A round where no buyer appeared. No premium, no loss, share price unchanged. |
-| **Voided / annulled** | A round cancelled because the price feed was unusable. Premiums refunded, share price unchanged. |
-| **Keeper** | A bot that triggers epoch open and settlement. A convenience — everything it does, anyone can do. |
+| **Voided / annulled** | A round cancelled because the price feed was unusable at expiry. Premiums refunded, share price unchanged. |
+| **Unresolved** | A round nobody closed before its expiry moment aged out of the price feed's history. It can no longer be decided on evidence, so the premium stays with depositors and the payout is zero — the rule is chosen so that no party gains by the delay. |
+| **Keeper** | A bot that opens epochs and closes rounds. A convenience — everything it does, anyone can do, and it cannot choose how a round ends. |
 | **Cash settlement** | The option pays a difference in XLM rather than delivering the asset. No second leg, no delivery risk. |
 
 ## Reading the design as a whole
 
-The contract is deliberately one contract, one asset, one strategy. The properties it protects,
-in order of importance:
+The contract is deliberately one contract, one asset, one strategy. (Five *instances* of it run
+side by side during the counterparty phase, on different terms — see
+[ARCHITECTURE.md](ARCHITECTURE.md) §12.) The properties it protects, in order of importance:
 
 1. **Nobody's funds can be trapped** — not by the admin, not by a dead keeper, not by a dead
    oracle, not by pause. ([INVARIANTS.md](INVARIANTS.md) I8, [TRUST_MODEL.md](TRUST_MODEL.md))
@@ -62,3 +64,7 @@ in order of importance:
    ([ARCHITECTURE.md](ARCHITECTURE.md) §4)
 4. **Every failure mode has a defined behaviour** — including the ones that produce nothing: an
    auction with no buyer and a round annulled by a dead oracle are normal outcomes, not errors.
+5. **No party gains by waiting** — the settlement price is read as it stood at expiry, and every
+   way a round can end is chosen so that delaying it profits nobody. Closing a round is one
+   permissionless call whose outcome the caller does not choose.
+   ([INVARIANTS.md](INVARIANTS.md) I10)

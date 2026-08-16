@@ -19,7 +19,7 @@ marketing.
 | **Admin** (single key on testnet) | No — except by upgrading the code (§3) | No — the exit path is unpausable (§2) |
 | **Keeper** (operator's bot) | No | No — everything it does, anyone can do |
 | **Bidder** (counterparty) | No — they can only win the option's payout, capped below the sold notional | No |
-| **Oracle** (Reflector) | Indirectly and boundedly — a compromised feed can shift value between depositors and bidders, capped at one epoch's sold notional (§4) | No — a dead feed annuls the round and refunds |
+| **Oracle** (Reflector) | Indirectly and boundedly — a compromised feed can shift value between depositors and bidders, capped at one epoch's sold notional (§4) | No — a dead feed annuls the round and refunds, and even a feed nobody reads in time resolves to a defined outcome (§4) |
 | **Another depositor** | No | No |
 | **The protocol authors** | Only via the admin key — see §3, the honest answer | No |
 
@@ -33,10 +33,21 @@ structural guarantee; that one is a promise backed by key management.
 **Can:**
 
 - Pause new deposits, new bids and new epochs.
-- Set the deposit cap, the fee parameter (ships at `0`), the fee recipient, and the epoch
-  parameters (effective from the *next* epoch only — never the live one).
-- Enable/disable the bidder allowlist and its entries. This is a launch control; the code path
-  is permissionless and the allowlist is disabled for public operation.
+- Set the deposit cap, the fee parameter, the fee recipient, and the epoch parameters (effective
+  from the *next* epoch only — never the live one). The fee is `0` at genesis and cannot be set by
+  a deploy argument, so **a non-zero fee always leaves a public transaction behind**; you do not
+  have to take our word for the zero.
+- Enable/disable the bidder allowlist and its entries — **but only until it expires.** This is a
+  launch control, and the code path underneath is permissionless. The allowlist ships **enabled**
+  and carries an expiry timestamp fixed at construction, with **no setter**: the admin can open the
+  vault early, and cannot keep it closed. Past that timestamp `bid` ignores the allowlist entirely,
+  and re-enabling the flag does nothing.
+
+  The number is readable before you deposit anything — it is in `config()`, in the `initialized`
+  event, and committed to `deployments/<network>.json`. This is deliberate: "we will open bidding
+  soon" is a promise, and a promise is exactly the kind of thing this document exists to eliminate.
+  Extending it is not a parameter change; it requires a code upgrade, with the disclosure and delay
+  that implies (§3).
 - Hand the admin role to another address, via a **two-step transfer** (the new address must
   accept). A one-step handover to a mistyped address would permanently brick the role.
 - Adjust storage rent parameters (TTL thresholds) — pure housekeeping, cannot touch accounting.
@@ -47,20 +58,23 @@ structural guarantee; that one is a promise backed by key management.
 - Move, borrow, or redirect user funds.
 - Mint shares, or change anyone's balance.
 - Alter a finalized round record (I7) — so no past settlement, price, or claim can be rewritten.
-- Choose or influence the settlement price. `settle()` reads the oracle and is callable by
-  anyone; the admin has no privileged variant.
+- Choose or influence the settlement price, or which way a round ends. `close_round()` reads the
+  oracle as it stood at expiry and dispatches on what it finds; it is callable by anyone and the
+  admin has no privileged variant. **Nobody names the outcome — not the admin, not the keeper, not
+  the bidder, not you.**
 - Block the exit path. The full unpausable set is defined in [INVARIANTS.md](INVARIANTS.md) I8 —
   settlement, voiding, every withdrawal and claim path, pending cancellation and redemption, the
   fee claim, and archival maintenance all work while paused.
-- Change the oracle address. It is fixed at construction. Repointing the price feed is the single
-  most dangerous parameter change in a protocol like this, so it is not a setter at all —
-  changing it requires a full code upgrade, with everything that implies (§3).
+- Change the oracle address, or the asset. Both are fixed at construction and **neither has a
+  setter in the contract at all** — repointing the price feed is the single most dangerous
+  parameter change in a protocol like this, so changing it requires a full code upgrade, with
+  everything that implies (§3).
 
 ### Why pause has no timeout
 
 A common request is "pause should expire automatically". It doesn't need to, because pause cannot
-hold anything hostage: a paused vault settles its live round permissionlessly, and every
-depositor can then exit at the settled price. The worst case delay is bounded by the live epoch's
+hold anything hostage: a paused vault closes its live round permissionlessly, and every
+depositor can then exit at the resulting price. The worst case delay is bounded by the live epoch's
 `expiry + oracle_dead_after` — after which anyone may annul the round. A timeout would be a
 weaker guarantee that implied a stronger fear.
 
@@ -140,6 +154,13 @@ bidders, depositors gain nothing, share price is unchanged. An oracle failure is
 so nobody profits from it — and, critically, nobody is trapped by it, because annulment is
 permissionless.
 
+**And if nobody looks in time**, the round still ends. The feed keeps a bounded history, so the
+expiry window eventually stops being readable; past that point the round finalizes *unresolved* —
+the premium stays with depositors, the payout is zero. That rule is not chosen to be kind to
+either side but to make delay worthless to both: an out-of-the-money buyer ends up exactly where
+settling would have put him, and an in-the-money one is strictly worse off, so nobody has a reason
+to let the clock run. What you are trusting here is arithmetic, not attentiveness.
+
 **Worst case, assume the feed is fully compromised** and every guard defeated:
 
 - Price faked **high**: the vault pays out at most `notional_sold − 1` stroop (I3), and only to
@@ -155,11 +176,14 @@ scales with borrowing power.
 
 ## 5. What you are trusting the keeper for: nothing
 
-The keeper is a bot that calls `open_epoch()`, `settle()` and `void_epoch()` on a timer. All
-three are permissionless. If it dies, stops, or turns hostile:
+The keeper is a bot that calls `open_epoch()` and `close_round()` on a timer. Both are
+permissionless, and `close_round` does not let its caller choose how the round ends. If it dies, stops, or turns hostile:
 
 - Epochs open late, or not at all — depositors keep their funds and can withdraw between rounds.
-- Settlement happens whenever anyone calls it, including you.
+- Rounds close whenever anyone calls, including you — and the outcome does not depend on who did
+  or when, with one bounded exception stated in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10: a round
+  nobody closes for about 18 hours can no longer be decided on evidence and finalizes with the
+  premium retained. That rule is chosen so no party gains by the delay.
 - Nothing is ever locked by its absence.
 
 The keeper is a convenience, never an authority. This is a design rule, not an operational

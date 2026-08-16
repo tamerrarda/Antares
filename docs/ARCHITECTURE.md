@@ -23,26 +23,38 @@ Single contract. Module boundaries live in the code (`vault`, `auction`, `settle
 ### Lifecycle
 
 ```rust
-fn __constructor(env: Env, admin: Address, asset: Address, oracle: Address, fee_recipient: Address, params: EpochParams);
+fn __constructor(env: Env, admin: Address, asset: Address, oracle: Address, fee_recipient: Address,
+                 params: EpochParams, token_suffix: String, deposit_cap: i128,
+                 rent_threshold: u32, rent_extend_to: u32, allowlist_expires_at: u64);
+// fee_bps (0), paused (false) and allowlist_enabled (true) are genesis constants, not arguments:
+// a non-zero fee then requires a separate, publicly visible transaction rather than our word.
+// allowlist_expires_at has no setter and is capped at 30 days from construction: the vault opens
+// to everyone on a published timestamp, whether or not anyone remembers to open it.
 
 fn open_epoch(env: Env) -> bool;         // permissionless; false = nothing to open yet (any pending finalization still persists)
 fn bid(env: Env, bidder: Address, notional: i128, max_premium_bps: u32) -> i128;  // permissionless
-fn settle(env: Env, bounty_to: Address); // permissionless; pays the caller a small bounty
-fn void_epoch(env: Env, bounty_to: Address);  // permissionless; only when the feed was unusable AROUND EXPIRY and the dead-feed bound has passed (§7)
+fn close_round(env: Env, bounty_to: Address) -> RoundOutcome;  // permissionless; the single terminal entry point
 ```
+
+**There is one way to close a round, and the caller does not choose the outcome.** `close_round`
+reads the price feed as it stood at expiry, once, and dispatches: the round **settles** if the feed
+answered, **voids** if the feed was demonstrably dead at expiry (past a grace period), and
+finalizes as **unresolved** if nobody closed it before that history left the feed's reach (§7).
+Three separate entry points would let the caller name the result and would leave the exclusion
+between them as something a test hopes for; one dispatcher makes it structural.
 
 ### Depositor
 
 ```rust
-fn deposit(env: Env, from: Address, amount: i128);
+fn deposit(env: Env, from: Address, amount: i128) -> i128;    // shares minted; 0 for a pending deposit
 fn cancel_pending_deposit(env: Env, from: Address) -> i128;   // only funds never locked
 fn redeem_shares(env: Env, from: Address) -> i128;            // pending deposit -> shares; Idle only (§4)
-fn request_withdraw(env: Env, from: Address, shares: i128, require_idle: bool);  // guard against a phase race
+fn request_withdraw(env: Env, from: Address, shares: i128, require_idle: bool) -> i128;  // XLM paid now, or 0 if queued
 fn claim_withdraw(env: Env, from: Address) -> i128;
 fn restore_position(env: Env, user: Address);                 // archival recovery; callable by anyone
 ```
 
-### Bidder (pull-based — settle/void never iterate bidders)
+### Bidder (pull-based — closing a round never iterates bidders)
 
 ```rust
 fn claim_payout(env: Env, round: u32, bidder: Address) -> i128;  // after a Settled round, spot > strike
@@ -55,9 +67,13 @@ fn claim_fee(env: Env) -> i128;                                  // fee_recipien
 ```rust
 fn set_paused(env: Env, paused: bool);
 fn set_deposit_cap(env: Env, cap: i128);
-fn set_fee_bps(env: Env, bps: u32);          // ships at 0
+fn set_fee_bps(env: Env, bps: u32);          // genesis value is 0; any change is a visible transaction
+// There is no set_oracle and no set_asset. Repointing the price feed is not a setter at all —
+// it requires a reviewed upgrade (§8, TRUST_MODEL §2).
 fn set_epoch_params(env: Env, params: EpochParams);   // takes effect next epoch only
-fn set_allowlist_enabled(env: Env, enabled: bool);
+fn set_allowlist_enabled(env: Env, enabled: bool);   // can open bidding early; cannot extend the gate
+// The allowlist also expires at Config.allowlist_expires_at, fixed at construction with no setter:
+// past it, bid() ignores the allowlist and re-enabling the flag is a no-op.
 fn set_allowed(env: Env, bidder: Address, allowed: bool);
 fn set_fee_recipient(env: Env, recipient: Address);
 fn set_rent_params(env: Env, threshold: u32, extend_to: u32);  // TTL policy in ledgers — tunable because ledger close time is not constant
@@ -92,7 +108,7 @@ Amounts are `i128` in stroops (7 decimals). Ratios are basis points (`u32`, 10 0
 
 | Type | Key | Value | TTL policy |
 |---|---|---|---|
-| **instance** | `Config` | admin, pending_admin, asset, oracle, fee_recipient, fee_bps, deposit_cap, paused, allowlist_enabled, params, rent params | bumped on every write |
+| **instance** | `Config` | admin, pending_admin, asset, oracle, fee_recipient, **token_suffix**, fee_bps, deposit_cap, paused, allowlist_enabled, **allowlist_expires_at**, params, rent params | bumped on every write |
 | **instance** | `State` | round, phase, strike, expiry, notional_offered, notional_sold, premium_collected, locked_assets | bumped on every write |
 | **instance** | `AppVersion` | `u32` — migration schema version (§8) | bumped on every write |
 | **persistent** | `Shares(Address)` | `i128` | bumped on touch |
@@ -120,23 +136,35 @@ stateDiagram-v2
     Idle --> Auction: open_epoch() · permissionless<br/>requires min_idle_gap elapsed
     Auction --> Active: fills present at auction_end<br/>(or sold out early)
     Auction --> Lapsed: auction_end, nothing sold
-    Active --> Settled: settle() at/after expiry<br/>permissionless, oracle guards pass
-    Active --> Voided: void_epoch()<br/>feed was unusable at expiry<br/>and the dead-feed bound has passed
+    Active --> Settled: close_round()<br/>the feed answered for expiry
+    Active --> Voided: close_round()<br/>feed was demonstrably dead at expiry<br/>and the grace period has passed
+    Active --> Unresolved: close_round()<br/>nobody closed it while<br/>expiry was still readable
 
     Settled --> Idle
     Lapsed --> Idle
     Voided --> Idle
+    Unresolved --> Idle
 ```
 
-Three terminal outcomes, one shared exit: settle, lapse and void all finalize through the same internal path, so the withdrawal-queue accounting cannot diverge between them.
+Four terminal outcomes, one shared exit: all of them finalize through the same internal path, so the withdrawal-queue accounting cannot diverge between them.
 
 | Outcome | Reached when | Premium | Payout | `pps` | Collateral |
 |---|---|---|---|---|---|
 | **Settled** | expiry reached, oracle usable | kept by depositors | to bidders if `spot > strike` | recomputed | reduced by payout + fee |
 | **Lapsed** | auction closed with no fills | none earned | none | unchanged | untouched |
-| **Voided** | feed unusable past `expiry + oracle_dead_after` | refunded to bidders | none | unchanged | untouched |
+| **Voided** | feed demonstrably dead **at expiry**, past `expiry + oracle_dead_after`, and still readable | refunded to bidders | none | unchanged | untouched |
+| **Unresolved** | nobody closed the round before expiry left the feed's reachable history | **kept by depositors** | none | recomputed | reduced by fee + bounty |
 
-`LAPSED` and `VOIDED` are **normal terminal states, not errors.** An auction that clears empty is a data point about demand; an annulled round is what a dead oracle costs, which is nothing to depositors and nothing to bidders. Both are recorded, both emit events, and the next epoch may open immediately after either.
+**Why `Unresolved` keeps the premium rather than refunding it.** A refund is what an unbounded
+version of the void path would do, and it pays the buyer to wait: out of the money, letting the
+clock run out returns 100 % of his premium, and no bounty funded from that premium can outbid it.
+Retaining it makes waiting worth exactly nothing to an out-of-the-money buyer and strictly negative
+to an in-the-money one, who forfeits the payout as well. **No party gains by delay**, which is the
+property that makes the outcome a function of history rather than of who transacted when. The cost
+is stated in [BIDDER.md](BIDDER.md): a buyer facing a genuinely dead feed has a bounded window to
+annul the round himself, and the call is permissionless.
+
+`LAPSED`, `VOIDED` and `UNRESOLVED` are **normal terminal states, not errors.** An auction that clears empty is a data point about demand; an annulled round is what a dead oracle costs, which is nothing to depositors and nothing to bidders. Both are recorded, both emit events, and the next epoch may open immediately after either.
 
 ### Why deposits are epoch-gated
 
@@ -158,11 +186,12 @@ Capital that arrives while an option is live took none of that option's risk. If
 
 ### Settlement accounting
 
-At `settle()` for round R:
+At close, for a round R that settled:
 
 ```
-fee_R      = premium_R × fee_bps / 10_000
-assets_R   = locked_assets + premium_R − payout_R − fee_R
+fee_R      = premium_R × fee_bps_snapshot / 10_000     (rate snapshotted at open, not read at close)
+bounty_R   = premium_R × bounty_bps_snapshot / 10_000   (paid to whoever closed the round)
+assets_R   = locked_at_open + premium_R − payout_R − fee_R − bounty_R
 pps[R]     = assets_R × PRECISION / shares_snapshot          (supply at open)
 ```
 
@@ -193,12 +222,12 @@ premium_bps(t) = start_bps − (start_bps − floor_bps) × (t − t0) / auction
 **On `bid(bidder, notional, max_premium_bps)`:**
 
 1. Reject if `phase != AUCTION`, if past `auction_end`, or if paused.
-2. Reject if `allowlist_enabled` and the bidder is not allowed. *(Launch control only — the default path is permissionless.)*
+2. Reject if the bidder is not allowed **and** `allowlist_enabled` **and** `now < allowlist_expires_at`. *(Launch control only, and one that runs out: the expiry is fixed at construction and has no setter, so the vault opens on a published timestamp whether or not anyone remembers to open it.)*
 3. Compute `p = premium_bps(now)`. Reject if `p > max_premium_bps` — this is the bidder's slippage guard and it is not optional.
 3b. **ITM guard:** reject if the freshest oracle tick shows `spot ≥ strike`, or if that check is unavailable. The strike is fixed while the curve descends; once the option is at/in the money, any fill sells intrinsic value for at most the curve premium — refusing is strictly better, and an empty auction costs depositors nothing. Reject also any fill whose premium rounds to zero.
 4. `filled = min(notional, notional_offer − notional_sold)`. **Partial fills are the expected case**, not an exception: in a thin market, all-or-nothing means no fills at all.
-5. Transfer `premium = filled × p / 10_000` in XLM from the bidder to the vault.
-6. Record the fill against the bidder (needed for the §7 refund path). Increment `notional_sold`, add to `premium_collected`.
+5. Compute `premium = filled × p / 10_000` and transfer it in XLM from the bidder to the vault — after the record in step 6 is written (checks → effects → interactions).
+6. Record the fill against the bidder (needed for the §7 refund path). Increment `notional_sold`, add to `premium_collected`. **This ordering is normative and the transfer in step 5 comes after it** — state is written before the external call, on every path.
 7. If `notional_sold == notional_offer`, transition to `ACTIVE` early.
 
 **At `auction_end`:** `notional_sold > 0` → `ACTIVE`. `notional_sold == 0` → `LAPSED`.
@@ -223,7 +252,7 @@ Two properties make this safe by construction:
 - **`payout < notional_sold` for all `spot`.** As `spot → ∞`, `(spot − strike)/spot → 1`, so the payout approaches but never reaches the sold notional. The vault can never owe more than the collateral backing the position — no margin call, no bad debt, no liquidation engine.
 - **No second leg.** The bidder paid the premium up front and has no further obligation. There is no atomic swap, no delivery failure, no counterparty credit risk, and a bidder never needs to hold `strike × notional` in capital. That last point is the reason the capital barrier to *being* a counterparty is roughly 20× lower here than under physical settlement — which matters more than anything else in a market this thin.
 
-Payout is distributed to bidders pro-rata to their filled notional — **pull-based**, via `claim_payout(round)` computed from each bidder's own `Fill` record. `settle()` and `void_epoch()` are O(1) and never iterate bidders: a per-bidder loop would make the exit path's cost grow with participation, which is a denial-of-service surface. Depositors absorb the payout and receive the premium, both pro-rata to shares, through `pps[R]`.
+Payout is distributed to bidders pro-rata to their filled notional — **pull-based**, via `claim_payout(round)` computed from each bidder's own `Fill` record. `close_round()` is O(1) on every branch and never iterates bidders: a per-bidder loop would make the exit path's cost grow with participation, which is a denial-of-service surface. Depositors absorb the payout and receive the premium, both pro-rata to shares, through `pps[R]`.
 
 ---
 
@@ -233,31 +262,36 @@ Settlement correctness rests entirely on the price feed, so every failure mode g
 
 ```mermaid
 flowchart TD
-    A["settle() called<br/>at/after expiry"] --> B{"feed readable?"}
-    B -- no --> R1["revert · OracleStale<br/>epoch stays ACTIVE"]
-    B -- yes --> C{"newest record<br/>within max_staleness?"}
-    C -- no --> R1
-    C -- yes --> D{"short TWAP vs guard TWAP<br/>within max_deviation_bps?"}
-    D -- no --> R2["revert · OracleDeviation"]
-    D -- yes --> E{"within coarse<br/>100x sanity bound?"}
-    E -- no --> R3["revert · OracleInvalidPrice"]
-    E -- yes --> F["SETTLE at short TWAP"]
-
-    R1 --> G{"past expiry +<br/>oracle_dead_after?"}
-    R2 --> G
-    R3 --> G
-    G -- no --> H["anyone retries later<br/>nothing is lost"]
-    G -- yes --> I["void_epoch() available to anyone<br/>premiums refunded · pps unchanged"]
+    A["close_round() called<br/>at/after expiry"] --> B{"read the feed<br/>as it stood AT EXPIRY"}
+    B -- "answered" --> F["SETTLED<br/>at the median short TWAP"]
+    B -- "records exist but are<br/>unusable or nonsense" --> G{"past expiry +<br/>oracle_dead_after?"}
+    B -- "adapter trapped / budget<br/>(a fact about NOW)" --> H["revert · OracleUnreachable<br/>anyone retries · nothing lost"]
+    B -- "expiry older than the feed's<br/>reachable history" --> J["UNRESOLVED<br/>premium kept by depositors · payout 0"]
+    G -- no --> K["revert · OracleNotDeadYet<br/>the grace period · anyone retries"]
+    G -- yes --> I["VOIDED<br/>premiums refunded · pps unchanged"]
 ```
 
-Retry on staleness, halt on deviation, void on death — and **every step is permissionless.** The contract never invents a price: no fallback settles on a fabricated or clamped value, because a wrong settlement is strictly worse than a refunded one.
+The classification is the point: **a fact about the expiry window** (the feed was dead then) may
+annul a round, and **a fact about now** (the adapter trapped this ledger) may not. Conflating them
+would let one congested ledger annul a round that was perfectly settleable. Every branch is
+permissionless, and the two reverting cases both clear with time.
+
+**The self-consistency breaker runs at `open_epoch` only.** At close the window is frozen history,
+so a rejected read can never "clear" on retry — a breaker there could only ever convert a
+settleable round into an annulled one, confiscating a payout the buyer earned. Closing instead
+takes the **median** of several samples in each window, which absorbs a bad print without needing a
+retry.
+
+Retry on a transient failure, annul only on evidence, and never invent a price — **every step is permissionless.** The contract never invents a price: no fallback settles on a fabricated or clamped value, because a wrong settlement is strictly worse than a refunded one.
 
 | Condition | Behaviour |
 |---|---|
 | Normal | TWAP over `twap_window`, not a spot tick. A single-block price never decides a settlement. |
-| Feed older than `max_staleness` | `settle()` reverts. The epoch stays `ACTIVE` and settlement may be retried by anyone. Nothing is lost; settlement is late. |
-| Short TWAP diverges from a longer guard TWAP of the same moment by more than `max_deviation_bps` | `settle()` reverts, same as above. A circuit breaker, not a silent clamp. Comparing two windows of the same moment means the breaker fires on feed artifacts and **never on sustained real market moves** — a cross-epoch comparison would wedge a legitimate settlement into the void path. |
-| Feed unusable for longer than `oracle_dead_after` past expiry | **Epoch is voided — by anyone.** `void_epoch()` is permissionless, exactly like `settle()`: a dead oracle plus a dead keeper must still never trap funds. Premium is refunded to bidders pro-rata to their fills, payout is zero, `pps` is unchanged, a loud event is emitted. |
+| Feed older than `max_staleness` **when opening an epoch** | `open_epoch()` reverts and may be retried by anyone. Staleness relative to *now* is meaningless for a frozen window, so it is not checked at close. |
+| Short TWAP diverges from a longer guard TWAP of the same moment by more than `max_deviation_bps` | `open_epoch()` reverts. A circuit breaker, not a silent clamp. Comparing two windows of the same moment means it fires on feed artifacts and **never on sustained real market moves**. It does not run at close — see above. |
+| Adapter traps, panics or exhausts its budget | `close_round()` reverts. The epoch stays `ACTIVE` and anyone may retry. This is explicitly **not** grounds to annul: it says nothing about the expiry window. |
+| Feed demonstrably unusable **at expiry**, past `oracle_dead_after` | **Epoch is voided — by anyone.** A dead oracle plus a dead keeper must still never trap funds. Premium is refunded to bidders pro-rata to their fills, payout is zero, `pps` is unchanged, a loud event is emitted. |
+| Nobody closed the round before expiry left the feed's reachable history | **Epoch is unresolved — by anyone.** Premium is kept by depositors, payout is zero, and whoever closed it is paid the bounty. The round is decided by a rule rather than by evidence, precisely because no evidence remains — and the rule is chosen so that no party profited by the delay. |
 
 The void-and-refund choice is deliberate: an oracle failure is nobody's fault, so nobody should profit from it. Settling at strike would hand depositors a free premium; paying out on a stale price would hand bidders a lottery ticket. Refunding restores both sides to where they started.
 
@@ -268,9 +302,9 @@ The void-and-refund choice is deliberate: an oracle failure is nobody's fault, s
 ## 8. Admin, pause, upgradeability
 
 - **Admin** is a single address in this design, expected to be a multisig before any mainnet deployment. Its powers are enumerated in §2 and deliberately exclude anything that touches user funds.
-- **Pause** blocks `deposit`, `bid` and `open_epoch`. It never blocks `settle`, `void_epoch`, `request_withdraw`, `claim_withdraw`, `claim_payout`, `claim_refund`, `claim_fee`, `cancel_pending_deposit`, `redeem_shares` or `restore_position`. A paused vault therefore unwinds to cash on its own: the epoch in flight settles (or voids) permissionlessly, and every depositor can then exit at the settled `pps`. Pause needs no timeout because it never holds funds hostage — the exit path is unpausable, and its worst-case delay is bounded by the live epoch's `expiry + oracle_dead_after`, after which `void_epoch()` is open to anyone.
+- **Pause** blocks `deposit`, `bid` and `open_epoch`. It never blocks `close_round`, `request_withdraw`, `claim_withdraw`, `claim_payout`, `claim_refund`, `claim_fee`, `cancel_pending_deposit`, `redeem_shares` or `restore_position`. A paused vault therefore unwinds to cash on its own: the epoch in flight closes permissionlessly — settling, voiding or resolving as unresolved, whichever the price feed dictates — and every depositor can then exit at the resulting `pps`. Pause needs no timeout because it never holds funds hostage: the exit path is unpausable, and the live epoch reaches a terminal state within a bounded window past expiry whether or not anyone is paying attention.
 - **Deposit cap** ships enforced. A first live vault launches capped; the parameter exists from day one so that turning it on is not a code change.
-- **Fee** ships at 0 bps, but the parameter and its place in the settlement formula exist from day one — retrofitting a fee into share math changes `pps` for every historical round.
+- **Fee** is 0 at genesis — and it is 0 because no transaction ever set it, not because a deploy argument happened to be zero, so the claim is checkable on-chain. The parameter and its place in the settlement formula exist from day one — retrofitting a fee into share math changes `pps` for every historical round.
 - **Upgradeability — resolved: upgradeable v1.** Admin-gated `upgrade(new_wasm_hash)` (SEP-49 style: `contractmeta` binary version, `AppVersion` in storage, monotonic idempotent `migrate()`). This is the protocol's one real trust concentration and it is disclosed as such: testnet runs a single documented admin address; **before mainnet the admin becomes a timelocked multisig whose delay exceeds a full epoch plus `oracle_dead_after`**, so users can always exit at the old code before new code takes effect. Operational policy: never upgrade while a round is live (scripts enforce Idle).
 
 ---
@@ -292,6 +326,7 @@ so this document reads end to end:
 | **I7** | Round records are immutable once written |
 | **I8** | The exit path cannot be paused |
 | **I9** | Instant withdrawals between rounds are always fully covered |
+| **I10** | Closing a round is a function of history: at most one terminal outcome is ever reachable, and which one does not depend on who calls or when |
 
 ---
 
@@ -300,24 +335,30 @@ so this document reads end to end:
 Every state transition emits. The off-chain metric collector and the public dashboard read only events; no indexer needs to reconstruct state from storage.
 
 ```
-deposited{user, round, amount}
+deposited{user, round, amount, shares_minted, instant}
 pending_redeemed{user, round, shares, pps}
 withdraw_requested{user, round, shares}
-withdraw_claimed{user, round, amount}
+withdraw_claimed{user, round, shares, amount}
 payout_claimed{round, bidder, amount} · refund_claimed{round, bidder, amount}
 fee_accrued{round, amount} · fee_claimed{recipient, amount} · settle_bounty{round, to, amount} · position_restored{user}
-upgraded{old_version, new_version} · migrated{version}
+upgraded{wasm_hash, app_version} · migrated{version}
 
-epoch_opened{round, strike, expiry, notional_offered, twap}
-bid_filled{round, bidder, notional, premium_bps, premium}
-epoch_lapsed{round}
-settled{round, spot, payout, premium, fee, pps}
-epoch_voided{round, reason}
+epoch_opened{round, strike, expiry, opened_at, auction_end, notional_offered, open_twap, premium_start_bps, premium_floor_bps}
+bid_filled{round, bidder, notional, premium_bps, premium, notional_sold_after}
+epoch_lapsed{round, notional_offered, pps, wclaims}
+settled{round, spot, strike, notional_sold, payout_total, premium, fee, pps, wclaims}
+epoch_voided{round, reason, premium_refunded, pps, wclaims}
+epoch_unresolved{round, premium_retained, pps, wclaims}
 
 paused{by} · unpaused{by} · params_changed{...} · admin_changed{old, new}
 ```
 
-`epoch_lapsed` and `epoch_voided` are deliberately first-class. An auction that clears empty is a data point about demand, not a failure to hide.
+**All four finalization events carry `wclaims`** — every outcome credits the withdrawal queue, so
+an indexer that only read it on `settled` would drift permanently the first time a round lapsed
+with a queued exit. `upgraded` carries the wasm hash and the *schema* version, which `upgrade` does
+not change: code and schema are versioned separately and only `migrate` moves the second.
+
+`epoch_lapsed`, `epoch_voided` and `epoch_unresolved` are deliberately first-class. An auction that clears empty is a data point about demand, not a failure to hide.
 
 **Rejected settlements emit nothing**, because in Soroban a reverting invocation discards its events along with its state — an event on a failing path is not implementable. A stale or deviating feed is observed through the error code that simulation returns, which is what the keeper alerts on. The full event ABI, including which fields are topics, is specified in the contract spec.
 
@@ -329,7 +370,7 @@ paused{by} · unpaused{by} · params_changed{...} · admin_changed{old, new}
 |---|---|
 | **Unit** | Every state transition, including every rejected one. Each guard has a test that proves it rejects. |
 | **Integration** | Full epochs against testnet: open → bid → settle, plus the lapse path and the void path. |
-| **Property-based** | Settlement math and epoch accounting. For arbitrary `(spot, strike, notional, deposits, withdrawals)`: I1–I9 hold, `payout ∈ [0, notional_sold)`, `pps > 0`. This is the highest-value suite in the repo because §4 is the highest-risk component. |
+| **Property-based** | Settlement math and epoch accounting. For arbitrary `(spot, strike, notional, deposits, withdrawals)`: I1–I10 hold, `payout ∈ [0, notional_sold)`, `pps > 0`. This is the highest-value suite in the repo because §4 is the highest-risk component. |
 | **Fuzz** | Call-sequence fuzzing — deposit/withdraw/bid/settle in adversarial orderings, over-sell attempts, double-settle, settle-before-expiry, bid-after-close. Every ordering is repeated under `paused == true` to prove I8. |
 | **Differential** | Settlement output compared against an independent reference implementation written in Python from the spec, not from the Rust. |
 
@@ -337,7 +378,21 @@ Every guard in §7 has a test that forces the condition — stale feeds and devi
 
 ---
 
-## 12. Open decisions — all resolved (2026-08-16)
+## 12. Concurrent instances
+
+The counterparty phase deploys **five instances of this same binary** side by side, identical in
+every respect except their terms — how long the option runs and how far out of the money the strike
+sits — each with its own share token (`aXLM-A` … `aXLM-E`, from a constructor argument) and its own
+auction. One vault answering one set of terms cannot distinguish *"nobody wants to sell options on
+XLM"* from *"nobody wants **these** terms"*; five run at once can, and testnet capital is free.
+Everything in this document describes a single instance, because that is what each of them is.
+
+Instance A is the mainnet-target configuration and is run at full size; the other four are probes
+across duration and moneyness. Each must independently pass the deploy-time coherence check that
+its own auction band actually contains the option's fair value at measured volatility — an
+instance that cannot be filled tests nothing.
+
+## 13. Open decisions — all resolved (2026-08-16)
 
 Every decision below was closed **before contract work started**.
 

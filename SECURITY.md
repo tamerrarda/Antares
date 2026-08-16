@@ -21,7 +21,12 @@ and we will not pretend otherwise.
 ## What we consider in scope
 
 - Anything that violates the [invariants](docs/INVARIANTS.md), especially I1 (solvency), I3
-  (payout bounded by collateral) and I8 (the exit path cannot be paused).
+  (payout bounded by collateral), I8 (the exit path cannot be paused) and I10 (how a round ends
+  is a function of history, not of who calls or when).
+- **Any way a party profits by delaying a call.** I10 is the property the protocol's whole claim
+  rests on: if you can find a state where waiting pays — for a bidder, a depositor, the keeper or
+  the admin — that is a vulnerability even if no funds move incorrectly, and we would rather hear
+  it than defend the design.
 - Any path where user funds can be trapped, including via the admin, a dead keeper, or a dead
   oracle.
 - Any admin capability beyond those enumerated in the [trust model](docs/TRUST_MODEL.md).

@@ -17,7 +17,8 @@ whether or not the price ever gets there.
 
 Concretely, each round:
 
-- The vault sets a **strike** a few percent above the current price — currently **3 %**.
+- The vault sets a **strike** a few percent above the current price — **3 %** on the main vault.
+  (Several vaults run side by side during the counterparty phase, on different terms; see §7.)
 - It sells a call option on the collateral and collects a premium, which goes into the pool.
 - **If XLM ends below the strike:** nothing happens. The pool keeps the collateral *and* the
   premium. This is the good case and it is also the common one.
@@ -28,10 +29,10 @@ The trade is symmetric and honest: **you earn premium every round, and in exchan
 the part of a rally that goes past the strike.** If you believe XLM is going to double next week,
 this is the wrong product for you.
 
-**How far above? Currently 3 %, and that is closer than it sounds.** The strike sits where the
-option is worth enough for somebody to actually buy it. When markets are calm — XLM's realized
-volatility has recently been around a third of its yearly range — an option struck 10 % away is
-worth almost nothing, so nobody bids and you earn nothing. Struck 3 % away it is worth buying, so
+**How far above? 3 %, and that is closer than it sounds.** The strike sits where the option is
+worth enough for somebody to actually buy it. When markets are calm — XLM's realized volatility
+measured **34 % annualized** over the last 30 days, against 98 % over the last 90 — an option
+struck 10 % away is worth almost nothing, so nobody bids and you earn nothing. Struck 3 % away it is worth buying, so
 you get paid; the cost is that your upside stops at 3 % instead of 10 %. This is a real trade-off
 and it is chosen deliberately, not tuned quietly: a covered call that never sells is not a
 conservative version of this product, it is a vault that does nothing.
@@ -50,9 +51,12 @@ ordinary Stellar tokens: you can hold, transfer, or send them anywhere.
 The pool's value per share (`pps`) changes only at the end of a round:
 
 ```
-new value = collateral + premium collected − payout − fee
-pps       = new value / shares outstanding
+new value = collateral at open + premium collected − payout − fee − closing bounty
+pps       = new value / shares outstanding at open
 ```
+
+The closing bounty is a small slice of the premium paid to whoever closed the round — anyone can,
+including you. It exists so that closing never depends on someone being generous.
 
 Premium pushes it up. A payout pushes it down. A round with no buyer leaves it exactly where it
 was. Your XLM claim is always `your shares × pps`.
@@ -65,7 +69,7 @@ This is the part that surprises people, so it gets the most space. The vault has
 what you can do depends on where it is:
 
 ```
-IDLE ──▶ AUCTION ──▶ ACTIVE ──▶ (settled / lapsed / annulled) ──▶ IDLE ──▶ ...
+IDLE ──▶ AUCTION ──▶ ACTIVE ──▶ (settled / lapsed / annulled / unresolved) ──▶ IDLE ──▶ ...
  │           │          │
  │           └──────────┴── an option is live: collateral is committed
  │
@@ -117,7 +121,8 @@ is what you are agreeing to when you deposit.
 
 After **every** round — whether it settled, found no buyer, or was annulled — there is a
 guaranteed gap before a new one can open, long enough to deposit, convert pending deposits, or
-exit instantly. It scales with the epoch length (a few hours on a weekly cycle). The interface
+exit instantly. It scales with the epoch length — four hours on the weekly vault, proportionally
+less or more on the others. The interface
 shows a countdown; you never have to guess.
 
 ---
@@ -129,10 +134,18 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
 - **No buyer showed up (lapsed).** No option was sold, no premium was earned, your collateral
   never moved, `pps` is unchanged. In a thin market this will happen, and it is honest to expect
   it.
-- **The round was annulled.** If the price feed becomes unusable past a defined limit, the round
-  is cancelled: buyers get their premiums refunded, no payout is made, `pps` is unchanged. Nobody
-  profits from an oracle failure and nobody is trapped by one — cancellation can be triggered by
-  anyone, including you.
+- **The round was annulled.** If the price feed was unusable at expiry past a defined limit, the
+  round is cancelled: buyers get their premiums refunded, no payout is made, `pps` is unchanged.
+  Nobody profits from an oracle failure and nobody is trapped by one — cancellation can be
+  triggered by anyone, including you.
+- **Nobody closed the round in time (unresolved).** The price feed only keeps about 18 hours of
+  history. If no one closes a round before its expiry moment ages out of that history, it can no
+  longer be decided on evidence, so it finalizes with **the premium kept by the pool** and no
+  payout. For you this is the same as a round that expired below the strike. It is written that
+  way on purpose: any rule that refunded the buyer instead would pay him to wait, and no incentive
+  we could fund would outbid that. Closing is permissionless and pays a small bounty, so in
+  practice it happens long before the deadline — but if you ever want to be certain, you can close
+  the round yourself.
 
 ---
 
@@ -179,6 +192,21 @@ points per round, always shown next to how many recent rounds cleared with no bu
 with their misses attached, never annualized.
 
 ---
+
+## 6b. Why there is more than one vault
+
+During the counterparty phase, five vaults run at the same time. They are the same contract with
+different terms — how long each round runs (3, 7 or 14 days) and how far above the price the strike
+sits (2 %, 3 % or 5 %) — and each one issues its own share token, so `aXLM-A` is not
+interchangeable with `aXLM-C`.
+
+The reason is honesty about what we don't know. One vault, one set of terms, and a run of empty
+auctions tells you *nothing was sold* without telling you whether the problem was the terms or the
+absence of any buyer at all. Five at once can tell those apart.
+
+**A** — 7 days, 3 % — is the main vault and the configuration intended for mainnet. If you are
+depositing and don't want to think about it, that is the one. The other four are experiments, and
+they are labelled as such in the interface.
 
 ## 7. Further reading
 
