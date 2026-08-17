@@ -188,9 +188,15 @@ can no longer be read by anyone, so the round cannot be decided on evidence. It 
 
 There is a second way into the same outcome, and it exists so that no failure can leave your
 collateral in limbo: **at 21 hours past expiry the round closes as UNRESOLVED without consulting
-the price feed at all.** That path is reached only if the adapter could not be called for the whole
-preceding window, and it deliberately produces the same result a working feed would have produced
-at that moment — so it cannot be used, by us or by anyone, to change how a round ends.
+the price feed at all.** That path is reached whenever the price adapter could not produce a usable reading for the whole
+preceding window — because it could not be called at all, or because the feed changed its own
+update interval so that the windows we asked for no longer fit its grid. In the ordinary case it
+produces the same result a working feed would have produced at that moment, so it cannot be used,
+by us or by anyone, to change how a round ends. **The exception is worth your attention if you are
+in the money:** if the feed alters its update interval mid-round, that equivalence can break and a
+round that was settleable can close as UNRESOLVED instead. It is written up in
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-12 rather than left for you to discover, and it is the same
+class of risk as the deadline above — one you can remove for yourself by closing the round early.
 
 If the round was out of the money, that is exactly where a normal settlement would have left you.
 **If it was in the money, you lose the payout as well as the premium.** Closing the round is

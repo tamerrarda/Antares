@@ -184,7 +184,7 @@ Capital that arrives while an option is live took none of that option's risk. If
 - **`request_withdraw(shares)` during round R** → shares are burned, `PendingWithdraw { round: R, shares }` is recorded.
 - **After round R settles** → `claimable = shares × pps[R] / PRECISION`.
 - **`request_withdraw` while no round is live** (phase `IDLE`) → converts at the last settled `pps` and is claimable immediately. No option is live, so nothing is at risk and there is nothing to wait for.
-- **`claim_withdraw`** transfers. There is no path that pays out an unsettled round.
+- **`claim_withdraw`** transfers. There is no path that pays out a round that has not been finalized.
 
 ### Settlement accounting
 
@@ -192,7 +192,7 @@ At close, for a round R that settled:
 
 ```
 fee_R      = premium_R × fee_bps_snapshot / 10_000     (rate snapshotted at open, not read at close)
-bounty_R   = premium_R × bounty_bps_snapshot / 10_000   (paid to whoever closed the round)
+bounty_R   = premium_R × params.settle_bounty_bps / 10_000   (paid to whoever closed the round)
 assets_R   = locked_at_open + premium_R − payout_R − fee_R − bounty_R
 pps[R]     = assets_R × PRECISION / shares_snapshot          (supply at open)
 ```
@@ -294,13 +294,13 @@ Retry on a transient failure, annul only on evidence, and never invent a price �
 | Feed older than `max_staleness` **when opening an epoch** | `open_epoch()` reverts and may be retried by anyone. Staleness relative to *now* is meaningless for a frozen window, so it is not checked at close. |
 | Short TWAP diverges from a longer guard TWAP of the same moment by more than `max_deviation_bps` | `open_epoch()` reverts. A circuit breaker, not a silent clamp. Comparing two windows of the same moment means it fires on feed artifacts and **never on sustained real market moves**. It does not run at close — see above. |
 | Adapter traps, panics or exhausts its budget | `close_round()` reverts and anyone may retry. This is explicitly **not** grounds to annul: it says nothing about the expiry window. |
-| …and it never recovers | **The round still ends.** Past `expiry + unresolved_after` (21 h at the shipped parameters) `close_round()` finalizes the epoch as **unresolved without calling the price adapter at all**. The bound is validated on-chain to sit at or beyond the feed's reachable history, so this returns the same outcome a working adapter could have produced at that instant — it adds no new result and cannot be used to steer one. It is the only terminal path that survives an adapter which cannot be invoked, and it is what makes "no oracle state can trap funds" a property of the code rather than a claim about it. |
+| …and it never recovers | **The round still ends.** Past `expiry + unresolved_after` (21 h at the shipped parameters) `close_round()` finalizes the epoch as **unresolved without calling the price adapter at all**. The bound is validated on-chain to sit strictly beyond the feed's reachable history, and bounded above so no admin setting can push it out of reach, so this returns the same outcome a working adapter could have produced at that instant — it adds no new result and cannot be used to steer one. It is the only terminal path that survives an adapter which cannot be invoked, and it is what makes "no oracle state can trap funds" a property of the code rather than a claim about it. |
 | Feed demonstrably unusable **at expiry**, past `oracle_dead_after` | **Epoch is voided — by anyone.** A dead oracle plus a dead keeper must still never trap funds. Premium is refunded to bidders pro-rata to their fills, payout is zero, `pps` is unchanged, a loud event is emitted. |
 | Nobody closed the round before expiry left the feed's reachable history | **Epoch is unresolved — by anyone.** Premium is kept by depositors, payout is zero, and whoever closed it is paid the bounty. The round is decided by a rule rather than by evidence, precisely because no evidence remains — and the rule is chosen so that no party profited by the delay. |
 
 The void-and-refund choice is deliberate: an oracle failure is nobody's fault, so nobody should profit from it. Settling at strike would hand depositors a free premium; paying out on a stale price would hand bidders a lottery ticket. Refunding restores both sides to where they started.
 
-`PriceSource` is an interface with a Reflector implementation and a mock. **Settlement reads the price as it was at expiry**, not at the moment someone calls — so every caller, early or late, computes the same settlement price and timing is worth nothing to anyone. The adapter takes several point samples across each window (`price(asset, timestamp)`, verified against the live contract — the batch call collapses well before the history it would need) and reduces each window to a **median**, which absorbs a single bad print without needing a retry. **Feed selection is part of the security model:** the pinned feed is Reflector's external CEX & DEX XLM/USD feed — deep aggregated off-chain markets — never any feed sourced from a thin on-chain order book. The February 2026 YieldBlox incident on Stellar was a correctly-functioning oracle reading a manipulable on-chain market; the class is excluded here by construction, and the oracle address is immutable after deployment (changing it requires a reviewed upgrade). Adding median-of-N or a secondary feed later (RedStone now ships SEP-40 feeds on Stellar) is a new implementation, never a refactor — that is the fallback *mechanism*; void-and-refund is the fallback *guarantee*.
+`PriceSource` is an interface with a Reflector implementation and a mock. **Settlement reads the price as it was at expiry**, not at the moment someone calls — so every caller, early or late, computes the same settlement price and timing is worth nothing to anyone. (One precondition, stated in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-12: the price feed must not change its own update interval while a round is live, because the sampling grid is derived from it.) The adapter takes several point samples across each window (`price(asset, timestamp)`, verified against the live contract — the batch call collapses well before the history it would need) and reduces each window to a **median**, which absorbs a single bad print without needing a retry. **Feed selection is part of the security model:** the pinned feed is Reflector's external CEX & DEX XLM/USD feed — deep aggregated off-chain markets — never any feed sourced from a thin on-chain order book. The February 2026 YieldBlox incident on Stellar was a correctly-functioning oracle reading a manipulable on-chain market; the class is excluded here by construction, and the oracle address is immutable after deployment (changing it requires a reviewed upgrade). Adding median-of-N or a secondary feed later (RedStone now ships SEP-40 feeds on Stellar) is a new implementation, never a refactor — that is the fallback *mechanism*; void-and-refund is the fallback *guarantee*.
 
 ---
 
@@ -402,7 +402,7 @@ instance that cannot be filled tests nothing.
 Every decision below was closed **before contract work started**.
 
 1. **Upgradeability — resolved: upgradeable v1.** Admin-gated upgrade with versioned migrate; timelocked multisig before mainnet; trust statement in README and §8.
-2. **Dead-oracle policy — resolved: void-and-refund** (§7), confirmed by external review. The refund path doubles as the guaranteed exit when a feed never recovers.
+2. **Dead-oracle policy — resolved: void-and-refund** (§7), confirmed by external review. A feed that never recovers is handled by the unresolved path instead, which needs no oracle call at all.
 3. **Auction decay curve — resolved: linear.** Exponential's marginal benefit does not justify harder verification; the curve is an internal function, replaceable without touching storage.
 4. **Strike selection — resolved: fixed % OTM parameter.** Volatility-adjusted selection requires a volatility source Stellar does not have; the parameter leaves the policy adjustable per epoch.
 5. **Multisig threshold and signers — resolved as a mainnet gate.** Testnet runs a single documented admin; threshold and signer set are chosen at the mainnet gate, blocking nothing before it.

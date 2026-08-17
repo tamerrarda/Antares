@@ -148,7 +148,7 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
   the round yourself.
 
   **The same outcome is the backstop if our own price adapter breaks.** Past a limit fixed when the
-  vault is deployed, a round closes as unresolved *without reading the feed at all*. This is the
+  round opens, a round closes as unresolved *without reading the feed at all*. This is the
   answer to the obvious question — *what if the thing that reads prices is the thing that
   fails?* — and it is why your collateral cannot be stranded in a live round by any oracle
   condition whatsoever. The limit is set beyond the point where a working feed could still answer,
@@ -177,7 +177,7 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
   the trade, not a malfunction.
 - **The premium may be small, or zero.** With no established buyers, some rounds will clear at
   the reserve price and some will not clear at all.
-- **Settlement can be late.** If the price feed is stale, settlement retries until it works.
+- **Settlement can be late.** If the price feed is stale, closing retries until it works, and cannot retry indefinitely — see the deadline above.
   Your funds are not at risk, but your claim may be delayed by hours.
 - **The contract is upgradeable** by an admin key today. That is the protocol's single real
   trust concentration and it is documented in the [trust model](TRUST_MODEL.md) rather than

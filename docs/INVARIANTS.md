@@ -229,9 +229,16 @@ expected to clear**: a *transient* failure (the adapter trapped this ledger, whi
 about expiry) and the grace period before a dead feed may annul a round. Both revert and may be
 retried by anyone. The grace period ends at `expiry + oracle_dead_after`. A transient failure that
 never clears ends at `expiry + unresolved_after`, where the round is finalized **unresolved without
-calling the price adapter at all** — a bound validated on-chain to sit at or beyond the feed's
+calling the price adapter at all** — a bound validated on-chain to sit strictly beyond the feed's
 reachable history, so it returns the outcome a working adapter could only have returned anyway and
 therefore adds no fourth reachable result.
+
+**One stated precondition (D-68).** `unresolved_after` is fixed when the round opens; the feed's
+reachable depth is read live when it closes. If the price feed lengthens its tick mid-round — a
+3.4 % change is enough at today's values — the fallback can fire while the anchored read would
+still have answered, which costs an in-the-money buyer his payout. Opening a round re-checks the
+live feed, so the exposure is one round rather than open-ended, and the residual is listed in
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) rather than argued away.
 
 That last clause is load-bearing and was missing until it was audited in. If a permanently
 unreachable adapter could block every branch, `close_round()` would revert forever and the round's
@@ -275,8 +282,8 @@ Stated explicitly, because their absence is a design choice rather than an overs
 - **There is no guarantee that an epoch earns a premium.** An auction with no bidder LAPSES:
   premium zero, collateral untouched, `pps` unchanged. Costing depositors nothing is the
   guarantee; earning them something is not.
-- **There is no guarantee that settlement happens on time.** If the oracle is stale, settlement
-  reverts and may be retried by anyone, indefinitely. Late is a defined state; wrong is not.
+- **There is no guarantee that settlement happens on time.** If the oracle cannot be read, closing
+  reverts and may be retried by anyone — but not indefinitely: the wait is bounded by the deadline in I10. Late is a defined state; wrong is not.
 - **There is no guarantee that a round settles at all.** If the feed was unusable at expiry past
   the dead-oracle bound, the round is annulled and premiums are refunded. If nobody closes the
   round before expiry leaves the feed's reachable history — or if the price adapter cannot be

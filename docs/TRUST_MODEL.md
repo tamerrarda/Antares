@@ -143,7 +143,7 @@ model rather than a configuration detail.
 Three guards sit in front of settlement, and all of them are permissionless to retry:
 
 1. **Time-weighted price**, never a single tick.
-2. **Self-consistency** — a short window compared against a longer one from the same moment. A
+2. **Self-consistency** — a short window compared against a longer one from the same moment. This runs when an epoch **opens**, never at settlement: an anchored window is frozen history that cannot recover from a rejection, so a breaker there could only convert a settleable round into an annulled one. A
    feed artifact skews the short window and not the long one; a genuine market move carries both.
    The breaker therefore fires on malfunction and *not* on real volatility. This matters for
    fairness: a breaker that tripped on real moves would annul valid rounds and confiscate
@@ -158,7 +158,7 @@ permissionless.
 **And if nobody looks in time**, the round still ends. The feed keeps a bounded history, so the
 expiry window eventually stops being readable; past that point the round finalizes *unresolved* —
 the premium stays with depositors, the payout is zero. **The same is true if our own price adapter
-is the thing that fails**: past a bound validated on-chain to sit at or beyond that history,
+is the thing that fails**: past a bound validated on-chain to sit strictly beyond that history, and bounded above so no admin setting can push it out of reach,
 `close_round()` finalizes the round as unresolved *without calling the adapter at all*. That path
 exists so the guarantee below does not depend on any external contract being callable, and it is
 constrained to return the outcome a working adapter could only have returned at that moment, so it

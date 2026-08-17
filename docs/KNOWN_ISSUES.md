@@ -146,12 +146,46 @@ failure that resource profiling and every prior round's close would surface, not
 that appears with age. What could still change it is the network's own limits or the feed's
 per-call cost moving under us.
 
-**And it cannot strand funds.** Past a bound fixed at deployment and validated on-chain, a round
+**And it cannot strand funds.** Past a bound fixed when the round opens and validated on-chain, a round
 finalizes as *unresolved* **without calling the adapter at all** — the one terminal path that does
 not depend on any external contract being reachable. So the worst case is that a close is late,
 not that it never happens or that its outcome changes. This was not true until it was audited in:
 the design previously claimed the same guarantee in three places with three incompatible
 justifications, one of which was circular.
+
+---
+
+### A-12 · A mid-round change in the price feed's tick can cost a buyer his payout
+
+Closing a round has a deadline fixed when the round opened, and a reachable-history limit read from
+the feed at the moment of closing. Those two numbers are validated against each other when the
+round opens. If the feed **lengthens its update interval while the round is live** — at today's
+values a 3.4 % change is enough — the limit moves past the deadline, and the round can finalize as
+*unresolved* at the deadline even though the price at expiry was still readable. A buyer who was in
+the money loses the payout as well as the premium.
+
+**Why accepted.** Closing this would require the deadline path to consult the price adapter, and
+that path exists precisely so that a round still ends when the adapter cannot be called at all
+(A-11). Trading a guaranteed exit for a rarer mispricing is the wrong trade. Opening a round
+re-validates against the live feed, so the exposure is bounded to a single round rather than to
+however long ago the parameters were set, and the case is driven by a test rather than assumed.
+
+**The same precondition covers more than the deadline.** The sampling grid, and therefore the
+settlement price itself, is derived from the feed's update interval as it stands when the round is
+closed. So "every caller computes the same settlement price" is a statement about *callers* — which
+is what it was written to guarantee — and not about a feed that re-times itself underneath a live
+round. A large enough change in either direction makes the anchored window unreadable for the rest
+of the round, at which point the round closes as *unresolved* at its deadline: depositors keep the
+premium, and a buyer who was in the money loses the payout.
+
+**A related case, guarded structurally.** The price feed is sponsored, and an unsponsored feed
+deletes its history. That would erase records that existed at expiry and make a healthy feed look
+dead — annulling the round and refunding the buyer. A round is therefore never opened unless the
+feed's own funding outlasts it, which removes the reachable case; what remains is a sponsorship
+window shortened after the round has already begun.
+
+**What would change our mind.** A feed that publishes its tick interval as part of each reading,
+letting the deadline be derived per round instead of per parameter change.
 
 ---
 
@@ -246,10 +280,10 @@ which is the entire argument for the review process that found them.
 | The auction floor sat 5–17× below fair value, so the expected case — an uncontested auction — was a systematic transfer to a lone bidder | 2026-08-16 | The floor is now a validated reserve price (at least half of fair value) |
 | The project's own stop condition could fire in eight hours, because an empty round ends in one | 2026-08-16 | It now requires calendar time as well as epochs, and coherent parameters |
 | The strike and premium band were chosen against an assumed volatility rather than a measured one; at XLM's real 30-day volatility every planned vault priced below its own reserve | 2026-08-16 | Volatility is measured at deploy time and the strike moved to 3 % out of the money, where fair value is robust across the observed range |
-| Two of the five parameter sets could not have been deployed: one failed the deviation-vs-strike check, the other failed its own band, its floor rule *and* the minimum-idle-window validation | 2026-08-17 | Every instance now carries its own band and bounds, each verified against all four gates; the deploy script refuses the whole set if any one instance fails |
+| Two of the five parameter sets could not have been deployed: one failed the deviation-vs-strike check, the other failed its own band, its floor rule *and* the minimum-idle-window validation | 2026-08-17 | Every instance now carries its own band and bounds, each verified against all five gates; the deploy script refuses the whole set if any one instance fails |
 | Settlement anchored at expiry became unreadable after ~18 hours, at which point a healthy feed produced an annulment — refunding an out-of-the-money buyer his entire premium for waiting | 2026-08-17 | A third terminal outcome: past that horizon the round finalizes with the premium retained. No bounty could have fixed this, since the buyer's alternative was 100 % of the premium the bounty is paid from |
 | The oracle adapter ignored the window parameters it was given: one setting silently measured a third of the intended window, another returned nothing at all and would have annulled every round | 2026-08-17 | The sampling grid is derived from the windows, and the adapter answers whether a window is usable at all — the vault asks, and never learns the feed's tick length |
 | A garbage price at expiry would have been treated as "nobody looked in time", handing depositors a windfall from an oracle failure; and a transient adapter failure could have annulled a settleable round | 2026-08-17 | The read distinguishes a fact about the expiry window from a fact about the present ledger; only the first can annul a round |
 | The Phase-2 clearing gate was satisfied by an auction that filled entirely at the floor — the exact failure it was written to detect — because the floor is defined as at least half of fair value and the gate asked for half | 2026-08-17 | Threshold raised to three quarters of fair value, and its dependence on the floor rule recorded so the two cannot drift apart again |
-| The constructor could not populate seven of the thirteen configuration fields, and the share token's identity had nowhere to live | 2026-08-17 | Nine explicit arguments; fee, pause and allowlist are genesis constants, which also makes "the fee ships at zero" checkable on-chain rather than a claim |
+| The constructor could not populate seven of the thirteen configuration fields, and the share token's identity had nowhere to live | 2026-08-17 | Ten explicit arguments; fee, pause and allowlist are genesis constants, which also makes "the fee ships at zero" checkable on-chain rather than a claim |
 | The auction window was two hours, and the project's own stop condition was written against a one-hour round that no longer existed | 2026-08-17 | Window shortened to 45 minutes on published evidence that long windows widen the gap between clearing price and fair value; the stop condition's arithmetic corrected |
