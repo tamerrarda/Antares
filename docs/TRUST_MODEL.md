@@ -100,10 +100,23 @@ What that means concretely:
 | **Before mainnet** | Timelocked multisig | A signer set, plus a delay long enough that you can leave first |
 | **Long term** | Open question | Immutability becomes reasonable once the code has an audit and a track record |
 
-The mainnet requirement is specific: **the timelock delay must exceed one full epoch plus the
-dead-oracle bound.** That is the window in which any depositor can settle (or annul) the live
-round and withdraw at the old code, before new code can take effect. A timelock shorter than the
-exit path is theatre.
+The mainnet requirement is specific and has **two** terms:
+
+> **delay > `epoch_duration + unresolved_after`** — 7 d 21 h at the shipped values (7 d + 21 h),
+> matching the bound §2 already gives.
+
+`epoch_duration` is the wait for the live round to reach expiry. `unresolved_after` is the bound
+past which that round **closes regardless of the feed** — not the 12 h `oracle_dead_after`, which
+is only when annulment becomes *possible*, and a possibility is not an exit.
+
+**`min_idle_gap` is deliberately not a third term, and this is worth stating because it looks like
+one.** Closing a round is not the same act as withdrawing, so the natural worry is that the
+withdrawal needs the idle window that closing opens. It does not: `claim_withdraw` and
+`request_withdraw` run in **any phase** and are **unpausable** (§2's list, I8), and a queued
+withdrawal becomes claimable the instant its round finalizes. So the second transaction is
+available in the same ledger as the close, and adding `min_idle_gap` would describe a wait nobody
+does. A timelock shorter than the whole exit path is theatre — but so is padding the bound with a
+step the contract does not impose.
 
 Operational rule: never upgrade while a round is live. The contract permits it; the deployment
 tooling refuses it.
@@ -180,7 +193,7 @@ scales with borrowing power.
 
 ---
 
-## 5. What you are trusting the keeper for: nothing
+## 5. What you are trusting the keeper for: nothing that holds your money
 
 The keeper is a bot that calls `open_epoch()` and `close_round()` on a timer. Both are
 permissionless, and `close_round` does not let its caller choose how the round ends. If it dies, stops, or turns hostile:
@@ -192,7 +205,15 @@ permissionless, and `close_round` does not let its caller choose how the round e
   premium retained. That rule is chosen so no party gains by the delay.
 - Nothing is ever locked by its absence.
 
-The keeper is a convenience, never an authority. This is a design rule, not an operational
+The keeper is a convenience, never an authority.
+
+**One honest qualification, added when the interface was specified.** The keeper also writes the
+per-round archive the app uses to *find* an old, unclaimed bidder payout, and the volatility series
+published beside each clearing price. Neither holds funds and neither can move any: a claim is a
+single transaction against on-chain state that anyone can construct without us. What a dead keeper
+costs is **discoverability** — the money stays yours and stays claimable, but you may have to know
+your own round number to reach it. That is a real dependency and it is not the same as a custodial
+one. This is a design rule, not an operational
 promise: a dead operator must never be able to freeze user funds.
 
 ---

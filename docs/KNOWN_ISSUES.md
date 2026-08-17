@@ -70,8 +70,11 @@ on a rally.
 **Why accepted, and how it is bounded.** The alternative — permissioned opening — reintroduces
 the operator as an authority over user funds, which this design refuses. Instead the *range* is
 capped: the deviation guard rejects any open where the short TWAP diverges from the hourly TWAP
-by more than a third of the out-of-the-money buffer (D-45), so no accepted open can put the strike
-below the prevailing market. What remains is choosing among moments inside that band — a real but
+by more than **half** the out-of-the-money buffer (`max_deviation_bps < strike_bps_otm / 2`, D-45),
+so no accepted open can put the strike below the prevailing market. Half is the limit, not the
+setting: the five vaults sit at a third of the buffer on A and E, a fifth on B and D, and **0.45 on
+C** — the near-the-money instance has the least room, which is the opposite of what a reader would
+assume. What remains is choosing among moments inside that band — a real but
 small advantage, and one the keeper removes in practice by opening promptly.
 
 ### A-8 · A sole counterparty has leverage over the parameters
@@ -229,8 +232,8 @@ The admin can replace the contract code, which in the limit overrides every guar
 code makes.
 
 **Status.** Disclosed rather than removed; see [`TRUST_MODEL.md`](TRUST_MODEL.md) §3. Mitigation
-before mainnet is a timelocked multisig whose delay exceeds a full epoch plus the dead-oracle
-bound, so users can always exit under the old code first. Immutability is something this codebase
+before mainnet is a timelocked multisig whose delay exceeds a full epoch plus the bound past
+which a round closes regardless of the feed (TRUST_MODEL §3 gives the number: 7 d 21 h), so users can always exit under the old code first. Immutability is something this codebase
 can earn after an audit; declaring it now would be worse than useless.
 
 ### O-4 · Oracle dependency

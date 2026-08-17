@@ -38,7 +38,7 @@ Black-Scholes figures this project publishes have always assumed the vanilla pay
 
 Under physical settlement a counterparty must hold `strike × notional` to write or take the other
 side. Here you post the premium alone. At the option's fair value that is about a **136×** lower
-capital barrier, and never less than ~23× lower anywhere on the auction curve. That is the
+capital barrier, and, across the five vaults, never less than ~18× lower anywhere on any of their auction curves. That is the
 deliberate design choice that makes being a counterparty possible in a thin market at all.
 
 ---
@@ -78,6 +78,15 @@ widening the gap between clearing price and fair value, so it was shortened. The
 premium: the clearing price is whatever a bidder accepts, and it is recognized **at fill**, not
 at offer.
 
+**The part of that window you would actually want is much shorter — measured, not estimated.** A
+rational buyer does not bid while the curve sits above fair value, and from a 450 bps start the
+linear decay does not reach the fair value of these terms until roughly minute 41. The
+economically live tail is therefore about **2 to 4 minutes**, depending on the instance. That is a
+real obstacle to a human counterparty and we are not going to pretend otherwise: as written, this
+auction favours a bot. Whether to change the curve's shape is an open decision in our plan rather
+than a settled one — and if the window is the reason you would not participate, that is precisely
+the finding we are asking for.
+
 **Bidding:**
 
 ```rust
@@ -105,6 +114,7 @@ bid(bidder: Address, notional: i128, max_premium_bps: u32) -> i128  // returns f
 | `SoldOut` | the offer is fully subscribed |
 | `WrongPhase` | the auction window has passed — the phase moves before a late bid is evaluated, so this is the only code you will see for it |
 | `OracleUnreachable` | the price check the in-the-money guard depends on could not be read. Distinct from `InTheMoney` on purpose: an outage is not a market signal, and we count the two separately so a feed failure is never recorded as absent demand |
+| `Paused` | new deposits, new bids and new rounds can be paused by the admin. It can never block a claim, a refund, or the closing of a round — the exit path is unpausable — but it can stop you taking a *new* position |
 | `AllowlistForbidden` | launch control only, and it **expires on a timestamp fixed when the vault was deployed** — read it from `config()` before you spend any time on this. The admin can open bidding earlier (that transaction is itself on-chain evidence) but has no way to extend the gate; past the expiry this rejection cannot occur |
 
 ---
@@ -122,6 +132,17 @@ claim_payout(round: u32, bidder: Address) -> i128
 Your payout is recomputed from your own immutable fill record against the round's recorded
 settlement price: `⌊your_notional × (spot − strike) / spot⌋`. Claim whenever you like — the
 balance is persistent contract state and does not expire.
+
+**Finding it later is your job, and we have made it as easy as we can.** There is no on-chain
+function that lists your fills — a claim is addressed to a specific round — and after about a month
+an unclaimed record may be archived. Archival does not lose it: the claim transaction restores it
+automatically. It does mean a naive lookup returns nothing, so our interface keeps an index of
+which addresses filled which rounds and reads it alongside the chain, and can still show you what
+you are owed long after the event. Two honest limits: it is a convenience we run, not a property of
+the chain — your claim is on-chain and does not expire, but finding it is easier while we are here —
+and a quarterly testnet reset deletes unclaimed balances outright (§6c). If you are integrating
+directly rather than through the app, record your
+round numbers at fill time.
 
 This is deliberate: settlement is O(1) and never iterates bidders, because a settlement whose
 cost grows with participation is a denial-of-service surface aimed at everyone's exit. The cost
@@ -250,6 +271,15 @@ What is useful to us is therefore **a decision you would stand behind with your 
 fill placed casually because the tokens are free tells us nothing and, worse, tells us something
 false. If our number is wrong, saying *"I'd want 140 bps for that, not 76"* is worth more to this
 project than a fill — and it is the finding we will publish.
+
+## 6c. Testnet is wiped on a schedule
+
+Stellar's test network is **reset roughly every quarter**, with at least two weeks' notice, and a
+reset deletes all contract state — including a payout or refund you have not claimed. Claim
+promptly rather than at leisure, and check the next reset date before taking a position you intend
+to hold to expiry. The transaction hashes you and we would point at as evidence stop resolving on
+the explorer after a reset too, which is why closed rounds are archived to this repository as they
+happen.
 
 ## 7. Pricing it yourself
 

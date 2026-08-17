@@ -21,7 +21,7 @@ Concretely, each round:
   (Several vaults run side by side during the counterparty phase, on different terms; see §7.)
 - It sells a call option on the collateral and collects a premium, which goes into the pool.
 - **If XLM ends below the strike:** nothing happens. The pool keeps the collateral *and* the
-  premium. This is the good case and it is also the common one.
+  premium. This is the good case.
 - **If XLM ends above the strike:** the pool pays out the difference above the strike, out of its
   own collateral, and you keep the premium. Your upside above the strike is capped.
 
@@ -31,7 +31,7 @@ this is the wrong product for you.
 
 **How far above? 3 %, and that is closer than it sounds.** The strike sits where the option is
 worth enough for somebody to actually buy it. When markets are calm — XLM's realized volatility
-measured **34 % annualized** over the last 30 days, against 98 % over the last 90 — an option
+measured **34 % (measured 2026-08-16) annualized** over the last 30 days, against 98 % over the last 90 — an option
 struck 10 % away is worth almost nothing, so nobody bids and you earn nothing. Struck 3 % away it is worth buying, so
 you get paid; the cost is that your upside stops at 3 % instead of 10 %. This is a real trade-off
 and it is chosen deliberately, not tuned quietly: a covered call that never sells is not a
@@ -40,6 +40,43 @@ conservative version of this product, it is a vault that does nothing.
 What you can never lose: more than the position itself. There is no leverage, no borrowing, no
 margin call, and no liquidation anywhere in this protocol. The payout is mathematically bounded
 below the collateral backing it, no matter how far the price moves.
+
+### What that means in XLM, which is the unit you are counting in
+
+The rest of this document measures your position in XLM, so the trade has to be shown that way
+too. **When XLM rallies past the strike, you end the round with fewer XLM than you started.** Not
+"less profit" — fewer coins.
+
+Call the premium **P** — you will know it only after the auction clears, and this project publishes
+no forecast of it. The payout does not depend on P at all; it is fixed by the price move alone, and
+on the 7-day, 3 %-out-of-the-money vault it is exactly this:
+
+| XLM moves | coins taken by the payout | **your coins change by** | if you had just held |
+|---|---|---|---|
+| −20 % | none | **+P** | same coins, −20 % in USD |
+| −10 % | none | **+P** | same coins, −10 % in USD |
+| unchanged | none | **+P** | same coins |
+| +3 % (the strike) | none | **+P** | same coins, +3 % in USD |
+| +5 % | 1.90 % | **P − 1.90 %** | same coins, +5 % in USD |
+| +10 % | 6.36 % | **P − 6.36 %** | same coins, +10 % in USD |
+| +20 % | 14.17 % | **P − 14.17 %** | same coins, +20 % in USD |
+| +50 % | 31.33 % | **P − 31.33 %** | same coins, +50 % in USD |
+
+P is small — it is bounded below by the auction's reserve of 0.40 % and above by 4.5 %, and an
+uncontested auction clears near the reserve. So from +5 % upward the middle column is negative in
+every realistic case, and it gets worse the harder XLM rallies: **at +50 % you hold roughly a third
+fewer coins than you started with.** In dollars you are still ahead of where you began, but far
+behind simply holding — that gap is the thing you are selling, and the premium is what you are paid
+for it.
+
+A depositor who is accumulating XLM and would be unhappy holding fewer of it after a rally should
+not be in this vault, and no premium changes that.
+
+Two things this table does not include, both small and both against you: the caller who closes the
+round is paid a bounty out of the premium (capped at 1 % of it), and a protocol fee exists in the
+same place and ships at zero. And it assumes the vault sold its whole option — a partial fill
+scales both the premium and the payout down together, an auction that never clears leaves your
+coins untouched and pays you nothing.
 
 ---
 
@@ -69,7 +106,8 @@ This is the part that surprises people, so it gets the most space. The vault has
 what you can do depends on where it is:
 
 ```
-IDLE ──▶ AUCTION ──▶ ACTIVE ──▶ (settled / lapsed / annulled / unresolved) ──▶ IDLE ──▶ ...
+IDLE ──▶ AUCTION ──┬──(no bid, 45 min)──▶ lapsed ─────────────────▶ IDLE ──▶ ...
+                   └──(filled)──▶ ACTIVE ──▶ (settled / annulled / unresolved) ──▶ IDLE ──▶ ...
  │           │          │
  │           └──────────┴── an option is live: collateral is committed
  │
@@ -93,10 +131,10 @@ Two things you can do with a pending deposit:
   amount back. This is the one instant exit, and it is safe precisely because that money never
   backed an option.
 - **Convert it to shares** once the round finishes — **and do not forget this step.** Until you
-  convert, the money earns nothing, and while it is sitting there you cannot make a *new* deposit
+  convert, the money earns nothing, and while it is sitting there you cannot start a *new* pending deposit during a live round (adding to the same round's pending is fine, and depositing between rounds redeems the old one for you automatically)
   either; the interface will show a single prominent reminder with a countdown until you act. The
   fix is one click and it is always available: convert in the window, or cancel and get your XLM
-  back at any time. Conversion happens at the vault's price *at the moment you convert* — not at a price frozen earlier. Waiting neither gains nor costs you anything:
+  back at any time. Conversion happens at the vault's price *at the moment you convert* — not at a price frozen earlier. Waiting costs you the yield you would have earned as shares, but it does not cost you *price*:
   converting and cancelling-then-redepositing are worth exactly the same. Conversion happens in
   the next idle window (see below).
 
@@ -114,7 +152,8 @@ Your shares are burned immediately and you are queued: **you exit at this round'
 whatever it turns out to be.** Once the round finishes you claim your XLM.
 
 You cannot leave *before* the round settles, because your capital is what backs the option that
-was sold. This is the one genuine lock in the system, it is bounded by the epoch length, and it
+was sold. This is the one genuine lock in the system, it is bounded in *outcome* rather than in time — past a fixed limit the round can be closed without
+  reading the feed at all, but somebody still has to close it, and that somebody can be you, and it
 is what you are agreeing to when you deposit.
 
 ### The idle window
@@ -127,12 +166,15 @@ shows a countdown; you never have to guess.
 
 ---
 
-## 4. Rounds that end without a premium
+## 4. Rounds that end without a payout to the buyer
 
-Both are normal, defined outcomes. Neither is an error and neither costs you anything:
+All three are normal, defined outcomes. None of them is an error, and none of them costs you
+anything:
 
 - **No buyer showed up (lapsed).** No option was sold, no premium was earned, your collateral
-  never moved, `pps` is unchanged. In a thin market this will happen, and it is honest to expect
+  never moved, `pps` is unchanged. **This one resolves 45 minutes into the round, not at the end of
+  it** — an auction nobody bids on closes when it expires, so your money is free again the same
+  hour rather than a week later. In a thin market this will happen, and it is honest to expect
   it.
 - **The round was annulled.** If the price feed was unusable at expiry past a defined limit, the
   round is cancelled: buyers get their premiums refunded, no payout is made, `pps` is unchanged.
@@ -162,8 +204,11 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
 - **Deposit cap.** The vault has a maximum size while it is young. If it is full, deposits are
   refused until someone withdraws or the cap is raised — nothing is lost, you simply cannot enter
   yet.
-- **One pending deposit at a time.** If you deposited during a live round and haven't converted
-  it, a second deposit is refused until you do (or cancel). This is the rule most likely to
+- **One pending deposit at a time.** If you deposited during a live round and haven't
+  converted it, a further deposit **during another live round** is refused until you do (or
+  cancel). Two things are still allowed, and the refusal is narrower than it sounds: adding to the
+  same round's pending is fine, and depositing between rounds converts the old one for you
+  automatically. This is the rule most likely to
   surprise you, which is why the interface nags about it.
 - **The very first deposit** into a fresh vault permanently locks a negligible sliver of shares
   (worth a fraction of a cent) inside the contract. This is a standard defence that stops anyone
@@ -171,6 +216,19 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
 
 ## 5. What can go wrong
 
+- **Whoever opens a round sets the strike's basis.** Opening is permissionless, and the strike is
+  derived from the price at that moment — so a buyer who opens on a dip gets a cheaper option than
+  one who opens on a rally, at your expense. The oracle's guards bound how far the basis can stray
+  from the market, but not to zero. It is the sharpest of the few places where another participant's
+  timing costs you something — the others being that a new round can open before your instant exit
+  lands (§3), and that anyone may end an idle window as soon as it reaches its minimum width; see [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-7.
+- **XLM sent directly to the contract address is gone.** Deposits must go through `deposit()`. A
+  plain transfer to the vault's address belongs to nobody, is credited to no one, and there is no
+  sweep function to recover it — deliberately, because code that can move unattributed funds can
+  move attributed ones. This is a wallet mistake rather than a protocol risk, and it is
+  the one the vault cannot protect you from — the same is true of burning your share tokens, or
+  sending them to the contract's own address, both of which the token standard permits and neither
+  of which the vault can undo.
 - **The code is unaudited.** This is the largest risk by a wide margin, and it is why this is
   testnet only.
 - **You cap your upside.** If XLM rallies hard, you will earn less than simply holding. That is
@@ -179,6 +237,14 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
   the reserve price and some will not clear at all.
 - **Settlement can be late.** If the price feed is stale, closing retries until it works, and cannot retry indefinitely — see the deadline above.
   Your funds are not at risk, but your claim may be delayed by hours.
+- **New deposits can be paused.** An admin can stop deposits, new bids and new rounds. Pause can
+  never touch the way out: closing a round, requesting and claiming a withdrawal, cancelling a
+  pending deposit, redeeming, and restoring an archived position all keep working while paused. See
+  [`TRUST_MODEL.md`](TRUST_MODEL.md).
+- **A protocol fee exists in the arithmetic and ships at zero.** It is capped at 20 % *of the
+  premium* — never of your capital — and it is snapshotted when a round opens, so a change can
+  never apply to a round you were already in. Any non-zero value requires a separate, publicly
+  visible transaction.
 - **The contract is upgradeable** by an admin key today. That is the protocol's single real
   trust concentration and it is documented in the [trust model](TRUST_MODEL.md) rather than
   buried.
@@ -187,6 +253,17 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
   restores what it touches.
 
 ---
+
+## 5b. Testnet is wiped on a schedule
+
+Stellar's test network is **reset roughly every quarter**, with at least two weeks' notice. A reset
+deletes all contract state: the vault, your shares, your pending deposit, any unclaimed withdrawal.
+Nothing survives it and nothing can be restored from it.
+
+This is not a risk in the usual sense — it is a calendar. It is stated here because "do not deposit
+anything you would mind losing" is a warning about uncertainty, and this is a certainty. Before
+depositing, check when the next reset is scheduled; the project publishes the date it is working
+against alongside each deployment, and never opens a round intended as evidence inside a reset week.
 
 ## 6. Why there are no yield numbers
 
