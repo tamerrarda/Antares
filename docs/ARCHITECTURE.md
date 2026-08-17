@@ -399,12 +399,12 @@ across duration and moneyness. Each must independently pass the deploy-time cohe
 its own auction band actually contains the option's fair value at measured volatility — an
 instance that cannot be filled tests nothing.
 
-## 13. Open decisions — all resolved (2026-08-16)
+## 13. Open decisions — all resolved (the last, item 3's revised grounds, on 2026-08-18)
 
 Every decision below was closed **before contract work started**.
 
 1. **Upgradeability — resolved: upgradeable v1.** Admin-gated upgrade with versioned migrate; timelocked multisig before mainnet; trust statement in README and §8.
 2. **Dead-oracle policy — resolved: void-and-refund** (§7), confirmed by external review. A feed that never recovers is handled by the unresolved path instead, which needs no oracle call at all.
-3. **Auction decay curve — resolved: linear.** Exponential's marginal benefit does not justify harder verification; the curve is an internal function, replaceable without touching storage.
+3. **Auction decay curve — resolved: linear, on revised grounds.** The original reason ("exponential's marginal benefit does not justify harder verification") was falsified by measurement — a rational bidder only acts below fair value, and geometric decay roughly triples that live tail. Linear ships anyway because it is integer-exact for the byte-for-byte differential suite, and because the curve is an internal function replaceable without touching storage — which is also why geometric stands on record as the designated successor, promoted by bidder evidence before any mainnet parameter freeze (plan D-03).
 4. **Strike selection — resolved: fixed % OTM parameter.** Volatility-adjusted selection requires a volatility source Stellar does not have; the parameter leaves the policy adjustable per epoch.
 5. **Multisig threshold and signers — resolved as a mainnet gate.** Testnet runs a single documented admin; threshold and signer set are chosen at the mainnet gate, blocking nothing before it.

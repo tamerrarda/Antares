@@ -83,9 +83,11 @@ rational buyer does not bid while the curve sits above fair value, and from a 45
 linear decay does not reach the fair value of these terms until roughly minute 41. The
 economically live tail is therefore about **2 to 4 minutes**, depending on the instance. That is a
 real obstacle to a human counterparty and we are not going to pretend otherwise: as written, this
-auction favours a bot. Whether to change the curve's shape is an open decision in our plan rather
-than a settled one — and if the window is the reason you would not participate, that is precisely
-the finding we are asking for.
+auction favours a bot. The curve's shape is decided for this build — linear stays, because it is
+the only shape our verification suite can check exactly without new machinery — but a geometric curve that roughly
+triples the live window is on record as its designated successor, and what promotes it is
+evidence, not our mood: **if the window is the reason you would not participate, saying so is
+literally the named trigger** for making that change before any mainnet parameters are frozen.
 
 **Bidding:**
 
