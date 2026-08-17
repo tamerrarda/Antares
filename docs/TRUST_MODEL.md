@@ -75,8 +75,9 @@ structural guarantee; that one is a promise backed by key management.
 A common request is "pause should expire automatically". It doesn't need to, because pause cannot
 hold anything hostage: a paused vault closes its live round permissionlessly, and every
 depositor can then exit at the resulting price. The worst case delay is bounded by the live epoch's
-`expiry + oracle_dead_after` — after which anyone may annul the round. A timeout would be a
-weaker guarantee that implied a stronger fear.
+`expiry + unresolved_after` — after which anyone can close the round and every depositor can exit,
+whatever the price feed or the adapter is doing. A timeout would be a weaker guarantee that
+implied a stronger fear.
 
 ---
 
@@ -156,7 +157,12 @@ permissionless.
 
 **And if nobody looks in time**, the round still ends. The feed keeps a bounded history, so the
 expiry window eventually stops being readable; past that point the round finalizes *unresolved* —
-the premium stays with depositors, the payout is zero. That rule is not chosen to be kind to
+the premium stays with depositors, the payout is zero. **The same is true if our own price adapter
+is the thing that fails**: past a bound validated on-chain to sit at or beyond that history,
+`close_round()` finalizes the round as unresolved *without calling the adapter at all*. That path
+exists so the guarantee below does not depend on any external contract being callable, and it is
+constrained to return the outcome a working adapter could only have returned at that moment, so it
+cannot be used to steer a result. That rule is not chosen to be kind to
 either side but to make delay worthless to both: an out-of-the-money buyer ends up exactly where
 settling would have put him, and an in-the-money one is strictly worse off, so nobody has a reason
 to let the clock run. What you are trusting here is arithmetic, not attentiveness.
@@ -182,7 +188,7 @@ permissionless, and `close_round` does not let its caller choose how the round e
 - Epochs open late, or not at all — depositors keep their funds and can withdraw between rounds.
 - Rounds close whenever anyone calls, including you — and the outcome does not depend on who did
   or when, with one bounded exception stated in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10: a round
-  nobody closes for about 18 hours can no longer be decided on evidence and finalizes with the
+  nobody closes for about 20 hours can no longer be decided on evidence and finalizes with the
   premium retained. That rule is chosen so no party gains by the delay.
 - Nothing is ever locked by its absence.
 

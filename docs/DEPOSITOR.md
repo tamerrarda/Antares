@@ -138,14 +138,21 @@ Both are normal, defined outcomes. Neither is an error and neither costs you any
   round is cancelled: buyers get their premiums refunded, no payout is made, `pps` is unchanged.
   Nobody profits from an oracle failure and nobody is trapped by one — cancellation can be
   triggered by anyone, including you.
-- **Nobody closed the round in time (unresolved).** The price feed only keeps about 18 hours of
-  history. If no one closes a round before its expiry moment ages out of that history, it can no
+- **Nobody closed the round in time (unresolved).** The price feed only keeps about **20 hours**
+  of history. If no one closes a round before its expiry moment ages out of that history, it can no
   longer be decided on evidence, so it finalizes with **the premium kept by the pool** and no
   payout. For you this is the same as a round that expired below the strike. It is written that
   way on purpose: any rule that refunded the buyer instead would pay him to wait, and no incentive
   we could fund would outbid that. Closing is permissionless and pays a small bounty, so in
   practice it happens long before the deadline — but if you ever want to be certain, you can close
   the round yourself.
+
+  **The same outcome is the backstop if our own price adapter breaks.** Past a limit fixed when the
+  vault is deployed, a round closes as unresolved *without reading the feed at all*. This is the
+  answer to the obvious question — *what if the thing that reads prices is the thing that
+  fails?* — and it is why your collateral cannot be stranded in a live round by any oracle
+  condition whatsoever. The limit is set beyond the point where a working feed could still answer,
+  so this path can only ever produce the result the evidence would have produced anyway.
 
 ---
 

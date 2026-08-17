@@ -25,14 +25,20 @@ already holds.
   `payout < notional` for every possible spot (as spot → ∞ the ratio approaches but never
   reaches 1).
 
-Because the payout is denominated in the same asset it is measured against, this is not identical
-to a classic USD-settled call — it converges to the notional rather than growing without bound.
-Price it accordingly.
+**Price it as a vanilla call.** The XLM-denominated payout converges to `notional` as spot rises,
+which is a real solvency property of the vault — it is why no margin or liquidation engine exists
+here. It is **not** a pricing discount. In USD the payout is
+`notional × (spot − strike)/spot × spot = notional × (spot − strike)`, which is exactly the payoff
+of a standard call on `notional` XLM struck at `strike`. The numéraire moves with the cap, so the
+cap has no effect on value. (An earlier version of this paragraph said the opposite and told you to
+price it below a vanilla call. That was wrong, and it was wrong in your favour to notice: the
+Black-Scholes figures this project publishes have always assumed the vanilla payoff.)
 
 ### The capital point
 
 Under physical settlement a counterparty must hold `strike × notional` to write or take the other
-side. Here you post the premium alone — roughly a 20× lower capital barrier. That is the
+side. Here you post the premium alone. At the option's fair value that is about a **136×** lower
+capital barrier, and never less than ~23× lower anywhere on the auction curve. That is the
 deliberate design choice that makes being a counterparty possible in a thin market at all.
 
 ---
@@ -133,8 +139,12 @@ off-chain markets, never a thin on-chain order book. A single tick never decides
 
 **What protects the number, at settlement:**
 
-1. **A median, not an average.** Several samples are taken across each window and reduced to a
-   median, so a single bad print cannot move your payout. This is what replaces a circuit breaker
+1. **A median, not an average.** Samples are taken across each window and reduced to a median, so
+   a single bad print cannot move your payout. The sample sets are always **odd** and the short
+   window requires **all three** of its samples to be readable — a median of two would be decided
+   by a tie-break rather than by outvoting the outlier it exists to absorb. The consequence for
+   you is worth knowing: a genuinely gappy feed now annuls the round (premium refunded) where it
+   previously settled on two points. This is what replaces a circuit breaker
    here: the expiry window is frozen history, so a rejected read could never "clear" on a retry —
    a breaker at settlement could only ever convert a settleable round into an annulled one and
    confiscate a payout you had earned. The estimator absorbs the artifact instead.
@@ -165,24 +175,32 @@ All three are normal states, not failures — and all three are defined in advan
   oracle failure is nobody's fault and nobody profits from it. This is a fact fixed by history that
   no later event changes, so you cannot be voided out of a payout by a working oracle, and you
   cannot manufacture a void by waiting.
-- **UNRESOLVED** — nobody closed the round while expiry was still readable. **This one can cost
-  you, and you should read it carefully.**
+- **UNRESOLVED** — nobody closed the round while expiry was still readable, **or** the price
+  adapter itself was unreachable right through the window. **This one can cost you, and you should
+  read it carefully.**
 
 ### The deadline, stated plainly
 
-The price feed keeps a bounded history — roughly **18 hours** at the current parameters. Past that,
-the expiry window can no longer be read by anyone, so the round cannot be decided on evidence. It
-then finalizes as **UNRESOLVED**: the premium stays with depositors, the payout is zero.
+The price feed keeps a bounded history — about **20 hours 20 minutes** at the current parameters,
+derived from the feed's own live tick resolution rather than assumed. Past that, the expiry window
+can no longer be read by anyone, so the round cannot be decided on evidence. It then finalizes as
+**UNRESOLVED**: the premium stays with depositors, the payout is zero.
+
+There is a second way into the same outcome, and it exists so that no failure can leave your
+collateral in limbo: **at 21 hours past expiry the round closes as UNRESOLVED without consulting
+the price feed at all.** That path is reached only if the adapter could not be called for the whole
+preceding window, and it deliberately produces the same result a working feed would have produced
+at that moment — so it cannot be used, by us or by anyone, to change how a round ends.
 
 If the round was out of the money, that is exactly where a normal settlement would have left you.
 **If it was in the money, you lose the payout as well as the premium.** Closing the round is
-permissionless and pays a bounty, so you can do it yourself at any point in those 18 hours — and
+permissionless and pays a bounty, so you can do it yourself at any point in those ~20 hours — and
 you are the party who knows whether you are in the money.
 
 The narrow case where this bites through no fault of yours: the feed was genuinely dead at expiry
 *and* nobody annulled the round during the window when voiding was available — from the end of the
-grace period until the history ages out, about **six hours**. `close_round()` is open to you
-throughout.
+grace period until the history ages out, about **eight hours** (12 h to 20 h 20 m past expiry).
+`close_round()` is open to you throughout.
 
 **Why the rule is written this way**, since it is not written in your favour: the alternative is to
 refund the premium, and that pays you to wait. Out of the money, letting the clock run out would

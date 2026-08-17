@@ -39,7 +39,9 @@ fn close_round(env: Env, bounty_to: Address) -> RoundOutcome;  // permissionless
 **There is one way to close a round, and the caller does not choose the outcome.** `close_round`
 reads the price feed as it stood at expiry, once, and dispatches: the round **settles** if the feed
 answered, **voids** if the feed was demonstrably dead at expiry (past a grace period), and
-finalizes as **unresolved** if nobody closed it before that history left the feed's reach (§7).
+finalizes as **unresolved** if nobody closed it before that history left the feed's reach — or if
+the price adapter was unreachable throughout, which past a validated bound resolves the round with
+no oracle call at all (§7).
 Three separate entry points would let the caller name the result and would leave the exclusion
 between them as something a test hopes for; one dispatcher makes it structural.
 
@@ -250,7 +252,7 @@ else:               payout = notional_sold × (spot − strike) / spot
 Two properties make this safe by construction:
 
 - **`payout < notional_sold` for all `spot`.** As `spot → ∞`, `(spot − strike)/spot → 1`, so the payout approaches but never reaches the sold notional. The vault can never owe more than the collateral backing the position — no margin call, no bad debt, no liquidation engine.
-- **No second leg.** The bidder paid the premium up front and has no further obligation. There is no atomic swap, no delivery failure, no counterparty credit risk, and a bidder never needs to hold `strike × notional` in capital. That last point is the reason the capital barrier to *being* a counterparty is roughly 20× lower here than under physical settlement — which matters more than anything else in a market this thin.
+- **No second leg.** The bidder paid the premium up front and has no further obligation. There is no atomic swap, no delivery failure, no counterparty credit risk, and a bidder never needs to hold `strike × notional` in capital. That last point is the reason the capital barrier to *being* a counterparty is roughly **136× lower** here than under physical settlement at the option's fair value — and never less than ~23× lower anywhere on the auction curve — which matters more than anything else in a market this thin.
 
 Payout is distributed to bidders pro-rata to their filled notional — **pull-based**, via `claim_payout(round)` computed from each bidder's own `Fill` record. `close_round()` is O(1) on every branch and never iterates bidders: a per-bidder loop would make the exit path's cost grow with participation, which is a denial-of-service surface. Depositors absorb the payout and receive the premium, both pro-rata to shares, through `pps[R]`.
 
@@ -262,11 +264,13 @@ Settlement correctness rests entirely on the price feed, so every failure mode g
 
 ```mermaid
 flowchart TD
-    A["close_round() called<br/>at/after expiry"] --> B{"read the feed<br/>as it stood AT EXPIRY"}
+    A["close_round() called<br/>at/after expiry"] --> T{"past expiry +<br/>unresolved_after?"}
+    T -- yes --> J["UNRESOLVED<br/>premium kept by depositors · payout 0"]
+    T -- no --> B{"read the feed<br/>as it stood AT EXPIRY"}
     B -- "answered" --> F["SETTLED<br/>at the median short TWAP"]
     B -- "records exist but are<br/>unusable or nonsense" --> G{"past expiry +<br/>oracle_dead_after?"}
     B -- "adapter trapped / budget<br/>(a fact about NOW)" --> H["revert · OracleUnreachable<br/>anyone retries · nothing lost"]
-    B -- "expiry older than the feed's<br/>reachable history" --> J["UNRESOLVED<br/>premium kept by depositors · payout 0"]
+    B -- "expiry older than the feed's<br/>reachable history" --> J
     G -- no --> K["revert · OracleNotDeadYet<br/>the grace period · anyone retries"]
     G -- yes --> I["VOIDED<br/>premiums refunded · pps unchanged"]
 ```
@@ -289,7 +293,8 @@ Retry on a transient failure, annul only on evidence, and never invent a price �
 | Normal | TWAP over `twap_window`, not a spot tick. A single-block price never decides a settlement. |
 | Feed older than `max_staleness` **when opening an epoch** | `open_epoch()` reverts and may be retried by anyone. Staleness relative to *now* is meaningless for a frozen window, so it is not checked at close. |
 | Short TWAP diverges from a longer guard TWAP of the same moment by more than `max_deviation_bps` | `open_epoch()` reverts. A circuit breaker, not a silent clamp. Comparing two windows of the same moment means it fires on feed artifacts and **never on sustained real market moves**. It does not run at close — see above. |
-| Adapter traps, panics or exhausts its budget | `close_round()` reverts. The epoch stays `ACTIVE` and anyone may retry. This is explicitly **not** grounds to annul: it says nothing about the expiry window. |
+| Adapter traps, panics or exhausts its budget | `close_round()` reverts and anyone may retry. This is explicitly **not** grounds to annul: it says nothing about the expiry window. |
+| …and it never recovers | **The round still ends.** Past `expiry + unresolved_after` (21 h at the shipped parameters) `close_round()` finalizes the epoch as **unresolved without calling the price adapter at all**. The bound is validated on-chain to sit at or beyond the feed's reachable history, so this returns the same outcome a working adapter could have produced at that instant — it adds no new result and cannot be used to steer one. It is the only terminal path that survives an adapter which cannot be invoked, and it is what makes "no oracle state can trap funds" a property of the code rather than a claim about it. |
 | Feed demonstrably unusable **at expiry**, past `oracle_dead_after` | **Epoch is voided — by anyone.** A dead oracle plus a dead keeper must still never trap funds. Premium is refunded to bidders pro-rata to their fills, payout is zero, `pps` is unchanged, a loud event is emitted. |
 | Nobody closed the round before expiry left the feed's reachable history | **Epoch is unresolved — by anyone.** Premium is kept by depositors, payout is zero, and whoever closed it is paid the bounty. The round is decided by a rule rather than by evidence, precisely because no evidence remains — and the rule is chosen so that no party profited by the delay. |
 
@@ -322,7 +327,7 @@ so this document reads end to end:
 | **I3** | `payout < notional_sold` for every possible price — no margin calls, no bad debt |
 | **I4** | Locked collateral cannot leave during a live round; pending deposits remain cancellable |
 | **I5** | Share supply is exact: `Σ balances == shares_outstanding` |
-| **I6** | Every finalized round has `pps > 0` |
+| **I6** | Share price is never negative, and is zero only when the pool genuinely is worth less than one stroop per `PRECISION` share-units — where I6 and I1 cannot both hold, solvency wins and minting is refused |
 | **I7** | Round records are immutable once written |
 | **I8** | The exit path cannot be paused |
 | **I9** | Instant withdrawals between rounds are always fully covered |
@@ -370,7 +375,7 @@ not change: code and schema are versioned separately and only `migrate` moves th
 |---|---|
 | **Unit** | Every state transition, including every rejected one. Each guard has a test that proves it rejects. |
 | **Integration** | Full epochs against testnet: open → bid → settle, plus the lapse path and the void path. |
-| **Property-based** | Settlement math and epoch accounting. For arbitrary `(spot, strike, notional, deposits, withdrawals)`: I1–I10 hold, `payout ∈ [0, notional_sold)`, `pps > 0`. This is the highest-value suite in the repo because §4 is the highest-risk component. |
+| **Property-based** | Settlement math and epoch accounting. For arbitrary `(spot, strike, notional, deposits, withdrawals)`: I1–I10 hold, `payout ∈ [0, notional_sold)`, and `pps ≥ 0` with every withdrawal claim from a `pps == 0` round still summing to no more than the pool. This is the highest-value suite in the repo because §4 is the highest-risk component. |
 | **Fuzz** | Call-sequence fuzzing — deposit/withdraw/bid/settle in adversarial orderings, over-sell attempts, double-settle, settle-before-expiry, bid-after-close. Every ordering is repeated under `paused == true` to prove I8. |
 | **Differential** | Settlement output compared against an independent reference implementation written in Python from the spec, not from the Rust. |
 

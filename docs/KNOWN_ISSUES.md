@@ -112,8 +112,9 @@ appeared yet.
 
 ### A-10 · A round nobody closes in time costs an in-the-money buyer his payout
 
-The price feed keeps roughly 18 hours of history. Past that, the expiry window cannot be read by
-anyone, so the round finalizes *unresolved*: the premium stays with depositors and the payout is
+The price feed keeps roughly **20 hours 20 minutes** of history at the current parameters, derived
+from the feed's own live tick resolution rather than assumed. Past that, the expiry window cannot
+be read by anyone, so the round finalizes *unresolved*: the premium stays with depositors and the payout is
 zero. A buyer who was in the money and did not close the round loses the payout as well as the
 premium; a buyer who was out of the money ends exactly where a settlement would have left him.
 
@@ -123,11 +124,34 @@ that same premium, so no incentive we can fund outbids it. Retaining the premium
 under which no party gains by delay, which is what makes the outcome a function of history instead
 of a race. Closing is permissionless, pays a bounty, and the buyer is the party who knows whether
 he is in the money. The residual is the narrow case where the feed was genuinely dead at expiry
-*and* nobody annulled the round during the roughly six hours when annulment was available.
+*and* nobody annulled the round during the roughly **eight hours** when annulment was available
+(from 12 h to 20 h 20 m past expiry).
 
 **What would change our mind.** A feed with materially deeper history, or a second source, would
 widen the window enough that this stops being reachable in practice. It is stated in
 [`BIDDER.md`](BIDDER.md) rather than left for a counterparty to discover.
+
+---
+
+### A-11 · A close can be delayed by resource limits, but not diverted
+
+Closing a round reads the price feed through an adapter, and one failure mode is not catchable in
+contract code: if the call exhausts the transaction's resource budget, the whole invocation dies
+before any error can be returned. No wrapper prevents that.
+
+**Why accepted, and why it is bounded rather than open-ended.** The adapter's work is *constant* —
+a fixed number of point queries on a grid plus two configuration reads, independent of how late the
+close happens. A read that fits the budget once fits always, so this is a "never worked at all"
+failure that resource profiling and every prior round's close would surface, not a latent condition
+that appears with age. What could still change it is the network's own limits or the feed's
+per-call cost moving under us.
+
+**And it cannot strand funds.** Past a bound fixed at deployment and validated on-chain, a round
+finalizes as *unresolved* **without calling the adapter at all** — the one terminal path that does
+not depend on any external contract being reachable. So the worst case is that a close is late,
+not that it never happens or that its outcome changes. This was not true until it was audited in:
+the design previously claimed the same guarantee in three places with three incompatible
+justifications, one of which was circular.
 
 ---
 
@@ -213,6 +237,10 @@ which is the entire argument for the review process that found them.
 | Pending deposits converted at a frozen old price — broke solvency and gave a free lookback option across rounds | 2026-08-16 | They convert at the current price; cancellation is open for the deposit's whole life |
 | Anchoring settlement to expiry (a fix for timing extraction) let an out-of-the-money bidder wait out the clock and reclaim his entire premium | 2026-08-16 | Void reads the same anchored history as settle, so the outcome is fixed at expiry and cannot be elected afterwards; feed-retention constraint now actually validated |
 | The same anchoring turned the circuit breaker into a confiscation device: an artifact in a frozen window could never clear, voiding valid rounds | 2026-08-16 | Median instead of mean — the estimator carries the artifact resistance the retry loop used to |
+| A price adapter that could never be called blocked every way of closing a round, leaving collateral in a live epoch permanently — while three separate passages claimed it could not happen, for three incompatible reasons, one of them circular | 2026-08-17 | A round now finalizes past a validated bound with no oracle call at all; the bound is constrained to return the outcome a working feed would have produced |
+| The settlement price was undefined for an accepted input: the median could be taken over an even number of samples, with no tie-break specified in either implementation | 2026-08-17 | Sample sets are always odd — the short window requires all of its samples — so no even case exists to round |
+| Forcing a positive share price in the degenerate case where the pool is worth less than one unit per share broke solvency: each withdrawal is recomputed independently from the round record, so the claims summed to more than the pool | 2026-08-17 | The price is never clamped; where a positive price and solvency conflict, solvency wins and minting is refused instead |
+| The counterparty gate could be passed by an auction filled entirely at its reserve whenever realized volatility fell below ~29 % — the fourth time the same gate was satisfiable by the failure it was written to detect | 2026-08-17 | A second, volatility-independent condition against the reserve price, plus a published definition of the volatility estimator so the gate can be recomputed by anyone |
 | Only settlements opened the mint/exit window, so a vault with no bidders had none at all — and a never-settled vault could not accept a second depositor | 2026-08-16 | Every outcome opens the window; the deadlock this was avoiding is solved by having `open_epoch` return rather than revert |
 | Nobody was paid to settle: in the common case the only motivated caller preferred that nobody did | 2026-08-16 | Closing a round pays the caller a small bounty from the round's premium — on settlement and on the unresolved path, where the premium stays in the pool and is the source. Voiding pays none: a void refunds the premium in full, so a bounty could only come out of the refund or out of collateral |
 | The auction floor sat 5–17× below fair value, so the expected case — an uncontested auction — was a systematic transfer to a lone bidder | 2026-08-16 | The floor is now a validated reserve price (at least half of fair value) |

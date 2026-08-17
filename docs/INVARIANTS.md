@@ -123,18 +123,33 @@ property suite.
 
 ---
 
-## I6 — Every finalized round has a positive share price
+## I6 — Share price is never negative, and is zero only when the pool truly is
 
 ```
-Round(r).pps > 0        for every finalized round r
+Round(r).pps ≥ 0        for every finalized round r
+Round(r).pps == 0  ⟺  assets_R × PRECISION < shares_snapshot
 ```
 
-**Why.** A zero or negative `pps` would wipe out or invert every holder's claim. Combined with
-I3 (payout strictly less than notional) and the fact that premium only ever adds to the pool,
-the pool can be reduced but never emptied by settlement.
+**Why.** A negative `pps` would invert every holder's claim, and it is unreachable: `pps` is a
+floor division of two non-negative quantities. Combined with I3 (payout strictly less than
+notional) and the fact that premium only ever adds to the pool, the pool can be reduced but never
+emptied by settlement.
+
+**Why not simply `pps > 0`.** That was this invariant's original wording, and it is not
+achievable together with [I1](#i1--solvency). If the pool is ever worth less than one stroop per
+`PRECISION` share-units, no *positive integer* price is both truthful and solvent: forcing
+`pps ≥ 1` would make each withdrawal claim — recomputed independently from the round record as
+`⌊shares × pps / PRECISION⌋` — sum to more than the pool holds, and the last claimant would find
+nothing there. Where the two invariants conflict, **solvency wins**: the round records the zero,
+every holder can still exit for the zero their shares are honestly worth, and minting is refused
+(`VaultWorthless`) so nothing ever divides by it. The state needs two consecutive near-total-loss
+rounds to reach, and it is not necessarily permanent — premium is additive, so a later round can
+lift the pool back above the threshold.
 
 **Verified by.** Property tests across the full parameter space, including extreme settlement
-prices.
+prices; and a dedicated test that drives the pool into the degenerate state and asserts that
+every holder's claim succeeds, that their sum does not exceed the pool, and that a deposit
+reverts rather than dividing by zero.
 
 ---
 
@@ -209,9 +224,19 @@ rule for the third is chosen so that **no party gains by delay**. Without that l
 invariant would still hold formally while paying an out-of-the-money buyer his whole premium back
 for doing nothing.
 
-Two states are deliberately non-terminating and both clear with time: a *transient* failure (the
-adapter trapped this ledger, which says nothing about expiry) and the grace period before a dead
-feed may annul a round. Both revert and may be retried by anyone.
+Two states are deliberately non-terminating, and **both are bounded in time rather than merely
+expected to clear**: a *transient* failure (the adapter trapped this ledger, which says nothing
+about expiry) and the grace period before a dead feed may annul a round. Both revert and may be
+retried by anyone. The grace period ends at `expiry + oracle_dead_after`. A transient failure that
+never clears ends at `expiry + unresolved_after`, where the round is finalized **unresolved without
+calling the price adapter at all** — a bound validated on-chain to sit at or beyond the feed's
+reachable history, so it returns the outcome a working adapter could only have returned anyway and
+therefore adds no fourth reachable result.
+
+That last clause is load-bearing and was missing until it was audited in. If a permanently
+unreachable adapter could block every branch, `close_round()` would revert forever and the round's
+collateral would stay in `ACTIVE` — the exact state this protocol claims is unreachable. A
+terminal path that touches no external contract is what makes the claim structural.
 
 **Verified by.** A property test sweeping every read outcome against every elapsed time, asserting
 one reachable outcome per cell and the declared gaps as the only gaps; plus an economic property
@@ -253,8 +278,11 @@ Stated explicitly, because their absence is a design choice rather than an overs
 - **There is no guarantee that settlement happens on time.** If the oracle is stale, settlement
   reverts and may be retried by anyone, indefinitely. Late is a defined state; wrong is not.
 - **There is no guarantee that a round settles at all.** If the feed was unusable at expiry past
-  the dead-oracle bound, the round is annulled and premiums are refunded. And if nobody closes the
-  round before expiry leaves the feed's reachable history, it finalizes *unresolved*: the premium
-  stays with depositors and the payout is zero. Nobody profits from an oracle failure, nobody is
+  the dead-oracle bound, the round is annulled and premiums are refunded. If nobody closes the
+  round before expiry leaves the feed's reachable history — or if the price adapter cannot be
+  called at all up to a validated bound past that — it finalizes *unresolved*: the premium stays
+  with depositors and the payout is zero. Nobody profits from an oracle failure, nobody is
   trapped by one, and — the reason the third outcome exists at all — **nobody profits by waiting**.
+- **There is no guarantee that every round has a positive share price.** See I6: where a positive
+  price and solvency cannot both hold, solvency wins.
 - **There is no guarantee about returns.** See the README's stance on yield numbers.
