@@ -1,0 +1,497 @@
+# Antares CI — the single workflow of 06-TEST-PLAN §8, jobs in its dependency order.
+#
+#   fmt → clippy → test → vector-diff → scout-audit → network-agnostic check
+#       → wasm build + size check → reproducible-build → [nightly] fuzz smoke
+#   cargo-mutants: manual / weekly, required at the Phase-4 gate, never per-PR
+#
+# TWO OWNERS, ONE FILE (DEV-PROTOCOL §3). Everything below is DEV1's except the
+# region marked `DEV3 REGION`, which carries the TypeScript jobs — TS lint,
+# typecheck, `pnpm -r build`, and the TypeScript scope of the network-agnostic
+# check. DEV3 writes those; DEV1 reviews them. Stated here so it is not
+# discovered as a merge conflict.
+#
+# Jobs whose inputs do not exist yet (the Python reference, the fuzz targets,
+# the snapshots) do not pass quietly — they say what is missing and name the
+# phase in which they become mandatory. A gate that goes green on an empty tree
+# has not proved anything, and this file refuses to imply otherwise.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *" # nightly — fuzz smoke
+    - cron: "41 4 * * 1" # Mondays — cargo-mutants
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # D-23: the exact patch version, pinned in CI as well as in the README.
+  # "27.x" is a range and a range reproduces no byte, which is the whole of
+  # D-50's gate. Measured 2026-08-18: 27.1.0, released 2026-07-31.
+  STELLAR_CLI_VERSION: "27.1.0"
+  STELLAR_CLI_SHA256: "9915fe63753d7154c26bb9e6410cf1d1ff9727a9b378e663c2790ab7a266af94"
+  WASM_HARD_LIMIT_BYTES: "65536" # 64 KB — the protocol's limit; hard fail
+  WASM_WARN_BYTES: "49152" # 48 KB — warn, per 06-TEST-PLAN §8
+  # NOTE: RUSTFLAGS is deliberately NOT set here. `stellar contract build` passes
+  # CARGO_BUILD_RUSTFLAGS with a --remap-path-prefix for the cargo registry, and
+  # RUSTFLAGS takes precedence over it — setting one globally would silently
+  # discard the remapping and make the reproducible-build job depend on where
+  # each runner happens to keep CARGO_HOME.
+
+jobs:
+  # ---------------------------------------------------------------- 1. fmt ---
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned toolchain
+        # No version here: rustup reads rust-toolchain.toml, so this step also
+        # proves CI builds with the version D-50's gate is stated against.
+        run: |
+          rustup toolchain install
+          rustup show
+      - run: cargo fmt --all --check
+
+  # ------------------------------------------------------------- 2. clippy ---
+  clippy:
+    name: clippy (-D warnings)
+    needs: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      - name: clippy — everything, warnings are errors
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: clippy — arithmetic_side_effects on the deployed code
+        # 07-SECURITY §3's integer-overflow row names this lint beside
+        # `overflow-checks` because they catch different things: the profile flag
+        # turns a wrap into a panic at run time, the lint refuses the unchecked
+        # write at compile time. 02-CONTRACT-SPEC §8's bounds are proofs about
+        # the inputs; `checked_*` is what makes a violated proof a revert.
+        #
+        # Library targets only. The control is about the code that moves money —
+        # extending it over test code would only teach us to add `allow`s.
+        run: cargo clippy --workspace --lib -- -D warnings -D clippy::arithmetic_side_effects
+
+  # --------------------------------------------------------------- 3. test ---
+  test:
+    name: test + snapshot diff
+    needs: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo test --workspace --all-targets
+
+      - name: Snapshots must be committed, and a behaviour change must show in the diff
+        # 06-TEST-PLAN §1/§8: soroban writes `test_snapshots/` at the end of every
+        # test. Committed, they turn a behavioural change into a reviewable diff
+        # instead of something a reviewer has to remember.
+        run: |
+          set -euo pipefail
+          if ! ls -d contracts/*/test_snapshots >/dev/null 2>&1; then
+            echo "::notice::No test_snapshots/ yet — soroban writes them once tests exist."
+            echo "::notice::Mandatory from Phase 2 (06-TEST-PLAN §1). Nothing to diff today."
+            exit 0
+          fi
+          changed=$(git status --porcelain -- '*test_snapshots*')
+          if [ -n "$changed" ]; then
+            echo "::error::Test snapshots changed but were not committed:"
+            echo "$changed"
+            echo "A behaviour change must be visible in the pull request diff."
+            git --no-pager diff -- '*test_snapshots*' | head -200
+            exit 1
+          fi
+          echo "Snapshots match the committed state."
+
+  # -------------------------------------------------------- 4. vector-diff ---
+  vector-diff:
+    name: vector diff (Rust ↔ Python)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Replay the shared vectors against both implementations
+        # D-22 / 06-TEST-PLAN §5. Authored cross-wise: each developer writes the
+        # Python for math they do not implement, and a module's reference is
+        # written before its Rust merges.
+        run: |
+          set -euo pipefail
+          if [ ! -f reference/run_vectors.py ]; then
+            echo "::notice::reference/run_vectors.py does not exist yet."
+            echo "::notice::settle_ref.py is authored in Phase 2; curve_ref.py and claims_ref.py in Phase 3;"
+            echo "::notice::this diff is a Phase-4 gate (00-ROADMAP Phase 4). Nothing to replay today."
+            exit 0
+          fi
+          python3 reference/run_vectors.py
+
+  # -------------------------------------------------------- 5. scout-audit ---
+  scout-audit:
+    name: scout-audit (non-blocking)
+    needs: test
+    runs-on: ubuntu-latest
+    # Out of the blocking chain since 2026-08-18 (06-TEST-PLAN §8, KNOWN_ISSUES
+    # O-6). Not because failures here are tolerable — because Scout cannot
+    # currently run at all against our pinned target, and blocking every branch
+    # on a tool that analyses nothing buys nothing. The step below still refuses
+    # to call that state a pass, which is the half that matters: this job reports
+    # "did not analyse anything", never "found nothing".
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Scout
+        run: cargo install cargo-scout-audit --locked
+      - name: Run Scout — and prove it analysed something
+        # 07-SECURITY §4's relevant detectors: overflow-check,
+        # unprotected-update-current-contract-wasm (must flag nothing — our
+        # `upgrade` is auth-gated), divide-before-multiply,
+        # dos-unbounded-operation, unsafe-unwrap, set-contract-storage.
+        #
+        # MEASURED 2026-08-18, cargo-scout-audit 0.3.16 (the current release):
+        # Scout builds the analysed crate for `wasm32-unknown-unknown`, and
+        # soroban-sdk 27.0.6's build.rs refuses that target on Rust 1.82+ —
+        # naming `wasm32v1-none`, which is exactly D-23's pin. So its analysis
+        # build fails for all three crates. It then **exits 0 and prints
+        # "Analyzed · 0 · 0 · 0 · 0" for each one anyway**, and passing
+        # `-- --target wasm32v1-none` does not change it.
+        #
+        # Scout's exit code therefore cannot be this gate. A security control
+        # that reports success without having run is worse than no control,
+        # because it is believed — and this project has already shipped one gate
+        # that was satisfied by the exact failure it was written to detect. The
+        # log is inspected instead, and every crate must appear in the summary.
+        #
+        # This step is expected to FAIL until the finding is resolved. That is
+        # deliberate and it is filed, not a mystery: the choice between waiting
+        # for upstream, promoting OpenZeppelin's soroban-scanner (07-SECURITY §4
+        # already lists it), and taking Scout out of the blocking chain is a
+        # change to a named control, so it belongs to 07-SECURITY, not here.
+        run: |
+          set -uo pipefail
+          cargo scout-audit 2>&1 | tee scout.log
+          scout_status=${PIPESTATUS[0]}
+
+          if grep -qE 'failed to run custom build command|build failed|^error\[E[0-9]+\]' scout.log; then
+            echo "::error::Scout's analysis build failed — its summary table reports on nothing."
+            grep -nE 'failed to run custom build command|build failed|^error\[E[0-9]+\]' scout.log | head -20
+            exit 1
+          fi
+
+          for crate in antares_vault mock_price_source reflector_adapter; do
+            grep -q "$crate" scout.log || {
+              echo "::error::Scout produced no result row for $crate."
+              exit 1
+            }
+          done
+
+          exit "$scout_status"
+
+  # ------------------------------------------------------- 6. supply chain ---
+  supply-chain:
+    name: cargo-audit + cargo-deny
+    needs: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+      - run: cargo audit --deny warnings
+      - run: cargo deny check
+
+  # ---------------------------------------------- 7. the greps (Rust scope) ---
+  static-rules:
+    name: network-agnostic + temporary() + outbound calls (Rust scope)
+    needs: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No network flags anywhere in the contracts (D-50)
+        # 06-TEST-PLAN §8 is the single home for this check's scope and its two
+        # exempt paths; read it there rather than from this copy. A build that
+        # *can* behave differently on two networks has already lost the property
+        # the audit rests on, and this grep is D-50's only enforcer.
+        #
+        # `#[cfg(test)]` is allowed and everything else is not: a feature is
+        # selectable at build time, `#[cfg(test)]` cannot be selected into a
+        # release wasm by any invocation (06-TEST-PLAN §8, amended 2026-08-18).
+        run: |
+          set -euo pipefail
+          fail=0
+
+          echo "--- #[cfg(...)] other than #[cfg(test)] ---"
+          if hits=$(grep -rnE '#!?\[cfg(_attr)?\(' contracts/ --include='*.rs' \
+                    | grep -vE '#!?\[cfg(_attr)?\(test[,)]' || true); [ -n "$hits" ]; then
+            echo "::error::Conditional compilation other than #[cfg(test)] in contracts/:"
+            echo "$hits"; fail=1
+          else
+            echo "none"
+          fi
+
+          echo "--- [features] tables in contract manifests ---"
+          if hits=$(grep -rn '^\[features\]' contracts/ --include='Cargo.toml' || true); [ -n "$hits" ]; then
+            echo "::error::A contract manifest declares features; with no features there is nothing for #[cfg(feature=…)] to select:"
+            echo "$hits"; fail=1
+          else
+            echo "none"
+          fi
+
+          echo "--- testnet / mainnet string literals ---"
+          if hits=$(grep -rniE '"[^"]*(testnet|mainnet)[^"]*"' contracts/ --include='*.rs' || true); [ -n "$hits" ]; then
+            echo "::error::A network name appears as a string literal in contract code:"
+            echo "$hits"; fail=1
+          else
+            echo "none"
+          fi
+
+          exit $fail
+
+      - name: Nothing value-bearing in temporary storage
+        # 03-STORAGE-TTL §1 states the enforceable form: the *absence of any*
+        # `temporary()` call in the codebase. A temporary entry that expires is
+        # a user who cannot reach their funds — it is not recoverable, unlike
+        # persistent archival.
+        run: |
+          set -euo pipefail
+          if hits=$(grep -rn '\.temporary()' contracts/ --include='*.rs' || true); [ -n "$hits" ]; then
+            echo "::error::temporary() storage is used in the contracts:"
+            echo "$hits"; exit 1
+          fi
+          echo "no temporary() calls"
+
+      - name: Outbound contract calls target only Config.asset or Config.oracle
+        # 07-SECURITY §3's "arbitrary contract calls" row names grep as its
+        # verifier. Both addresses are fixed at construction and have no setter,
+        # so the allowlist is a closed set of two.
+        #
+        # The check prints every call site it found, not just the verdict: a
+        # reviewer has to be able to see what was inspected, and a silent pass
+        # over a tree with no calls in it proves nothing.
+        run: |
+          set -euo pipefail
+          sites=$(grep -rnE '[A-Za-z_]*Client::new\(' contracts/ --include='*.rs' || true)
+          if [ -z "$sites" ]; then
+            echo "::notice::No cross-contract client construction yet — the vault gains its"
+            echo "::notice::SAC and oracle clients in Phase 2. This check is mandatory from there."
+            exit 0
+          fi
+          echo "--- call sites found ---"
+          echo "$sites"
+          bad=$(echo "$sites" | grep -vE '&(config|cfg)\.(asset|oracle)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Outbound client built from an address that is neither Config.asset nor Config.oracle:"
+            echo "$bad"; exit 1
+          fi
+          echo "every call site targets Config.asset or Config.oracle"
+
+      - name: No CI secret carries signing authority over the admin
+        # 07-SECURITY §6, the repository half. This is a claim about this
+        # repository, so it is checked here rather than promised in prose: the
+        # workflows may not reference a secret that looks like a signing key.
+        run: |
+          set -euo pipefail
+          if hits=$(grep -rniE 'secrets\.[A-Za-z0-9_]*(ADMIN|SECRET_KEY|SEED|SIGNER|MNEMONIC|PRIVATE)' .github/ || true); [ -n "$hits" ]; then
+            echo "::error::A workflow references a secret that may carry signing authority:"
+            echo "$hits"; exit 1
+          fi
+          echo "no signing-capable secret referenced by any workflow"
+
+  # ----------------------------------------------- 8. wasm build + size ------
+  wasm:
+    name: wasm build + size check
+    needs: [test, static-rules]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the pinned stellar-cli
+        run: |
+          set -euo pipefail
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o stellar-cli.tar.gz "$url"
+          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          tar xzf stellar-cli.tar.gz
+          install -m755 stellar "$HOME/.local/bin/stellar" 2>/dev/null || { mkdir -p "$HOME/.local/bin"; install -m755 stellar "$HOME/.local/bin/stellar"; }
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build all three contracts
+        run: stellar contract build --out-dir target/wasm
+
+      - name: Size check — 64 KB hard, 48 KB warn
+        run: |
+          set -euo pipefail
+          status=0
+          for f in target/wasm/*.wasm; do
+            size=$(stat -c%s "$f")
+            printf '%-32s %8d bytes\n' "$(basename "$f")" "$size"
+            if [ "$size" -ge "$WASM_HARD_LIMIT_BYTES" ]; then
+              echo "::error file=$f::$(basename "$f") is $size bytes, at or over the ${WASM_HARD_LIMIT_BYTES}-byte limit"
+              status=1
+            elif [ "$size" -gt "$WASM_WARN_BYTES" ]; then
+              echo "::warning file=$f::$(basename "$f") is $size bytes, past the ${WASM_WARN_BYTES}-byte warning line"
+            fi
+          done
+          exit $status
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: target/wasm/*.wasm
+
+  # ------------------------------------------- 9. reproducible build (D-50) ---
+  reproducible:
+    name: reproducible build (byte-identical wasm)
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      # Two checkouts of the same commit at deliberately different path lengths.
+      # The path is the thing that leaks: rustc embeds source paths in panic
+      # locations, and `stellar contract build` remaps the cargo registry but not
+      # the workspace. If a build ever starts depending on where it was run, this
+      # is the job that says so — on the day it starts, not at the mainnet deploy.
+      - uses: actions/checkout@v4
+        with:
+          path: a
+      - uses: actions/checkout@v4
+        with:
+          path: build-two-with-a-much-longer-path
+      - run: |
+          cd a
+          rustup toolchain install
+          rustup show
+
+      - name: Install the pinned stellar-cli
+        run: |
+          set -euo pipefail
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o stellar-cli.tar.gz "$url"
+          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          tar xzf stellar-cli.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          install -m755 stellar "$HOME/.local/bin/stellar"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build twice, in separate clean environments
+        run: |
+          set -euo pipefail
+          for d in a build-two-with-a-much-longer-path; do
+            ( cd "$d" && CARGO_TARGET_DIR="$PWD/target" stellar contract build --out-dir out >/dev/null )
+          done
+
+      - name: Assert the hashes are identical
+        run: |
+          set -euo pipefail
+          status=0
+          : > wasm-hashes.txt
+          for f in a/out/*.wasm; do
+            name=$(basename "$f")
+            h1=$(sha256sum "a/out/$name" | cut -d' ' -f1)
+            h2=$(sha256sum "build-two-with-a-much-longer-path/out/$name" | cut -d' ' -f1)
+            printf '%-32s %s\n' "$name" "$h1" | tee -a wasm-hashes.txt
+            if [ "$h1" != "$h2" ]; then
+              echo "::error::$name is not reproducible: $h1 vs $h2"
+              echo "The audited binary and the deployed binary can no longer be shown to be the same (D-50)."
+              status=1
+            fi
+          done
+          exit $status
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-hashes
+          path: wasm-hashes.txt
+
+  # ------------------------------------------------ 10. nightly fuzz smoke ---
+  fuzz-smoke:
+    name: fuzz smoke (nightly, 5 min per target)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run each target for five minutes
+        # 06-TEST-PLAN §4 / §8. Three targets land in Phase 4; the long local
+        # runs are separate from this smoke, and the Phase-4 gate says so.
+        run: |
+          set -euo pipefail
+          if [ ! -d fuzz/fuzz_targets ]; then
+            echo "::notice::fuzz/fuzz_targets does not exist yet — the three targets land in Phase 4"
+            echo "::notice::(06-TEST-PLAN §4). Mandatory from there; nothing to smoke today."
+            exit 0
+          fi
+          rustup toolchain install nightly
+          cargo +nightly install cargo-fuzz --locked
+          for t in fuzz/fuzz_targets/*.rs; do
+            name=$(basename "$t" .rs)
+            echo "--- $name ---"
+            cargo +nightly fuzz run "$name" -- -max_total_time=300
+          done
+
+  # ------------------------------------------- 11. mutation (manual/weekly) ---
+  mutants:
+    name: cargo-mutants (manual / weekly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+      - name: Run mutants
+        # Required at the **Phase-4 gate**, never per-PR (06-TEST-PLAN §6/§8).
+        # The thresholds are per module and are checked there, not here:
+        # 0 MISSED in vault/epoch/auction/settle/claims/oracle/token/storage,
+        # ≤5 % per module in admin and types, ≤5 % crate-wide, every survivor
+        # triaged in writing.
+        run: cargo mutants --workspace --no-shuffle -j 2 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-out
+          path: mutants.out/
+
+  # =========================== DEV3 REGION ==================================
+  # The TypeScript half of this workflow is DEV3's to write and DEV1's to review
+  # (DEV-PROTOCOL §3). It belongs here, in this file, not in a second workflow.
+  #
+  # What goes in it:
+  #   - TS lint and typecheck
+  #   - `pnpm -r build`
+  #   - the network-agnostic check's **TypeScript scope**: no hardcoded network
+  #     passphrases and no hardcoded contract addresses across keeper/, bidder/,
+  #     web/, integration/, packages/, scripts/ — with `packages/common/networks.ts`
+  #     and `deployments/*.json` exempt. 06-TEST-PLAN §8 is the single home for
+  #     that scope and its exemptions; read it there. The exemption is the point
+  #     of the rule rather than a hole in it: the values have to live somewhere,
+  #     and the check exists to prove they live *only* there.
+  #
+  # DEV1 does not write these and does not let them go unwritten.
+  # ==========================================================================

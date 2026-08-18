@@ -6,7 +6,7 @@ is worse for everyone.
 
 Format: what it is, why we accept it (or what would change our mind), and its status.
 
-Last reviewed: 2026-08-17 (design stage — no code exists yet).
+Last reviewed: 2026-08-18 (first code landed — workspace, toolchain pins and CI).
 
 ---
 
@@ -257,6 +257,32 @@ Every claim about how this performs comes from tests and reasoning, not from a l
 
 **Status.** Inherent to the stage. Testnet activity does not resolve it and will not be presented
 as if it does.
+
+### O-6 · One of our two static analysers cannot run against the toolchain we pin
+
+Scout, the Soroban static analyser named in our security tooling, builds the crate it is analysing
+for the `wasm32-unknown-unknown` target. The Soroban SDK we build against refuses that target on
+any recent Rust compiler and requires `wasm32v1-none` — which is the target this project pins. So
+Scout's analysis build fails on all three of our contracts.
+
+The part worth publishing is what it does next: it **exits successfully and prints a table
+reporting each contract as analysed, with zero findings.** Measured 2026-08-18 against the current
+release; overriding the target on the command line does not change it.
+
+**Status.** Scout is out of the blocking part of CI, because a check that cannot run should not be
+able to pass — but it still runs on every build, and the job is now gated on its log rather than
+its exit code, so it reports *"did not analyse anything"* instead of *"found nothing"*. Without
+that, the difference would have been invisible for as long as the tooling stayed broken, which is
+the more dangerous half of this issue and the reason it is written down rather than absorbed.
+
+What it costs is real and is not softened here: one of the two static analysers we named is
+contributing nothing. Its detectors — overflow checks, unprotected code replacement,
+divide-before-multiply, unbounded iteration, unsafe unwrap, storage misuse — are meanwhile covered
+by the compiler's overflow checks, a lint that refuses unchecked arithmetic outright, the property
+and fuzz suites, the independent Python reference for the settlement math, and the per-pull-request
+review checklist. `unsafe-unwrap` is the one with no equivalent instrument and rests on review
+alone. OpenZeppelin's Soroban scanner is the designated substitute if the upstream fix has not
+arrived by the security review, at which point it stops being optional.
 
 ---
 
