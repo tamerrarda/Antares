@@ -121,6 +121,13 @@ step the contract does not impose.
 Operational rule: never upgrade while a round is live. The contract permits it; the deployment
 tooling refuses it.
 
+One more thing upgradeability does **not** cover, stated because a careful reader will ask: the
+price adapter — the separate contract where every settlement number is computed — **has no admin
+and no upgrade path of its own**. Its exported surface is the price interface and nothing else,
+asserted at deploy. If it could be upgraded, whoever held that key could move the settlement
+price silently, which would make it a second concentration as powerful as this one; it cannot,
+so the upgrade key described in this section is the only one there is.
+
 ---
 
 ## 3b. What you are trusting the deployment to be
@@ -164,9 +171,11 @@ Three guards sit in front of settlement, and all of them are permissionless to r
 3. **A coarse sanity bound** against the previous settlement price.
 
 **If the feed dies**, the round is annulled past a defined bound: premiums are refunded to
-bidders, depositors gain nothing, share price is unchanged. An oracle failure is nobody's fault,
-so nobody profits from it — and, critically, nobody is trapped by it, because annulment is
-permissionless.
+bidders, depositors gain nothing, share price is unchanged. An oracle failure is nobody's fault, and
+nobody who could cause one profits from one — a buyer whose option ended worthless does keep the
+refund a settlement would have taken, but a feed's death is not an event any participant can
+bring about, and the guards read only its frozen history. Critically, nobody is trapped by it
+either, because annulment is permissionless.
 
 **And if nobody looks in time**, the round still ends. The feed keeps a bounded history, so the
 expiry window eventually stops being readable; past that point the round finalizes *unresolved* —
@@ -177,8 +186,9 @@ exists so the guarantee below does not depend on any external contract being cal
 constrained to return the outcome a working adapter could only have returned at that moment, so it
 cannot be used to steer a result. That rule is not chosen to be kind to
 either side but to make delay worthless to both: an out-of-the-money buyer ends up exactly where
-settling would have put him, and an in-the-money one is strictly worse off, so nobody has a reason
-to let the clock run. What you are trusting here is arithmetic, not attentiveness.
+settling would have put him, and an in-the-money one is strictly worse off, so neither of them has a reason
+to let the clock run (depositors passively keep more if an in-the-money round drifts — disclosed
+in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10 — but drift is not an action anyone can take). What you are trusting here is arithmetic, not attentiveness.
 
 **Worst case, assume the feed is fully compromised** and every guard defeated:
 
@@ -202,7 +212,8 @@ permissionless, and `close_round` does not let its caller choose how the round e
 - Rounds close whenever anyone calls, including you — and the outcome does not depend on who did
   or when, with one bounded exception stated in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10: a round
   nobody closes for about 20 hours can no longer be decided on evidence and finalizes with the
-  premium retained. That rule is chosen so no party gains by the delay.
+  premium retained. That rule is chosen so nobody who could cause the delay gains
+  by it — the passive asymmetry that survives is stated in A-10, not hidden.
 - Nothing is ever locked by its absence.
 
 The keeper is a convenience, never an authority.

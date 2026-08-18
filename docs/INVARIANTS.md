@@ -94,9 +94,10 @@ violations.
 
 ## I4 — Locked collateral cannot leave during a live round
 
-While `phase == Active`, no call path transfers any part of the locked collateral out of the
-contract. `request_withdraw` only *records* intent — the transfer waits for finalization. Pending
-deposits remain fully cancellable throughout, because they were never locked.
+While a round is live — auction and active phases both, because the collateral is locked from
+the moment the round opens — no call path transfers any part of it out of the contract.
+`request_withdraw` only *records* intent in either phase; the transfer waits for finalization.
+Pending deposits remain fully cancellable throughout, because they were never locked.
 
 **Why.** The option is live; its collateral must be there when settlement arrives. Equally
 important is the second half: capital that never backed the option must never be trapped by it.
@@ -220,7 +221,9 @@ price is read as it stood *at expiry*, so calling early or late cannot change it
 selected by what that read returns, so no caller can name it. The three answers partition
 cleanly — the feed answered (settle), the feed was demonstrably dead at expiry and we can still
 see that it was (void), or expiry has left the feed's reachable history (unresolved) — and the
-rule for the third is chosen so that **no party gains by delay**. Without that last part the
+rule for the third is chosen so that **no party who can cause a delay gains by one** (the passive
+depositor-side asymmetry that survives the rule is disclosed in
+[KNOWN_ISSUES](KNOWN_ISSUES.md) A-10 — it is not an action anyone can take). Without that last part the
 invariant would still hold formally while paying an out-of-the-money buyer his whole premium back
 for doing nothing.
 
@@ -288,8 +291,11 @@ Stated explicitly, because their absence is a design choice rather than an overs
   the dead-oracle bound, the round is annulled and premiums are refunded. If nobody closes the
   round before expiry leaves the feed's reachable history — or if the price adapter cannot be
   called at all up to a validated bound past that — it finalizes *unresolved*: the premium stays
-  with depositors and the payout is zero. Nobody profits from an oracle failure, nobody is
-  trapped by one, and — the reason the third outcome exists at all — **nobody profits by waiting**.
+  with depositors and the payout is zero. Nobody who can cause an oracle failure or a delay
+  profits from one, nobody is trapped by one, and — the reason the third outcome exists at all —
+  **waiting is not an action that pays anyone who can choose it**; the passive depositor-side
+  asymmetry (more stays in the pool if an in-the-money round is never closed in time) is real,
+  disclosed in [KNOWN_ISSUES](KNOWN_ISSUES.md) A-10, and reachable by nobody's decision.
 - **There is no guarantee that every round has a positive share price.** See I6: where a positive
   price and solvency cannot both hold, solvency wins.
 - **There is no guarantee about returns.** See the README's stance on yield numbers.

@@ -95,7 +95,7 @@ the feed as it stood at expiry and dispatches on what it finds.
 
 `LAPSED` is a normal path, not an error. If no bidder appears, the premium for that epoch is zero, collateral stays exactly where it was, share price is unchanged, and the next epoch opens. **An epoch with no buyer costs depositors nothing.**
 
-`VOIDED` is the third terminal state and equally normal: if the price feed is unusable past a defined bound, the epoch is annulled — premiums are refunded to bidders, no payout is made, share price is unchanged. Nobody profits from an oracle failure, and nothing is trapped by one.
+`VOIDED` is the third terminal state and equally normal: if the price feed is unusable past a defined bound, the epoch is annulled — premiums are refunded to bidders, no payout is made, share price is unchanged. Nobody who could cause an oracle failure profits from one — a feed's death is not an event any participant can bring about — and nothing is trapped by one.
 
 ### Locked design decisions
 
@@ -190,8 +190,9 @@ Hence two conditions rather than one. The 0.75 sits below the only competitive v
 Every gate above is a *go* gate. Here is the one that ends the project:
 
 > **If 8 consecutive epochs *and* at least 30 calendar days pass with the bidder allowlist disabled and no independent fill, development stops.** Both conditions are required because an empty round ends in 45 minutes, not a week — and once the mandatory gap between rounds is
-counted, a full empty cycle takes 4 h 45 m, so eight of them could otherwise elapse in about
-**38 hours**, against evidence gathered while no counterparty was awake. The allowlist expires on a timestamp fixed when the vault is deployed — capped at 30 days, with no setter to extend it — so the one gate that can end the project cannot be frozen by leaving a launch control on. Disabling it earlier is still the intended path; the expiry is what makes it not depend on us. We publish what happened — how many epochs, at what parameters, what premiums were on offer, how many counterparties we approached and what they told us — and then choose, explicitly and publicly: pivot, park the code, or close.
+counted, a full empty cycle takes as little as 2 h 45 m on the fastest vaults, so eight of them —
+counted within a single vault — could otherwise elapse in about **22 hours**, against evidence
+gathered while no counterparty was awake. The allowlist expires on a timestamp fixed when the vault is deployed — capped at 30 days, with no setter to extend it — so the one gate that can end the project cannot be frozen by leaving a launch control on. Disabling it earlier is still the intended path; the expiry is what makes it not depend on us. We publish what happened — how many epochs, at what parameters, what premiums were on offer, how many counterparties we approached and what they told us — and then choose, explicitly and publicly: pivot, park the code, or close.
 
 At a weekly epoch that is about two months. A project without a stop condition cannot tell you it was wrong, and this product category has been wrong before.
 

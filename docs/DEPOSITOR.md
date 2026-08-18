@@ -178,8 +178,9 @@ anything:
   it.
 - **The round was annulled.** If the price feed was unusable at expiry past a defined limit, the
   round is cancelled: buyers get their premiums refunded, no payout is made, `pps` is unchanged.
-  Nobody profits from an oracle failure and nobody is trapped by one — cancellation can be
-  triggered by anyone, including you.
+  Nobody who could cause an oracle failure profits from one — a feed's death is not something
+  any participant can bring about — and nobody is trapped by one: cancellation can be triggered
+  by anyone, including you.
 - **Nobody closed the round in time (unresolved).** The price feed only keeps about **20 hours**
   of history. If no one closes a round before its expiry moment ages out of that history, it can no
   longer be decided on evidence, so it finalizes with **the premium kept by the pool** and no

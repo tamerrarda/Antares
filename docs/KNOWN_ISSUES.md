@@ -123,9 +123,12 @@ premium; a buyer who was out of the money ends exactly where a settlement would 
 
 **Why accepted.** The alternative is to refund the premium, and that pays the buyer to wait — out
 of the money, letting the clock run out returns 100 % of it, and the bounty is a capped fraction of
-that same premium, so no incentive we can fund outbids it. Retaining the premium is the only rule
-under which no party gains by delay, which is what makes the outcome a function of history instead
-of a race. Closing is permissionless, pays a bounty, and the buyer is the party who knows whether
+that same premium, so no incentive we can fund outbids it. Retaining the premium is the only rule under
+which no party who could *cause* delay profits by it. One honest asymmetry survives the rule:
+depositors collectively keep the payout if an in-the-money round drifts past the deadline — but
+delay is not an action anyone can take, only an absence of one, closing is permissionless, and
+the one party the drift would rob is the one with a payout-sized incentive and ~20 hours to act.
+That is what makes the outcome a function of history instead of a race. Closing is permissionless, pays a bounty, and the buyer is the party who knows whether
 he is in the money. The residual is the narrow case where the feed was genuinely dead at expiry
 *and* nobody annulled the round during the roughly **eight hours** when annulment was available
 (from 12 h to 20 h 20 m past expiry).
@@ -242,8 +245,10 @@ Settlement correctness rests entirely on the price feed. Guards bound every fail
 name, and worst-case damage is capped at one epoch's sold notional because nothing here is
 leveraged.
 
-**Status.** Bounded, not eliminated. A second independent feed (median-of-N) is a future adapter
-change that would not touch the vault, and there is now a concrete second source available on
+**Status.** Bounded, not eliminated. A second independent feed (median-of-N) is a future **new
+adapter contract** — the adapter itself is immutable, no admin and no upgrade path
+([TRUST_MODEL](TRUST_MODEL.md) §3), so shipping it means a reviewed vault upgrade pointing at the
+new deployment, never an in-place change — and there is now a concrete second source available on
 Stellar.
 
 ### O-5 · No behaviour under real volatility has been observed

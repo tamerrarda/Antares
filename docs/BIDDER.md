@@ -195,9 +195,11 @@ All three are normal states, not failures — and all three are defined in advan
   if you didn't fill.
 - **VOIDED** — the feed was unusable **at expiry**, and a grace period has passed. The epoch is
   annulled: **your premium is refunded in full**, payout is zero, depositors gain nothing. An
-  oracle failure is nobody's fault and nobody profits from it. This is a fact fixed by history that
-  no later event changes, so you cannot be voided out of a payout by a working oracle, and you
-  cannot manufacture a void by waiting.
+  oracle failure is nobody's fault, and nobody who could cause one profits from one — the refund
+  does leave you better off than an out-of-the-money settlement would have, but a feed's death is
+  not an event you or anyone else can bring about, and the guards read only its frozen history.
+  This is a fact fixed by history that no later event changes, so you cannot be voided out of a
+  payout by a working oracle, and you cannot manufacture a void by waiting.
 - **UNRESOLVED** — nobody closed the round while expiry was still readable, **or** the price
   adapter itself was unreachable right through the window. **This one can cost you, and you should
   read it carefully.**
@@ -234,9 +236,13 @@ grace period until the history ages out, about **eight hours** (12 h to 20 h 20 
 **Why the rule is written this way**, since it is not written in your favour: the alternative is to
 refund the premium, and that pays you to wait. Out of the money, letting the clock run out would
 return 100 % of your premium — and no bounty funded out of that same premium can ever be large
-enough to outbid it. Retaining the premium is the only version under which **no party gains by
-delay**, which is what makes the outcome a function of history rather than of who stayed awake. We
-would rather tell you about a real cost than claim a property we cannot back.
+enough to outbid it. Retaining the premium is the only version under which **nobody who could cause
+a delay gains by one**. One asymmetry survives it, and you should hear it from us: depositors
+collectively keep more if an in-the-money round drifts past the deadline — but drift is an
+absence of action, not an action; closing is permissionless, and you are the party holding a
+payout-sized incentive and ~20 hours to prevent it. That is what makes the outcome a function of
+history rather than of who stayed awake. We would rather tell you about a real cost than claim a
+property we cannot back.
 
 ---
 
