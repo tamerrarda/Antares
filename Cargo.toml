@@ -2,6 +2,9 @@
 resolver = "2"
 members = [
     "contracts/antares-vault",
+    # Library only, no `#[contract]`, no wasm of its own — see its manifest and 04-ORACLE §2 for
+    # why the interface cannot live in either implementation. DEV2's (DEV-PROTOCOL §3).
+    "contracts/price-source-api",
     "contracts/mock-price-source",
     "contracts/reflector-adapter",
 ]

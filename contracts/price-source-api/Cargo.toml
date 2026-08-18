@@ -1,0 +1,24 @@
+[package]
+name = "price-source-api"
+description = "The PriceSource interface — shared by the vault, the mock and the Reflector adapter (DEV2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# `lib` ONLY, and the absence of `cdylib` is the point. This crate declares types and a trait and
+# contains no `#[contract]`, so it registers nothing and produces no wasm of its own. Measured on
+# the pinned toolchain (04-ORACLE §1): `#[contractimpl]` emits `#[no_mangle]` exports that survive
+# being linked in as a library, so a crate depending on one that carries a `#[contract]` exports
+# that contract's functions from its own wasm too. Declaring this interface inside
+# `reflector-adapter` would therefore put the adapter's surface into the mock's wasm — and the
+# adapter's immutability claim is a claim about exactly that surface (09-DEPLOYMENT §2 step 2).
+crate-type = ["lib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

@@ -12,6 +12,13 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# The version is not decoration: a bare `path` dependency carries an implicit `*`
+# requirement, and `deny.toml` denies wildcards on purpose — D-23 pins exact
+# versions and D-50's gate is stated against a byte, so a dependency that can
+# change under us with nothing in the repository changing is the failure the whole
+# pinning discipline exists to stop. Caught by cargo-deny on the first CI run that
+# saw this crate.
+price-source-api = { path = "../price-source-api", version = "0.1.0" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

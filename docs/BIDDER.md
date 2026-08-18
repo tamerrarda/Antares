@@ -230,7 +230,7 @@ you are the party who knows whether you are in the money.
 
 The narrow case where this bites through no fault of yours: the feed was genuinely dead at expiry
 *and* nobody annulled the round during the window when voiding was available — from the end of the
-grace period until the history ages out, about **eight hours** (12 h to 20 h 20 m past expiry).
+grace period until the history ages out, about **eight hours** (12 h to 20 h 15 m past expiry).
 `close_round()` is open to you throughout.
 
 **Why the rule is written this way**, since it is not written in your favour: the alternative is to
