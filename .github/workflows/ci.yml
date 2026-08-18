@@ -367,23 +367,103 @@ jobs:
         # The check prints every call site it found, not just the verdict: a
         # reviewer has to be able to see what was inspected, and a silent pass
         # over a tree with no calls in it proves nothing.
+        #
+        # AMENDED 2026-08-19 by DEV1, reviewing DEV2's scoping fix: the accept
+        # pattern was the other half of the same defect, and two shapes of the
+        # test exclusion were too. All three reproduced before being claimed —
+        #   * `let asset = config.asset.clone(); TokenClient::new(env, &asset)`
+        #     was REJECTED, and that is the ordinary way the vault's own code
+        #     will be written;
+        #   * soroban's conventional `test.rs` was NOT excluded — only
+        #     `test_*.rs` was;
+        #   * an inline `#[cfg(test)] mod tests` in a production file was not
+        #     excluded at all, and inline test modules are idiomatic Rust.
+        #
+        # A grep cannot follow data flow, and the fix is to stop implying that it
+        # does. Every outbound client construction in the vault's non-test code
+        # carries an `// outbound: config.asset` or `// outbound: config.oracle`
+        # marker, on its own line or the line above. What the check then proves is
+        # not that the target is right — no regex can — but that **no call site
+        # reached the default branch without a human naming which of the two it
+        # is**, which is the claim a reviewer can actually check. 07-SECURITY §3
+        # is the single home for the rule.
+        #
+        # The file-based test exclusion stops being an assumption in the same
+        # stroke: the second step below asserts the vault's non-test files carry
+        # no `#[cfg(test)]` block at all, so "tests live in their own file" is
+        # enforced rather than trusted.
         run: |
           set -euo pipefail
-          sites=$(grep -rnE '[A-Za-z_]*Client::new\(' contracts/antares-vault/src \
-                    --include='*.rs' | grep -v '/test_[a-z0-9_]*\.rs:' || true)
+
+          # Every file list goes through this, and nothing is ever passed to a
+          # command by bare word-splitting. That is not style: this step was first
+          # verified by hand in zsh against ugrep, while it runs on the runner in
+          # bash against GNU grep, and `grep $files` behaves differently in the
+          # two. A check whose result depends on which shell ran it is not a check.
+          list_sources() {
+            find contracts/antares-vault/src -name '*.rs' \
+              | grep -vE '/(test|tests|test_[a-z0-9_]+)\.rs$' \
+              | sort
+          }
+
+          if [ -z "$(list_sources)" ]; then
+            echo "::error::No non-test sources found in the vault — the scope is wrong, not the tree."
+            exit 1
+          fi
+
+          echo "--- vault non-test sources inspected ---"
+          list_sources
+
+          # 1. Tests may not hide inside production files, or the file-based
+          #    exclusion above is a guess rather than a rule. The one permitted use
+          #    of the attribute is a *declaration* — `#[cfg(test)] mod test_x;` —
+          #    which pulls the tests in from their own file and is the shape this
+          #    rule exists to require. Checked against the next non-blank line
+          #    rather than the same line, because the two are conventionally
+          #    written apart and a same-line check rejects every correct
+          #    declaration in the repository.
+          bad_cfg=0
+          while IFS= read -r f; do
+            while IFS= read -r n; do
+              next=$(awk -v start="$n" 'NR > start && NF { print; exit }' "$f")
+              if ! printf '%s' "$next" \
+                   | grep -qE '^[[:space:]]*mod[[:space:]]+[a-z0-9_]+[[:space:]]*;'; then
+                echo "::error file=$f,line=$n::#[cfg(test)] here is an inline test module."
+                echo "::error file=$f,line=$n::Vault tests live in test.rs, tests.rs or test_*.rs —"
+                echo "::error file=$f,line=$n::that separation is what makes the exclusion checkable."
+                bad_cfg=1
+              fi
+            done < <(grep -nE '#!?\[cfg\(test\)\]' "$f" | cut -d: -f1)
+          done < <(list_sources)
+          [ "$bad_cfg" -eq 0 ] || exit 1
+
+          # 2. Every outbound client construction is declared. `-H` because grep
+          #    omits the filename when handed exactly one file, and the parsing
+          #    below reads field one as the path — latent today with three
+          #    sources, live the day two modules become one.
+          sites=$(list_sources | tr '\n' '\0' \
+                    | xargs -0 grep -nHE '[A-Za-z_]*Client::new\(' || true)
           if [ -z "$sites" ]; then
             echo "::notice::No cross-contract client construction in the vault yet — it gains its"
             echo "::notice::SAC and oracle clients in Phase 2. This check is mandatory from there."
             exit 0
           fi
-          echo "--- call sites found (vault, non-test) ---"
-          echo "$sites"
-          bad=$(echo "$sites" | grep -vE '&(config|cfg)\.(asset|oracle)' || true)
-          if [ -n "$bad" ]; then
-            echo "::error::Outbound client built from an address that is neither Config.asset nor Config.oracle:"
-            echo "$bad"; exit 1
-          fi
-          echo "every call site targets Config.asset or Config.oracle"
+          echo "--- call sites found ---"; echo "$sites"
+
+          undeclared=0
+          while IFS= read -r site; do
+            file=${site%%:*}; rest=${site#*:}; line=${rest%%:*}
+            here=$(sed -n "${line}p" "$file")
+            above=$(sed -n "$(( line > 1 ? line - 1 : 1 ))p" "$file")
+            if ! printf '%s\n%s\n' "$above" "$here" \
+                 | grep -qE '//[[:space:]]*outbound:[[:space:]]*config\.(asset|oracle)\b'; then
+              echo "::error file=$file,line=$line::Outbound client construction with no"
+              echo "::error file=$file,line=$line::'// outbound: config.asset' or '// outbound: config.oracle' marker."
+              undeclared=1
+            fi
+          done <<< "$sites"
+          [ "$undeclared" -eq 0 ] && echo "every outbound call site is declared"
+          exit "$undeclared"
 
       - name: No CI secret carries signing authority over the admin
         # 07-SECURITY §6, the repository half. This is a claim about this
