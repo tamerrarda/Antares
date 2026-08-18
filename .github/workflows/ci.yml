@@ -2,8 +2,11 @@
 #
 #   fmt → clippy → test → vector-diff → network-agnostic check
 #       → wasm build + size check → reproducible-build
-#   scout-audit: every run, non-blocking (KNOWN_ISSUES O-6)
-#   fuzz smoke and cargo-mutants: opt-in per run, see the inputs below.
+#   scout-audit, fuzz smoke and cargo-mutants: opt-in per run, see the inputs
+#   below. Scout is opt-in rather than per-build since 2026-08-19: measured at
+#   9 m 57 s and still compiling itself when cancelled, to analyse nothing
+#   (KNOWN_ISSUES O-6). When it does run it is gated on its log, never its exit
+#   code.
 #   cargo-mutants is required at the Phase-4 gate and pointless before it.
 #
 # TWO OWNERS, ONE FILE (DEV-PROTOCOL §3). Everything below is DEV1's except the
@@ -52,6 +55,10 @@ on:
         default: false
       run_mutants:
         description: "Also run cargo-mutants (long; required at the Phase-4 gate)"
+        type: boolean
+        default: false
+      run_scout:
+        description: "Also run scout-audit (~14 min, and currently analyses nothing — KNOWN_ISSUES O-6)"
         type: boolean
         default: false
 
@@ -175,7 +182,8 @@ jobs:
 
   # -------------------------------------------------------- 5. scout-audit ---
   scout-audit:
-    name: scout-audit (non-blocking)
+    name: scout-audit (opt-in, non-blocking)
+    if: inputs.run_scout
     needs: test
     runs-on: ubuntu-latest
     # Out of the blocking chain since 2026-08-18 (06-TEST-PLAN §8, KNOWN_ISSUES
@@ -184,6 +192,25 @@ jobs:
     # on a tool that analyses nothing buys nothing. The step below still refuses
     # to call that state a pass, which is the half that matters: this job reports
     # "did not analyse anything", never "found nothing".
+    #
+    # OPT-IN SINCE 2026-08-19 (Tamer), and the measurement is the reason. It ran
+    # on `dev2` and was cancelled at 9 m 57 s still compiling itself, having
+    # analysed nothing — while the entire blocking chain finished in 4 m 23 s.
+    # GitHub bills each job rounded up to the minute, so this one job was about
+    # 60 % of a routine run's cost on a private repository, for a tool that
+    # cannot run against D-23's pinned target at all.
+    #
+    # The 2026-08-18 decision said it "still runs on every build". That half is
+    # what changes: paying every branch for a control that is known to be
+    # inoperative is not diligence, it is a standing charge. What does NOT change
+    # is the half that mattered — when it runs it is still gated on its LOG and
+    # never on its exit code, so it reports "did not analyse anything" rather
+    # than "found nothing". A control that reports success without running is
+    # worse than no control, because it is believed.
+    #
+    # Run it deliberately: `gh workflow run ci.yml --ref <branch> -f run_scout=true`.
+    # Required before the Phase-8 review, where the choice between waiting for
+    # upstream and promoting OpenZeppelin's soroban-scanner gets made.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
