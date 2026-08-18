@@ -18,7 +18,7 @@
 
 ## 2. Contract surface
 
-Single contract. Module boundaries live in the code (`vault`, `auction`, `settle`, `oracle`, `admin`), not at addresses.
+Single contract. Module boundaries live in the code — `vault`, `token`, `epoch`, `auction`, `settle`, `oracle`, `claims`, `admin` — not at addresses. (The split is an implementation detail and may change; what does not change is that it costs no cross-contract hop.)
 
 ### Lifecycle
 
