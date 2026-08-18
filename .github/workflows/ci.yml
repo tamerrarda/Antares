@@ -1,8 +1,10 @@
 # Antares CI — the single workflow of 06-TEST-PLAN §8, jobs in its dependency order.
 #
-#   fmt → clippy → test → vector-diff → scout-audit → network-agnostic check
-#       → wasm build + size check → reproducible-build → [nightly] fuzz smoke
-#   cargo-mutants: manual / weekly, required at the Phase-4 gate, never per-PR
+#   fmt → clippy → test → vector-diff → network-agnostic check
+#       → wasm build + size check → reproducible-build
+#   scout-audit: every run, non-blocking (KNOWN_ISSUES O-6)
+#   fuzz smoke and cargo-mutants: opt-in per run, see the inputs below.
+#   cargo-mutants is required at the Phase-4 gate and pointless before it.
 #
 # TWO OWNERS, ONE FILE (DEV-PROTOCOL §3). Everything below is DEV1's except the
 # region marked `DEV3 REGION`, which carries the TypeScript jobs — TS lint,
@@ -17,14 +19,41 @@
 
 name: CI
 
+# MANUAL ONLY, and deliberately so (decided 2026-08-18).
+#
+# The repository is private for now, so Actions minutes come out of a monthly
+# allowance rather than being free as they are on a public repository. Nothing
+# here fires on a push, a pull request or a schedule: run it from the Actions
+# tab, or `gh workflow run ci.yml --ref <branch>`.
+#
+# **It must be run, and its result recorded in `plan/STANDUP.md`, before every
+# integration-point signature.** That is what keeps D-50's reproducibility gate
+# a gate — the rule is that it is asserted from the first commit rather than
+# discovered at the mainnet deploy, and a workflow nobody runs asserts nothing.
+# 06-TEST-PLAN §8 carries this as the standing policy.
+#
+# Restore the automatic triggers when the repository goes public. When that
+# happens, fix two things first, both measured on the only automatic run this
+# workflow ever had (2026-08-18): `scout-audit` compiles itself from source on
+# every run — 13 minutes to analyse nothing — and `push` plus `pull_request`
+# together ran the whole chain twice for one commit. Without those two, a full
+# run is about ten billable minutes.
 on:
-  push:
-    branches: ["**"]
-  pull_request:
-  schedule:
-    - cron: "17 3 * * *" # nightly — fuzz smoke
-    - cron: "41 4 * * 1" # Mondays — cargo-mutants
   workflow_dispatch:
+    inputs:
+      # Off by default, and each is opt-in for its own reason. The fuzz smoke
+      # needs a nightly toolchain and cargo-fuzz built from source; the mutation
+      # run can occupy a runner for hours and is required at the Phase-4 gate,
+      # not before it. With `workflow_dispatch` now the only trigger, leaving
+      # them on the default path would mean every routine run started both.
+      run_fuzz:
+        description: "Also run the fuzz smoke (5 min per target)"
+        type: boolean
+        default: false
+      run_mutants:
+        description: "Also run cargo-mutants (long; required at the Phase-4 gate)"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -429,7 +458,7 @@ jobs:
   # ------------------------------------------------ 10. nightly fuzz smoke ---
   fuzz-smoke:
     name: fuzz smoke (nightly, 5 min per target)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: inputs.run_fuzz
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -455,7 +484,7 @@ jobs:
   # ------------------------------------------- 11. mutation (manual/weekly) ---
   mutants:
     name: cargo-mutants (manual / weekly)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: inputs.run_mutants
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 360
