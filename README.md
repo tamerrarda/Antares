@@ -210,6 +210,36 @@ scripts/            Network-parameterised deployment, upgrade, recovery tooling
 docs/               Architecture, invariants, known issues
 ```
 
+## Building
+
+Every version is pinned exactly, never by range or channel:
+
+| | Pinned at |
+|---|---|
+| Rust | `1.95.0` — in `rust-toolchain.toml`, by exact version rather than `stable` |
+| Build target | `wasm32v1-none` |
+| `soroban-sdk` | `=27.0.6` |
+| `stellar-cli` | `27.1.0` |
+| Node / pnpm | 22 / 11 |
+
+```bash
+cargo test --workspace                    # unit + property
+stellar contract build --out-dir out      # deployable wasm, all three contracts
+```
+
+The pins are not tidiness. The goal is that the binary deployed to mainnet is
+**byte-identical** to the one that ran on testnet and was audited — an audit
+certifies a binary, not an intention, and a build that cannot be reproduced
+turns every invariant back into something asserted only by our own tests. So CI
+builds the wasm twice, in clean environments at deliberately different paths,
+and fails if the two hashes differ. Upgrading anything in the table above is a
+recorded decision, because it invalidates every wasm hash on record until the
+artefacts are rebuilt.
+
+The contracts contain no network flags — no feature gates, no conditional
+compilation, no network names in the source. Everything that differs between
+testnet and mainnet is a constructor argument. CI greps for the alternative.
+
 ## Documentation
 
 Full index: [`docs/`](docs/README.md) — start with the document written for what you're trying to do.

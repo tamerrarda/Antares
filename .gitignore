@@ -3,5 +3,16 @@ target/
 node_modules/
 .env
 .env.*
-plan/
 
+# `/plan`, not `plan/`. In the three development worktrees `plan` is a *symlink*
+# to the shared plan repository, and a pattern ending in `/` matches directories
+# only — so `plan/` left the symlink untracked-but-committable and `git add -A`
+# would have put it on a code branch. DEV-PROTOCOL §9 forbids exactly that.
+/plan
+
+# Tool output that must never reach a commit
+.stellar/
+mutants.out*/
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/

@@ -1,0 +1,19 @@
+[package]
+name = "antares-vault"
+description = "Antares — epoch-gated covered-call vault on Soroban"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# `lib` as well as `cdylib`: the fuzz targets of 06-TEST-PLAN §4 link against
+# this crate as a library, and adding the type later would churn every path.
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

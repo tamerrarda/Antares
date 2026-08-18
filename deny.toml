@@ -1,0 +1,62 @@
+# cargo-deny — dependency advisories and license hygiene (07-SECURITY §4).
+#
+# This file is short because of D-24: the contracts carry **zero third-party
+# contract-code dependencies** — SEP-41, pausable, upgradeable and the admin
+# logic are all hand-rolled — so the graph below is `soroban-sdk` and its own
+# transitive set and nothing else. That is a deliberately narrowed audit scope,
+# not an absence of things to check.
+
+[advisories]
+yanked = "deny"
+
+# One accepted advisory, triaged in writing rather than waved through by
+# widening a setting. Everything not listed here still fails the build.
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = """
+`paste 1.0.15` is unmaintained — an advisory about the crate's future, not a
+vulnerability in it. It reaches us four levels down (ark-ff → ark-* →
+soroban-env-host → soroban-sdk), so there is nothing to upgrade on our side
+short of forking the SDK's dependency graph, and it is a **proc macro**: it runs
+at compile time and no byte of it is in the wasm the vault deploys. Left as an
+ID-scoped ignore rather than `unmaintained = "workspace"`, which would have
+suppressed every future transitive advisory of the same class along with it.
+Re-check when soroban-sdk moves off it; if this ever becomes a
+vulnerability advisory rather than an unmaintained one, it stops being ignored
+here and becomes a finding.
+""" },
+]
+
+[licenses]
+# Exactly the licenses the graph actually *requires*, measured 2026-08-18 over
+# 217 packages. Where a package offers a choice (`MIT OR Apache-2.0 OR Zlib`)
+# only the one taken is listed, so the set is the smallest that satisfies the
+# tree rather than the widest that happens to cover it. A new license arriving
+# in the graph then becomes a decision somebody makes on purpose.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-3-Clause",
+    "Unicode-3.0", # unicode-ident: "(MIT OR Apache-2.0) AND Unicode-3.0"
+]
+
+# wasmparser ships under the LLVM exception with no alternative offered. It
+# arrives through soroban-sdk's own toolchain crates, not through a choice of
+# ours, and the exception is a permissive addition to Apache-2.0.
+[[licenses.exceptions]]
+name = "wasmparser"
+allow = ["Apache-2.0 WITH LLVM-exception"]
+
+[[licenses.exceptions]]
+name = "wasmparser-nostd"
+allow = ["Apache-2.0 WITH LLVM-exception"]
+
+[bans]
+multiple-versions = "warn"
+# D-23 pins exact versions and D-50's gate is stated against a byte. A wildcard
+# dependency lets a build change under us with nothing in the repository
+# changing — which is the failure the whole pinning discipline exists to stop.
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

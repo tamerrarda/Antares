@@ -1,0 +1,17 @@
+[package]
+name = "mock-price-source"
+description = "Settable PriceSource stand-in for tests and fast-test deployments (DEV2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
