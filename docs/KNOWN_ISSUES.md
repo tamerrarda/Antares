@@ -131,7 +131,7 @@ the one party the drift would rob is the one with a payout-sized incentive and ~
 That is what makes the outcome a function of history instead of a race. Closing is permissionless, pays a bounty, and the buyer is the party who knows whether
 he is in the money. The residual is the narrow case where the feed was genuinely dead at expiry
 *and* nobody annulled the round during the roughly **eight hours** when annulment was available
-(from 12 h to 20 h 20 m past expiry).
+(from 12 h to 20 h 15 m past expiry).
 
 **What would change our mind.** A feed with materially deeper history, or a second source, would
 widen the window enough that this stops being reachable in practice. It is stated in
