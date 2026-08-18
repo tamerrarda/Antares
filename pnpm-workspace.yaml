@@ -1,0 +1,14 @@
+# The tree is 08-OFFCHAIN §1's, which is its single home — read the layout there,
+# not from this copy. Every package below is **DEV3's** (`DEV-PROTOCOL.md` §3);
+# DEV1 creates the workspace so DEV3's Phase 1 is not blocked on it, and stops there.
+#
+# `packages/*` covers `packages/common/` — the single home for every network,
+# asset and contract address — which the network-agnostic CI check exempts and
+# therefore has no valid target without (06-TEST-PLAN §8).
+packages:
+  - "keeper"
+  - "bidder"
+  - "web"
+  - "integration"
+  - "packages/*"
+  - "scripts"

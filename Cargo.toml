@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/antares-vault",
+    "contracts/mock-price-source",
+    "contracts/reflector-adapter",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# Exact, with the `=`, per D-23. A caret range reproduces no byte, and D-50's
+# gate has nothing else to stand on. Verified 2026-08-18: 27.0.6 is crates.io's
+# max stable.
+soroban-sdk = "=27.0.6"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+# D-23 says overflow-checks in **all** profiles, and the word is load-bearing.
+# The release profile above is what the deployed wasm is built with; these two
+# are what every unit, property and fuzz test runs under. Without them a test
+# suite would wrap where the shipped binary panics — i.e. it would be asserting
+# things about a contract we do not deploy. 02-CONTRACT-SPEC §8's bounds are
+# proofs about the inputs; these flags are what turns a violated proof into a
+# revert instead of a silent wrap.
+[profile.dev]
+overflow-checks = true
+
+[profile.test]
+overflow-checks = true
+
+# Same binary shape as release, with logs. Never the profile a deployment is
+# built from — see D-50: one wasm, and it is the release one.
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

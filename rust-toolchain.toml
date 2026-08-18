@@ -1,0 +1,15 @@
+# The exact Rust version, not a channel — D-23.
+#
+# D-50's gate is a byte-identical wasm from a clean checkout, and it compares
+# hashes and nothing else. Against "stable" that comparison is between two
+# unrelated numbers that happen to be equal today, and it would keep passing for
+# months before failing on the one day it matters. Measured 2026-08-18:
+# rustc 1.95.0 (59807616e 2026-04-14).
+#
+# Changing this line invalidates every wasm hash on record until the artefacts
+# are rebuilt. It is a deliberate event, recorded in D-23 — never a drive-by bump.
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32v1-none"]
+profile = "minimal"
