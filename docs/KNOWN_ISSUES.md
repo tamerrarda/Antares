@@ -131,7 +131,7 @@ the one party the drift would rob is the one with a payout-sized incentive and ~
 That is what makes the outcome a function of history instead of a race. Closing is permissionless, pays a bounty, and the buyer is the party who knows whether
 he is in the money. The residual is the narrow case where the feed was genuinely dead at expiry
 *and* nobody annulled the round during the roughly **eight hours** when annulment was available
-(from 12 h to 20 h 20 m past expiry).
+(from 12 h to 20 h 15 m past expiry).
 
 **What would change our mind.** A feed with materially deeper history, or a second source, would
 widen the window enough that this stops being reachable in practice. It is stated in
@@ -270,10 +270,17 @@ reporting each contract as analysed, with zero findings.** Measured 2026-08-18 a
 release; overriding the target on the command line does not change it.
 
 **Status.** Scout is out of the blocking part of CI, because a check that cannot run should not be
-able to pass — but it still runs on every build, and the job is now gated on its log rather than
-its exit code, so it reports *"did not analyse anything"* instead of *"found nothing"*. Without
-that, the difference would have been invisible for as long as the tooling stayed broken, which is
-the more dangerous half of this issue and the reason it is written down rather than absorbed.
+able to pass, and the job is gated on its log rather than its exit code, so it reports *"did not
+analyse anything"* instead of *"found nothing"*. Without that, the difference would have been
+invisible for as long as the tooling stayed broken, which is the more dangerous half of this issue
+and the reason it is written down rather than absorbed.
+
+Since **2026-08-19** it is also **opt-in per run** rather than running on every build. Measured:
+cancelled at 9 minutes 57 seconds still compiling itself, having analysed nothing, while the whole
+blocking chain finished in 4 minutes 23 seconds — roughly 60 % of a routine run's cost, spent on a
+control that cannot execute against the compilation target this project pins. It is run
+deliberately, and **it is required before the security review**, which is where the choice between
+waiting for upstream and adopting the substitute below actually gets made.
 
 What it costs is real and is not softened here: one of the two static analysers we named is
 contributing nothing. Its detectors — overflow checks, unprotected code replacement,
