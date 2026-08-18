@@ -343,18 +343,40 @@ jobs:
         # verifier. Both addresses are fixed at construction and have no setter,
         # so the allowlist is a closed set of two.
         #
+        # SCOPE — the vault's non-test code, and 07-SECURITY §3 is the single home
+        # for it (written down 2026-08-19, after this check went red on correct
+        # code). The rule is about the VAULT: it is the vault that must be unable
+        # to call an address it was not constructed with. Run over `contracts/` as
+        # a whole the check rejects two kinds of correct code —
+        #   * `reflector-adapter`'s own `ReflectorClient::new(&env, &pinned)`,
+        #     which is the adapter's entire purpose, and
+        #   * every test that registers `MockPriceSource` and builds a client for
+        #     it, which is most of the oracle seam's test inventory and all of the
+        #     vault's Phase-2 tests.
+        # It rejected 12 such sites on run 32194442229. That is the failure
+        # 06-TEST-PLAN §8 already recorded once for `#[cfg(test)]`: a gate that
+        # fails on correct code is switched off within the week, and then nothing
+        # enforces this row at all.
+        #
+        # The adapter is covered instead by its no-setter surface assertion at
+        # deploy (09-DEPLOYMENT §2 step 2) and by 04-ORACLE §1's rule that no crate
+        # in its dependency graph may contain a `#[contract]`. Vault tests live in
+        # `test_*.rs`, which is what makes the exclusion checkable rather than a
+        # guess about where a `#[cfg(test)]` block starts.
+        #
         # The check prints every call site it found, not just the verdict: a
         # reviewer has to be able to see what was inspected, and a silent pass
         # over a tree with no calls in it proves nothing.
         run: |
           set -euo pipefail
-          sites=$(grep -rnE '[A-Za-z_]*Client::new\(' contracts/ --include='*.rs' || true)
+          sites=$(grep -rnE '[A-Za-z_]*Client::new\(' contracts/antares-vault/src \
+                    --include='*.rs' | grep -v '/test_[a-z0-9_]*\.rs:' || true)
           if [ -z "$sites" ]; then
-            echo "::notice::No cross-contract client construction yet — the vault gains its"
+            echo "::notice::No cross-contract client construction in the vault yet — it gains its"
             echo "::notice::SAC and oracle clients in Phase 2. This check is mandatory from there."
             exit 0
           fi
-          echo "--- call sites found ---"
+          echo "--- call sites found (vault, non-test) ---"
           echo "$sites"
           bad=$(echo "$sites" | grep -vE '&(config|cfg)\.(asset|oracle)' || true)
           if [ -n "$bad" ]; then
