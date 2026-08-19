@@ -18,7 +18,10 @@ use crate::types::{Phase, RoundOutcome, VoidReason};
 use crate::Error;
 use mock_price_source::{MockPriceSourceClient, Mode};
 use price_source_api::OracleReading;
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    Address,
+};
 
 const EPOCH: u64 = 2_400;
 const GAP: u64 = 48;
@@ -673,49 +676,109 @@ fn the_bounty_reaches_the_caller_on_both_paying_branches() {
 // =================================================================================================
 
 #[test]
-fn round_numbers_refuses_every_input_outside_its_domain() {
+fn round_numbers_refuses_every_input_outside_its_domain_and_accepts_its_boundary() {
     // `06-TEST-PLAN.md` §4: *every crash becomes a permanent regression unit test*. This is
-    // `fuzz_settlement_math`'s first, found within seconds of the target existing.
+    // `fuzz_settlement_math`'s first — at `notional_sold < 0` the settlement math produced a
+    // **negative payout**, a transfer *from* the bidder.
     //
-    // At `notional_sold < 0` the settlement math produced a **negative payout** — arithmetically
-    // consistent and economically a transfer *from* the bidder. No caller can construct it:
-    // `notional_sold` starts at 0 and only `bid` raises it. "No caller can" was the load-bearing
-    // word, and it is exactly the kind this layer exists to distrust — the function already
-    // refused to *return* a negative `assets_R` while trusting every number it was handed.
+    // **Rewritten 2026-08-19 after `cargo-mutants` showed the first version was weaker than it
+    // looked.** It passed `-1` for each field and asserted `Err(InvalidAmount)` — but with a guard
+    // mutated away the value flowed on and `assets_R` went negative, which returns *the same
+    // error*. The test could not tell which guard fired, so mutating any one of them survived.
+    //
+    // Two changes fix it. `spot = None` keeps the payout at zero so `assets_R` stays positive and
+    // cannot mask a missing guard; and each field's **accepted boundary** is asserted as well as
+    // its rejected one, because a guard widened from `< 0` to `<= 0` rejects a legitimate zero and
+    // no test that only pushes negatives would notice.
     use crate::settle::round_numbers;
 
-    // The legitimate shape, so the rejections below are about one field each.
-    let ok = round_numbers(Some(2_000_000), 1_000_000, 100, 1_000, 10, 1_000, 0, 25);
+    // No price, large float of assets: nothing here can produce an error except a domain guard.
+    let base = |strike, notional, locked, premium, shares| {
+        round_numbers(None, strike, notional, locked, premium, shares, 0, 25)
+    };
     assert!(
-        ok.is_ok(),
-        "the baseline must be accepted or this test proves nothing"
+        base(1_000_000, 100, 1_000_000, 10, 1_000).is_ok(),
+        "the baseline must be accepted"
     );
 
-    let cases: [(&str, Result<crate::settle::RoundNumbers, Error>); 5] = [
+    // Rejected, one field at a time.
+    let rejected = [
         (
-            "notional_sold < 0 — the crash",
-            round_numbers(Some(2_000_000), 1_000_000, -1, 1_000, 10, 1_000, 0, 25),
+            "notional_sold < 0 — the fuzzer's crash",
+            base(1_000_000, -1, 1_000_000, 10, 1_000),
         ),
-        (
-            "strike <= 0",
-            round_numbers(Some(2_000_000), 0, 100, 1_000, 10, 1_000, 0, 25),
-        ),
+        ("strike <= 0", base(0, 100, 1_000_000, 10, 1_000)),
+        ("strike < 0", base(-1, 100, 1_000_000, 10, 1_000)),
         (
             "shares_snapshot <= 0",
-            round_numbers(Some(2_000_000), 1_000_000, 100, 1_000, 10, 0, 0, 25),
+            base(1_000_000, 100, 1_000_000, 10, 0),
         ),
         (
-            "locked_at_open < 0",
-            round_numbers(Some(2_000_000), 1_000_000, 100, -1, 10, 1_000, 0, 25),
+            "shares_snapshot < 0",
+            base(1_000_000, 100, 1_000_000, 10, -1),
         ),
+        ("locked_at_open < 0", base(1_000_000, 100, -1, 10, 1_000)),
         (
             "premium_collected < 0",
-            round_numbers(Some(2_000_000), 1_000_000, 100, 1_000, -1, 1_000, 0, 25),
+            base(1_000_000, 100, 1_000_000, -1, 1_000),
         ),
     ];
-    for (why, result) in cases {
+    for (why, result) in rejected {
         assert_eq!(result, Err(Error::InvalidAmount), "{why}");
     }
+
+    // Accepted at the boundary — the half the first version left out, and the half a widened guard
+    // would break. Zero is a legitimate value for all three: nothing sold, nothing locked, nothing
+    // collected. Each is unreachable in a live round and each is a perfectly good input to a pure
+    // function, which is the distinction the guard has to keep.
+    let accepted = [
+        (
+            "notional_sold == 0",
+            base(1_000_000, 0, 1_000_000, 10, 1_000),
+        ),
+        ("locked_at_open == 0", base(1_000_000, 100, 0, 10, 1_000)),
+        (
+            "premium_collected == 0",
+            base(1_000_000, 100, 1_000_000, 0, 1_000),
+        ),
+        (
+            "strike == 1, the smallest admissible",
+            base(1, 100, 1_000_000, 10, 1_000),
+        ),
+        (
+            "shares_snapshot == 1",
+            base(1_000_000, 100, 1_000_000, 10, 1),
+        ),
+    ];
+    for (why, result) in accepted {
+        assert!(result.is_ok(), "{why} must be accepted, got {result:?}");
+    }
+}
+
+#[test]
+fn assets_after_the_round_may_be_zero_and_may_never_be_negative() {
+    // `assets_R == 0` is **legitimate** and is D-66's own degenerate state: the pool is worth less
+    // than a stroop per PRECISION share-units, `pps` records `0` honestly, and withdrawals still
+    // work. Forcing `pps >= 1` there is what makes `Σ claim_withdraw` exceed what was credited,
+    // which is why the clamp was removed and why I6 yields to I1.
+    //
+    // A guard that rejected zero would break that; a guard that accepted a negative would let a
+    // checked subtraction underflow on the exit path, which is what I8 forbids. `cargo-mutants`
+    // showed neither direction was pinned.
+    use crate::settle::round_numbers;
+
+    // Exactly zero: locked 0, premium 0, no payout.
+    let zero = round_numbers(None, 1_000_000, 0, 0, 0, 1_000, 0, 0).unwrap();
+    assert_eq!(zero.assets_r, 0);
+    assert_eq!(zero.pps, 0, "recorded honestly rather than clamped (D-66)");
+
+    // Negative: the pure function does not enforce I2, so a caller passing more sold than locked
+    // can drive it under — which is exactly what the guard is for.
+    assert_eq!(
+        round_numbers(Some(1_000_000_000), 1, 1_000_000, 1, 0, 1_000, 0, 0),
+        Err(Error::InvalidAmount),
+        "a payout larger than the collateral must be refused, not recorded"
+    );
 }
 
 #[test]
@@ -728,4 +791,109 @@ fn an_out_of_the_money_settle_and_an_unresolved_round_compute_identically() {
     let unresolved = round_numbers(None, 2_000_000, 500, 1_000, 20, 1_000, 500, 25);
     assert_eq!(settled, unresolved);
     assert_eq!(settled.unwrap().payout_total, 0);
+}
+
+// =================================================================================================
+// The event ABI — §10 calls it a frozen public interface, and nothing was asserting it
+// =================================================================================================
+
+/// Did this call emit an event whose first topic is `name`?
+///
+/// The whole terminal event set was unasserted until `cargo-mutants` flipped `fee > 0` to
+/// `fee < 0` in both paying branches and nothing noticed — `FeeAccrued` simply stopped being
+/// emitted. That is not a missing test on one line: §10 is a **frozen public ABI**, an integration
+/// scenario reconstructs state from events alone, and a field left out cannot be added later.
+fn emitted(d: &Deployed, name: &str) -> bool {
+    use soroban_sdk::xdr::{ContractEventBody, ScSymbol, ScVal};
+    let wanted = ScVal::Symbol(ScSymbol(name.try_into().unwrap()));
+    d.env.events().all().events().iter().any(|e| {
+        let ContractEventBody::V0(v0) = &e.body;
+        v0.topics.first() == Some(&wanted)
+    })
+}
+
+#[test]
+fn the_settle_branch_emits_settled_the_fee_and_the_bounty_and_nothing_else() {
+    let d = expired_round();
+    let before = d.state();
+    d.client().set_fee_bps(&2_000);
+    d.env.as_contract(&d.vault, || {
+        let mut s = crate::storage::get_state(&d.env).unwrap();
+        s.fee_bps_snapshot = 2_000; // as if the round had opened under it
+        crate::storage::set_state(&d.env, &s);
+    });
+    let spot = before.strike * 2;
+    force(&d, spot, spot, 14);
+
+    let to = Address::generate(&d.env);
+    assert_eq!(d.client().close_round(&to), RoundOutcome::Settled);
+
+    assert!(emitted(&d, "settled"), "settled");
+    // Emitted because the fee is non-zero — and the `> 0` is the predicate, not `>=` or `<`.
+    assert!(emitted(&d, "fee_accrued"), "fee_accrued");
+    assert!(emitted(&d, "settle_bounty"), "settle_bounty");
+}
+
+#[test]
+fn a_zero_fee_emits_no_fee_accrued() {
+    // The other half of `fee > 0`, and the half a `>=` mutation breaks. `fee_bps` ships at 0, so
+    // this is the ordinary case rather than an exotic one: an indexer that saw a `fee_accrued` of
+    // zero on every round would be reconciling against noise.
+    let d = expired_round();
+    let spot = d.state().strike * 2;
+    force(&d, spot, spot, 14);
+    assert_eq!(d.state().fee_bps_snapshot, 0);
+
+    let to = Address::generate(&d.env);
+    assert_eq!(d.client().close_round(&to), RoundOutcome::Settled);
+
+    assert!(emitted(&d, "settled"), "settled");
+    assert!(
+        !emitted(&d, "fee_accrued"),
+        "a zero fee accrues nothing and must announce nothing"
+    );
+}
+
+#[test]
+fn the_void_branch_emits_the_void_and_no_bounty() {
+    // D-51 as an event assertion: the void pays no bounty, so it emits none. Nothing was checking
+    // that the *absence* is real rather than incidental.
+    let d = expired_round();
+    oracle(&d).set_mode(&Mode::ForceUnusable);
+    d.advance(DEAD_AFTER);
+
+    let to = Address::generate(&d.env);
+    assert_eq!(d.client().close_round(&to), RoundOutcome::Voided);
+
+    assert!(emitted(&d, "epoch_voided"), "epoch_voided");
+    assert!(
+        !emitted(&d, "settle_bounty"),
+        "a void has no source for a bounty"
+    );
+    assert!(!emitted(&d, "fee_accrued"), "and accrues no fee");
+}
+
+#[test]
+fn both_unresolved_entrances_emit_the_same_events() {
+    // The event side of "two entrances, one path". The accounting was already asserted equal; the
+    // announcement was not, and an indexer sees only the announcement.
+    for past_fallback in [false, true] {
+        let d = expired_round();
+        if past_fallback {
+            d.advance(UNRESOLVED);
+        } else {
+            oracle(&d).set_mode(&Mode::ForceOutOfReach);
+        }
+        let to = Address::generate(&d.env);
+        assert_eq!(d.client().close_round(&to), RoundOutcome::Unresolved);
+
+        assert!(
+            emitted(&d, "epoch_unresolved"),
+            "past_fallback={past_fallback}"
+        );
+        assert!(
+            emitted(&d, "settle_bounty"),
+            "this branch retains the premium, so it has a source for the bounty"
+        );
+    }
 }

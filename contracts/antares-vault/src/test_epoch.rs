@@ -238,6 +238,46 @@ fn a_pool_below_min_fill_offers_nothing() {
     expect(&d, Error::NothingOffered);
 }
 
+#[test]
+fn a_pool_of_exactly_min_fill_does_open() {
+    // §4 pins this with `locked_assets ≥ min_fill`, and the boundary had no test: the case above
+    // deposits 50 XLM against a 100 XLM floor, which is strictly below and says nothing about the
+    // edge. `cargo-mutants` found it by flipping `<` to `<=`, under which **the smallest viable
+    // vault could never open a round at all** — it would hold exactly enough and be told it had
+    // nothing to offer.
+    let d = deploy();
+    let user = d.user(10_000_0000000);
+    let min_fill = valid_params().min_fill;
+    d.client().deposit(&user, &min_fill);
+    d.advance(GAP);
+    let now = d.env.ledger().timestamp();
+    oracle(&d).fill(&now, &40, &PX);
+    oracle(&d).set_expires(&Some(now + ROUND_SPAN + 1));
+
+    assert_eq!(
+        d.state().locked_assets,
+        min_fill,
+        "exactly the floor, not a stroop more"
+    );
+    assert!(d.client().open_epoch(), "and it opens");
+    assert_eq!(d.state().notional_offered, min_fill);
+}
+
+#[test]
+fn a_pool_one_stroop_under_min_fill_does_not() {
+    // The other side of the same edge, so the pair pins the comparison rather than one direction
+    // of it.
+    let d = deploy();
+    let user = d.user(10_000_0000000);
+    d.client().deposit(&user, &(valid_params().min_fill - 1));
+    d.advance(GAP);
+    let now = d.env.ledger().timestamp();
+    oracle(&d).fill(&now, &40, &PX);
+    oracle(&d).set_expires(&Some(now + ROUND_SPAN + 1));
+
+    expect(&d, Error::NothingOffered);
+}
+
 // =================================================================================================
 // The live guard ladder — O-2, O-3, O-3d, O-10
 // =================================================================================================
