@@ -34,7 +34,8 @@
 use price_source_api::{PriceSourceClient, ReadResult};
 use soroban_sdk::{Address, Env};
 
-use crate::types::VoidReason;
+use crate::errors::Error;
+use crate::types::{EpochParams, VoidReason, BPS};
 
 /// The four ways an anchored read can end, partitioning the branches exhaustively (D-60).
 ///
@@ -220,4 +221,99 @@ pub fn supports_round(
         Ok(Ok(ok)) => ok,
         Ok(Err(_)) | Err(_) => false,
     }
+}
+
+// =================================================================================================
+// The live branch — `open_epoch`'s read
+// =================================================================================================
+
+// In live mode there is nothing to classify: anything but a price is a revert (O-10). The strike
+// must reflect the market at the moment the option is written, and no participant has committed
+// anything yet, so a rejected open costs a retry and nothing else. That asymmetry is why this half
+// keeps the two guards the anchored half drops.
+//
+// Order is §3's: 0, 1, 1b, 2, 3, 4, 5, 6. Step 3 before step 4 is not cosmetic — step 4 divides by
+// `guard_twap`.
+//
+// Step 1c has no live counterpart by construction: live mode *establishes* the scale that anchored
+// mode later checks against, so the returned `feed_decimals` is the value `open_epoch` snapshots.
+/// The live guarded read, for `open_epoch`. Returns `(twap, feed_decimals)`; reverts on any guard.
+pub fn live_reading(
+    env: &Env,
+    oracle: &Address,
+    params: &EpochParams,
+    last_settled_spot: i128,
+) -> Result<(i128, u32), Error> {
+    // outbound: config.oracle
+    let client = PriceSourceClient::new(env, oracle);
+
+    // Step 0. `anchor = 0` means "ending now".
+    let reading = match client.try_reading(&0, &params.twap_window, &params.guard_window) {
+        Ok(Ok(value)) => value,
+        Ok(Err(_)) | Err(_) => return Err(Error::OracleUnreachable),
+    };
+
+    let reading = match reading {
+        // Step 1. Not enough settlement-grade records right now. An artifact or a gap leaves the
+        // short window within `twap_window`, so this is a retry rather than a failure.
+        ReadResult::Unusable => return Err(Error::OracleStale),
+        // Step 1b. Unreachable at `anchor = 0` — `end` is `now` snapped to a tick, so `now − end`
+        // is under one tick and cannot exceed `reach_limit`. It is mapped rather than left to a
+        // wildcard, and mapped to `OracleUnreachable` because if it ever does fire it is a
+        // statement about the feed's live grid, not about any window. 04-ORACLE §3 does not
+        // enumerate it; recording the choice here rather than leaving it ambiguous.
+        ReadResult::OutOfReach => return Err(Error::OracleUnreachable),
+        ReadResult::Reading(r) => r,
+    };
+
+    // Step 2, live only. The one guard the anchored branch cannot have: against frozen history
+    // `anchor − newest_ts` would underflow, since records after expiry exist by construction.
+    if env.ledger().timestamp().saturating_sub(reading.newest_ts) > params.max_staleness {
+        return Err(Error::OracleStale);
+    }
+
+    // Step 3, unconditional and before step 4's division. A zero here would set `strike = 0`,
+    // which rejects every bid as in-the-money forever and divides by zero at settlement.
+    if reading.short_twap <= 0 || reading.guard_twap <= 0 {
+        return Err(Error::OracleInvalidPrice);
+    }
+
+    // Step 4, live only, and it triggers on feed malfunction rather than on a real market (D-25).
+    // A single-tick artifact skews the short window hard and the long one barely; a genuine trend
+    // moves both together. Comparing short against long *at the same moment* is what makes that
+    // distinction — a cross-epoch comparison would wedge on a legitimate sustained move and void a
+    // valid round, confiscating a bidder's earned payout.
+    //
+    // It fires only here. At close the medians already carry the artifact resistance and a frozen
+    // window cannot recover from a rejection (D-42), so a breaker there could only ever turn a
+    // settleable round into a void.
+    let gap = reading.short_twap.saturating_sub(reading.guard_twap).abs();
+    let Some(scaled) = gap.checked_mul(BPS) else {
+        return Err(Error::OracleInvalidPrice);
+    };
+    let Some(deviation) = scaled.checked_div(reading.guard_twap) else {
+        return Err(Error::OracleInvalidPrice);
+    };
+    if deviation > i128::from(params.max_deviation_bps) {
+        return Err(Error::OracleDeviation);
+    }
+
+    // Step 5, mode-independent, and skipped on round 1 where there is nothing to compare against
+    // (O-8 asserts the skip; it is not a rejecting test and the phase gate's "every guard rejects"
+    // clause does not reach it).
+    if last_settled_spot > 0 {
+        let (Some(low), Some(high)) = (
+            last_settled_spot.checked_div(100),
+            last_settled_spot.checked_mul(100),
+        ) else {
+            return Err(Error::OracleInvalidPrice);
+        };
+        if reading.short_twap < low || reading.short_twap > high {
+            return Err(Error::OracleInvalidPrice);
+        }
+    }
+
+    // Step 6. The scale travels with the price: `open_epoch` stores it, and the close compares
+    // against it (D-68).
+    Ok((reading.short_twap, reading.feed_decimals))
 }

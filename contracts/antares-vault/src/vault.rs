@@ -474,7 +474,7 @@ pub fn lazy_finalize(env: &Env, state: &mut State, rent: Rent) -> Result<bool, E
 // under rounding (D-20, §6). The checked operations are not redundant with the
 // profile's `overflow-checks`: §8's bounds are proofs about the inputs, and a
 // checked op is what turns a violated proof into a revert rather than a wrap.
-fn mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+pub(crate) fn mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     a.checked_mul(b)
         .and_then(|p| p.checked_div(d))
         .ok_or(Error::InvalidAmount)
