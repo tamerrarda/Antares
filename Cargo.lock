@@ -33,6 +33,8 @@ dependencies = [
 name = "antares-vault"
 version = "0.1.0"
 dependencies = [
+ "mock-price-source",
+ "price-source-api",
  "soroban-sdk",
 ]
 

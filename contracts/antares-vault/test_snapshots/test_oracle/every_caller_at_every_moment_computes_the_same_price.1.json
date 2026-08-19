@@ -1,0 +1,547 @@
+{
+  "generators": {
+    "address": 2,
+    "nonce": 0,
+    "mux_id": 0
+  },
+  "auth": [
+    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "function_name": "set_resolution",
+              "args": [
+                {
+                  "u32": 300
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "function_name": "fill",
+              "args": [
+                {
+                  "u64": "1786999800"
+                },
+                {
+                  "u32": 20
+                },
+                {
+                  "i128": "16000000000000"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [],
+    [],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 27,
+    "sequence_number": 0,
+    "timestamp": 1787039800,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "ledger_key_nonce": {
+                  "nonce": "801925984706572462"
+                }
+              },
+              "durability": "temporary",
+              "val": "void"
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "ledger_key_nonce": {
+                  "nonce": "5541220902715666415"
+                }
+              },
+              "durability": "temporary",
+              "val": "void"
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Admin"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Collapse"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 4294967295
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Decimals"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 14
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Expires"
+                          }
+                        ]
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Mode"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "Normal"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Records"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "map": [
+                          {
+                            "key": {
+                              "u64": "1786994100"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786994100"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786994400"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786994400"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786994700"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786994700"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786995000"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786995000"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786995300"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786995300"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786995600"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786995600"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786995900"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786995900"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786996200"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786996200"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786996500"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786996500"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786996800"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786996800"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786997100"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786997100"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786997400"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786997400"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786997700"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786997700"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786998000"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786998000"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786998300"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786998300"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786998600"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786998600"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786998900"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786998900"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786999200"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786999200"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786999500"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786999500"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "u64": "1786999800"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "i128": "16000000000000"
+                                },
+                                {
+                                  "u64": "1786999800"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Resolution"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 300
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Trap"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_code": {
+              "ext": "v0",
+              "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "code": ""
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      }
+    ]
+  },
+  "events": []
+}

@@ -14,6 +14,14 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# The PriceSource trait and the generated client. Pinned rather than a bare path: a bare `path`
+# carries an implicit `*` and deny.toml refuses wildcards, since D-23 pins exact versions and
+# D-50's gate is stated against a byte. Added by DEV2 with `oracle.rs`, in DEV1's manifest and
+# flagged in STANDUP rather than landed quietly — the vault needs it for its own constructor too,
+# which calls supports_round.
+price-source-api = { path = "../price-source-api", version = "0.1.0" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Every oracle failure mode is forced through the mock rather than waited for (04-ORACLE §6).
+mock-price-source = { path = "../mock-price-source", version = "0.1.0" }
