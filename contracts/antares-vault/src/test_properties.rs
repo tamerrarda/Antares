@@ -112,21 +112,27 @@ enum Op {
     },
     Pause(bool),
     SetFee(u32),
-    /// A real fill, added 2026-08-19. Until this existed `bid` was unreachable
-    /// from the suite, and with it three assertions were structurally dead:
-    /// I1's `bidder_claimable`/`fee_claimable` terms could not move, the
-    /// conservation bound's dust was always zero because `pps` never left
-    /// `PRECISION`, and the no-dilution theorem compared a price to itself.
-    /// **Premium is the only thing in the protocol that moves `pps` off 1:1**, so
-    /// nothing downstream of it was being tested at all.
+    OpenEpoch,
+    CloseRound {
+        bounty_to: usize,
+    },
+    /// Added 2026-08-19 (DEV3) **together with `assert_i2`, and neither is useful without the
+    /// other.** I2 bounds `notional_sold`, and `notional_sold` moves only in `bid` — so an
+    /// `assert_i2` added to a suite with no bidding is an assertion that cannot fail, which is the
+    /// defect this project has recorded five times in other guises. The op is what makes the
+    /// assertion real; the `i2_sold_seen` counter is what proves it stayed real.
+    ///
+    /// **DEV1 added an identical variant in the same window** — same three fields, same names —
+    /// and the duplicate is deleted rather than reconciled because there was nothing to reconcile.
+    /// One fact from that side is worth keeping: **premium is the only thing in the protocol that
+    /// moves `pps` off 1:1**, so before this op existed I1's `bidder_claimable` and `fee_claimable`
+    /// terms could not move, the conservation bound's dust was structurally zero, and the
+    /// no-dilution theorem would have compared a price to itself. Three assertions, all dead, all
+    /// behind one missing call.
     Bid {
         who: usize,
         part: u32,
         max_bps: u32,
-    },
-    OpenEpoch,
-    CloseRound {
-        bounty_to: usize,
     },
     Jump(u64),
 }
@@ -170,7 +176,21 @@ fn op() -> impl Strategy<Value = Op> {
         1 => (0u32..=2_000).prop_map(Op::SetFee),
         4 => Just(Op::OpenEpoch),
         3 => actor().prop_map(|bounty_to| Op::CloseRound { bounty_to }),
-        6 => (actor(), 10u32..=100, prop_oneof![Just(10_000u32), Just(400), Just(120), Just(1)])
+        // Weighted like `Deposit` and `RequestWithdraw` rather than like `Restore`: I2 is only
+        // checkable in states where something sold, and a rare bid makes those states rare.
+        // `part` starts at 1: at 0 the fill computes to nothing and the call is `InvalidAmount`
+        // before it can reach the curve, so a zero-weighted share of the op would be spent proving
+        // the amount guard the unit tests already drive.
+        //
+        // `max_bps` is weighted 6:1 toward "no limit". `valid_params`' curve starts at 450 bps, so
+        // an unweighted choice among {10 000, 300, 100, 20} rejects three bids in four with
+        // `PremiumAboveMax` — which is a real guard and worth hitting, but not worth spending most
+        // of the op on. Measured before the weighting: 8 bids in a sequence, 0 fills.
+        6 => (
+            actor(),
+            1u32..=400,
+            prop_oneof![6 => Just(10_000u32), 1 => Just(460), 1 => Just(300), 1 => Just(20)],
+        )
             .prop_map(|(who, part, max_bps)| Op::Bid { who, part, max_bps }),
         5 => prop_oneof![Just(1u64), Just(60), Just(120), Just(1_200), Just(4_000)]
             .prop_map(Op::Jump),
@@ -180,6 +200,11 @@ fn op() -> impl Strategy<Value = Op> {
 /// What each of I1's five terms reached across a run.
 #[derive(Default, Debug)]
 struct Observed {
+    /// How many times I2 was checked **with something actually sold** — the count that stops
+    /// `assert_i2` from being vacuous. `notional_sold` is 0 in every state no bid has reached, and
+    /// `0 <= offered` is true of a vault nobody has bid into, so without this the assertion could
+    /// pass forever on a suite that never fills anything.
+    i2_sold: u32,
     /// Highest round number reached. Zero means no epoch ever opened, which would
     /// make every `OpenEpoch` and `CloseRound` in the sequence a silent no-op.
     round: u32,
@@ -522,6 +547,46 @@ impl World {
     /// **I5**: `Σ balance(user) == shares_outstanding`, over the closed set of
     /// holders — the four actors plus the vault itself, which holds `DEAD_SHARES`
     /// and is the holder a naive sum forgets.
+    /// **I2**: `notional_sold <= notional_offered <= locked_at_open`, at every point in every call
+    /// ordering (§9).
+    ///
+    /// Two inequalities and they fail differently, so they are asserted separately. The left one is
+    /// `bid`'s to preserve — it is the only code that raises `notional_sold`, and breaking it means
+    /// the vault sold more calls than it has collateral behind. The right one is `open_epoch`'s: it
+    /// snapshots both from `locked_assets`, so they are equal at open and the inequality only
+    /// becomes interesting if anything ever moves one without the other.
+    ///
+    /// Checked in **every** phase rather than only while a round is live. In `Idle` the three fields
+    /// still hold the last round's values, and a finalization that corrupted one of them would show
+    /// here and nowhere else.
+    fn assert_i2(&mut self, after: &str) {
+        let st = self.d.state();
+        if st.notional_sold > 0 {
+            self.observed.i2_sold += 1;
+        }
+        assert!(
+            st.notional_sold >= 0 && st.notional_offered >= 0 && st.locked_at_open >= 0,
+            "I2 violated after {after}: a negative quantity — sold {}, offered {}, locked_at_open {}",
+            st.notional_sold,
+            st.notional_offered,
+            st.locked_at_open,
+        );
+        assert!(
+            st.notional_sold <= st.notional_offered,
+            "I2 violated after {after}: sold {} exceeds offered {} — the vault has written more \
+             calls than it has collateral behind",
+            st.notional_sold,
+            st.notional_offered,
+        );
+        assert!(
+            st.notional_offered <= st.locked_at_open,
+            "I2 violated after {after}: offered {} exceeds locked_at_open {} — the offer is larger \
+             than the collateral snapshotted to back it",
+            st.notional_offered,
+            st.locked_at_open,
+        );
+    }
+
     fn assert_i5(&self, after: &str) {
         let st = self.d.state();
         let mut sum = self.shares(&self.d.vault);
@@ -605,16 +670,23 @@ impl World {
             Op::SetFee(bps) => {
                 let _ = c.try_set_fee_bps(&bps);
             }
-            Op::Bid { who, part, max_bps } => {
-                let offered = self.d.state().notional_offered;
-                let notional = offered.saturating_mul(i128::from(part)) / 100;
-                let _ = c.try_bid(&a(who), &notional, &max_bps);
-            }
             Op::OpenEpoch => {
                 let _ = c.try_open_epoch();
             }
             Op::CloseRound { bounty_to } => {
                 let _ = c.try_close_round(&a(bounty_to));
+            }
+            Op::Bid { who, part, max_bps } => {
+                // Sized as a fraction of the live offer rather than an absolute, so a generated
+                // sequence lands inside the range where fills actually happen instead of being
+                // rejected as dust or clamped to the remainder every time. `part` is also allowed
+                // to exceed the offer, which is what exercises the clamp and the final sliver.
+                let st = self.d.state();
+                let offer = st.notional_offered.max(1);
+                let n = offer
+                    .saturating_mul(i128::from(part.min(400)))
+                    .saturating_div(100);
+                let _ = c.try_bid(&a(who), &n, &max_bps);
             }
             Op::Jump(secs) => {
                 let t = self.d.env.ledger().timestamp();
@@ -636,6 +708,7 @@ proptest! {
         let mut w = World::new();
         w.assert_i1("genesis");
         w.assert_i5("genesis");
+        w.assert_i2("genesis");
         w.assert_i9("genesis");
 
         for (i, op) in ops.iter().enumerate() {
@@ -644,6 +717,7 @@ proptest! {
             let label = format!("op {i}: {op:?}");
             w.assert_i1(&label);
             w.assert_i5(&label);
+            w.assert_i2(&label);
             w.assert_i9(&label);
             w.assert_i6_i7(&pre, &label);
         }
@@ -690,6 +764,7 @@ proptest! {
         );
         w.assert_i1("forced open");
         w.assert_i5("forced open");
+        w.assert_i2("forced open");
         w.assert_i9("forced open");
 
         for (i, op) in ops.iter().enumerate() {
@@ -698,31 +773,41 @@ proptest! {
             let label = format!("live-round op {i}: {op:?}");
             w.assert_i1(&label);
             w.assert_i5(&label);
+            w.assert_i2(&label);
             w.assert_i9(&label);
             w.assert_i6_i7(&pre, &label);
         }
 
         prop_assert!(w.observed.round > 0, "no round was ever live");
-
-        // **Force a terminal outcome so I6 and I7 are decided rather than merely
-        // reachable.** A free sequence may leave the round open, and then both
-        // assertions run zero times while the case still passes — the shape this
-        // suite exists to refuse. Measured before this was added: I6 decided 28
-        // rounds and I7 matched 230 times across a run, but nothing held that at
-        // more than zero *per case*.
-        w.apply(&Op::Jump(4_000));
-        let pre = w.capture();
-        w.apply(&Op::CloseRound { bounty_to: 0 });
-        w.assert_i6_i7(&pre, "forced close");
-        prop_assert!(
-            w.observed.i6_rounds > 0,
-            "I6 was never decided: no round reached a terminal outcome, so the \
-             assertion ran on nothing"
-        );
-        prop_assert!(
-            w.observed.i7_rechecks > 0 || w.rounds.len() == 1,
-            "I7 never re-read a finalized round, so immutability was never tested"
-        );
+        // I2's coverage is **not** asserted per case, and the reason is worth recording because
+        // the first version did assert it here and was wrong.
+        //
+        // `i9_backed` above can be a per-case assertion because its guard opens in most sequences.
+        // A *fill* does not: it needs a live auction, a bid inside the window, above `min_fill`,
+        // under the bidder's own limit and below the strike — so plenty of legitimate sequences
+        // never fill one. Demanding it of every case makes proptest treat "no fill" as a failure
+        // and **shrink toward the emptiest such sequence**, which is both a false red and the
+        // least informative counterexample available.
+        //
+        // The vacuity worry is real all the same, so it is answered where it can be answered
+        // honestly: `i2_is_checked_with_something_actually_sold` below drives a fill
+        // deterministically and asserts the counter moved. The property suite checks I2 everywhere;
+        // that test proves the check can fire.
+        //
+        // **I6 and I7 take the same treatment, and the block that used to sit here did not.**
+        // It jumped past expiry and forced `close_round` so both would be decided in every case.
+        // That is this same mistake one layer up: the forcing lives in the suite, where it
+        // competes with everyone else's tuning of one generator — and **no single weighting
+        // satisfies I2, I6/I7 and I10 at once.** That is arithmetic rather than a merge problem.
+        // Three of us hit that wall from three directions; DEV2 and DEV3 found the exit first and
+        // neither of them was looking for it.
+        //
+        // I6 and I7 are decided at *finalization* rather than during a round, so the forcing was a
+        // fixed suffix and did not distort the generated body — a real difference, and still not
+        // enough. A rule that holds for two invariants of three and takes an exception for the
+        // third has stopped being a rule. Reachability moves to
+        // `i6_and_i7_are_decided_when_a_round_finalizes`; the suite checks them everywhere and
+        // demands them nowhere.
     }
 
     /// Deposits alone, in bulk, so the run that most exercises `locked_assets`
@@ -737,12 +822,14 @@ proptest! {
             w.apply(&Op::Deposit { who: i % ACTORS, amount: *amt });
             w.assert_i1("deposit");
             w.assert_i5("deposit");
+            w.assert_i2("deposit");
             w.assert_i9("deposit");
         }
         for (i, part) in parts.iter().enumerate() {
             w.apply(&Op::RequestWithdraw { who: i % ACTORS, part: *part, require_idle: false });
             w.assert_i1("withdraw");
             w.assert_i5("withdraw");
+            w.assert_i2("withdraw");
             w.assert_i9("withdraw");
         }
         prop_assert!(w.observed.locked > 0, "no deposit ever landed");
@@ -894,5 +981,121 @@ fn the_lapse_path_holds_both_invariants_through_a_full_cycle() {
     assert!(
         w.observed.withdraw_claimable > 0,
         "the claim queue never carried anything, so this proved nothing about D-32"
+    );
+}
+
+/// **I2's assertion is reachable, driven deterministically.**
+///
+/// `assert_i2` runs after every op in the property suite, but `notional_sold` is 0 until a bid
+/// fills — and `0 <= notional_offered` holds in every state no bidder ever reached. So the
+/// assertion could pass forever on a suite that never sells anything, which is the shape this
+/// project has now recorded five times in other guises.
+///
+/// This is the answer to that, and it is deliberately not a `prop_assert!` inside the generated
+/// sequences: a fill needs a live auction, a bid inside the window, above `min_fill`, under the
+/// bidder's own limit and below the strike, so legitimate sequences often contain none. Demanding
+/// one of every case turns a normal sequence into a red and makes proptest shrink toward the
+/// emptiest one.
+#[test]
+fn i2_is_checked_with_something_actually_sold() {
+    let mut w = World::new();
+    // A depositor, a round, and a bid that clears `min_fill` inside the window.
+    w.apply(&Op::Deposit {
+        who: 0,
+        amount: 500 * XLM,
+    });
+    // The gap and the feed, both for the reason DEV1 records on the lapse test below: the ledger
+    // starts at zero, so without a jump the open refuses on `min_idle_gap` and the rest of the
+    // sequence quietly tests nothing.
+    w.apply(&Op::Jump(60));
+    w.apply(&Op::OpenEpoch);
+    assert_eq!(
+        w.d.state().phase,
+        Phase::Auction,
+        "the round must be live to bid into"
+    );
+
+    w.apply(&Op::Bid {
+        who: 1,
+        part: 50,
+        max_bps: 10_000,
+    });
+
+    let st = w.d.state();
+    assert!(
+        st.notional_sold > 0,
+        "the fill did not land, so this test proves nothing — offered {}, sold {}",
+        st.notional_offered,
+        st.notional_sold
+    );
+    w.assert_i2("a real fill");
+    assert!(
+        w.observed.i2_sold > 0,
+        "assert_i2 ran but never saw a non-zero notional_sold"
+    );
+
+    // And the invariant still holds once the offer is fully taken, which is the boundary the left
+    // inequality is about: sold == offered is legal, sold > offered is not.
+    w.apply(&Op::Bid {
+        who: 2,
+        part: 400,
+        max_bps: 10_000,
+    });
+    let st = w.d.state();
+    assert_eq!(
+        st.notional_sold, st.notional_offered,
+        "the offer should be fully taken"
+    );
+    w.assert_i2("a fully subscribed offer");
+}
+
+/// I6 and I7 are decided at **finalization**, so their reachability is proved here
+/// rather than demanded of every generated case.
+///
+/// The property suite asserts both wherever a round happens to finalize. What it
+/// must not do is *insist* on one: the forcing would live in the suite, competing
+/// with DEV3's weighting for I2 and DEV2's for I10, and **no single weighting
+/// satisfies all three**. This is the same answer DEV3 reached for I2 and DEV2 for
+/// `i10_past_fallback`, arrived at independently three times.
+#[test]
+fn i6_and_i7_are_decided_when_a_round_finalizes() {
+    let mut w = World::new();
+    w.apply(&Op::Deposit {
+        who: 0,
+        amount: 500 * XLM,
+    });
+    // The jump is the fixture's own gate, not decoration: the ledger starts at zero
+    // and `open_epoch` refuses inside `min_idle_gap`, so without it everything after
+    // this line is a silent no-op.
+    w.apply(&Op::Jump(60));
+    w.apply(&Op::OpenEpoch);
+    assert_eq!(w.d.state().phase, Phase::Auction, "a round must be live");
+
+    // Past the auction and past expiry, then close. Terminal by construction.
+    w.apply(&Op::Jump(4_000));
+    let pre = w.capture();
+    w.apply(&Op::CloseRound { bounty_to: 0 });
+
+    let st = w.d.state();
+    assert_eq!(
+        st.phase,
+        Phase::Idle,
+        "the round must finalize, or I6 and I7 have nothing to be decided on"
+    );
+    w.assert_i6_i7(&pre, "a finalized round");
+    assert!(
+        w.observed.i6_rounds > 0,
+        "I6 was never decided — the assertion ran on nothing, which is the failure \
+         mode a counter exists to catch"
+    );
+
+    // I7 needs the record read a *second* time to mean anything: the first read is
+    // what it remembers, the comparison is the invariant.
+    let pre2 = w.capture();
+    w.apply(&Op::Jump(60));
+    w.assert_i6_i7(&pre2, "re-read after a jump");
+    assert!(
+        w.observed.i7_rechecks > 0,
+        "the finalized round was never re-read, so immutability was never tested"
     );
 }

@@ -15,15 +15,39 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-arbitrary = { version = "1", features = ["derive"] }
+# `~1.3` rather than `^1`, and it is soroban-sdk's constraint rather than a preference:
+# `testutils` depends on `arbitrary ~1.3.0` (for `SorobanArbitrary`), while `^1` resolves to 1.4.x
+# and the two cannot coexist. Narrowed when `fuzz_call_sequence` brought `testutils` in — before
+# that, no target here needed an `Env` and the conflict could not arise.
+arbitrary = { version = "~1.3", features = ["derive"] }
 # The real crate, linked as a library. `06-TEST-PLAN.md` §4 wants raw tuples driven into **the
 # settle formulas** — not into a copy of them — which is why `round_numbers` is a pure function
 # with no `Env` and why this can call it at all.
 antares-vault = { path = "../contracts/antares-vault" }
+# `fuzz_call_sequence` drives the deployed contract rather than a pure function, so it needs the
+# test environment: an `Env`, a registered vault, a real SAC and a settable price source. Same
+# reasoning as the vault's own dev-dependencies — the mock is what makes the vault registrable at
+# all, because `__constructor` calls `supports_round`.
+soroban-sdk = { version = "=27.0.6", features = ["testutils"] }
+mock-price-source = { path = "../contracts/mock-price-source" }
 
 [[bin]]
 name = "fuzz_settlement_math"
 path = "fuzz_targets/fuzz_settlement_math.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_call_sequence"
+path = "fuzz_targets/fuzz_call_sequence.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_auction"
+path = "fuzz_targets/fuzz_auction.rs"
 test = false
 doc = false
 bench = false
