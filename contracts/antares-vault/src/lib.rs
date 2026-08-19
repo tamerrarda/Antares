@@ -14,6 +14,7 @@
 use soroban_sdk::{contract, contractimpl};
 
 pub mod admin;
+pub mod auction;
 pub mod errors;
 pub mod events;
 pub mod storage;
@@ -27,6 +28,9 @@ mod test_accounting;
 
 #[cfg(test)]
 mod test_admin;
+
+#[cfg(test)]
+mod test_auction;
 
 #[cfg(test)]
 mod test_common;

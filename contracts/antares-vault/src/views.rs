@@ -18,6 +18,7 @@
 
 use soroban_sdk::{contractimpl, Address, Env};
 
+use crate::auction;
 use crate::errors::Error;
 use crate::storage;
 use crate::types::{
@@ -109,13 +110,27 @@ impl AntaresVault {
             notional_offered: state.notional_offered,
             notional_sold: state.notional_sold,
             premium_collected: state.premium_collected,
-            // Phase 3. The field is wired to DEV3's decay curve when `auction.rs`
-            // merges; it is **not** reimplemented here, because a second copy of
-            // the curve would be diffed by nothing — `curve_ref.py` mirrors
-            // `auction.rs`, so a duplicate living here sits outside every layer
-            // that would catch it drifting. It is 0 outside the auction window
-            // in any case, which is what this returns until then.
-            current_premium_bps: 0,
+            // Wired to the curve, 2026-08-19 (DEV3), when `auction.rs` landed.
+            //
+            // **A call, never a copy** — the reason DEV1 left this at 0 rather
+            // than reimplementing it: a second copy of the curve would be diffed
+            // by nothing, since `curve_ref.py` mirrors `auction.rs`, so a
+            // duplicate here sits outside every layer that would catch it
+            // drifting. Note what that means for the test that pins this field:
+            // asserting `current_premium_bps == curve(now)` **cannot** tell a call
+            // from an identical copy — both agree on day one and diverge only
+            // later — and the mutation gate cannot either, because mutating a
+            // duplicate breaks this view's own test and so counts as covered.
+            // Only reading the code catches it. Hence the structural rule that
+            // goes with the equality: **`views.rs` performs no arithmetic on
+            // `premium_start_bps` or `premium_floor_bps`.** It performs none.
+            //
+            // `state` is passed with its **stored** phase, not the effective one
+            // computed above, and the two cannot disagree here: a stored
+            // `Auction` past `auction_end` is exactly the case the curve already
+            // answers 0 for on the window test, so lazy finalization does not
+            // need to be modelled twice.
+            current_premium_bps: auction::premium_bps(&state, env.ledger().timestamp()),
             locked_assets: state.locked_assets,
             shares_outstanding: state.shares_outstanding,
             last_pps: state.last_pps,

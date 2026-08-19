@@ -67,8 +67,28 @@ pub struct Deployed {
 /// `supports_round`, which is why 00-ROADMAP calls the `PriceSource` mock the
 /// first line of code in the project rather than a testing convenience.
 pub fn deploy() -> Deployed {
+    deploy_at(0, 0)
+}
+
+/// The same deployment at a chosen ledger time and `allowlist_expires_at`.
+///
+/// Added 2026-08-19 (DEV3), **additively**: `deploy()` passes `(0, 0)`, which is
+/// byte-for-byte what it did before, so no existing call site moves and no
+/// committed snapshot changes.
+///
+/// Two arguments, because `bid`'s tests need both and neither is reachable
+/// otherwise. `allowlist_expires_at` has **no setter** (D-63), so a constructor
+/// argument is the only way to reach a live allowlist — and the constructor caps it
+/// at `now + 30 days`, so the clock has to be set *before* registration rather
+/// than after. `now` also has to be non-zero for any oracle-reading test: the mock
+/// reports `last_timestamp() == 0` both for "no records" and for "a record stamped
+/// at 0", so a price written at time 0 reads as an absent feed.
+pub fn deploy_at(now: u64, allowlist_expires_at: u64) -> Deployed {
     let env = Env::default();
     env.mock_all_auths();
+    if now != 0 {
+        env.ledger().set_timestamp(now);
+    }
 
     let admin = Address::generate(&env);
     let fee_recipient = Address::generate(&env);
@@ -93,7 +113,7 @@ pub fn deploy() -> Deployed {
             CAP,
             RENT_THRESHOLD,
             RENT_EXTEND_TO,
-            0u64,
+            allowlist_expires_at,
         ),
     );
 
