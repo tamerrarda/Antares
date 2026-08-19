@@ -39,12 +39,12 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 pub mod reflector;
 use reflector::{Asset, ReflectorClient};
 
+// Feed: the Reflector contract, pinned at construction, no setter — see the module docs.
+// Asset: the symbol on that feed. XLM is `Other("XLM")`, verified live (D-48).
 #[contracttype]
 #[derive(Clone)]
 enum Key {
-    /// The Reflector contract, pinned at construction. No setter — see the module docs.
     Feed,
-    /// The asset symbol on that feed. XLM is `Other("XLM")`, verified live (D-48).
     Asset,
 }
 
@@ -57,16 +57,15 @@ pub struct ReflectorAdapter;
 
 #[contractimpl]
 impl ReflectorAdapter {
-    /// Pins the feed and the asset. There is no second call and no way to change either.
-    ///
-    /// **Feed selection is a security requirement, not plumbing (D-30).** The address handed in
-    /// here must be Reflector's *external CEX & DEX* feed — prices aggregated from deep off-chain
-    /// markets — and never an SDEX-sourced one. The 2026-02 YieldBlox exploit was exactly a
-    /// correctly-functioning oracle reading a manipulable thin on-chain market: one trade, 100×
-    /// price, $10 M gone. Global XLM/USD cannot be moved by a trade anyone can afford for the
-    /// premium at stake here. Which address that is cannot be checked from inside a contract, so
-    /// the deploy script asserts the pinned feed's identity — base asset and asset list — before
-    /// any epoch opens (`09-DEPLOYMENT.md` §2 step 2).
+    // Feed selection is a security requirement, not plumbing (D-30). The address handed in here
+    // must be Reflector's *external CEX & DEX* feed — prices aggregated from deep off-chain
+    // markets — and never an SDEX-sourced one. The 2026-02 YieldBlox exploit was exactly a
+    // correctly-functioning oracle reading a manipulable thin on-chain market: one trade, 100×
+    // price, $10 M gone. Global XLM/USD cannot be moved by a trade anyone can afford for the
+    // premium at stake here. Which address that is cannot be checked from inside a contract, so
+    // the deploy script asserts the pinned feed's identity — base asset and asset list — before
+    // any epoch opens (`09-DEPLOYMENT.md` §2 step 2).
+    /// Pins the Reflector feed and the asset symbol. There is no setter: neither can ever change.
     pub fn __constructor(env: Env, feed: Address, asset: Symbol) {
         env.storage().instance().set(&Key::Feed, &feed);
         env.storage().instance().set(&Key::Asset, &asset);
@@ -146,26 +145,26 @@ impl ReflectorAdapter {
 
 #[contractimpl(contracttrait)]
 impl PriceSource for ReflectorAdapter {
-    /// The anchored read: seven point queries on a grid derived from the live resolution, filtered,
-    /// normalized, and reduced to two medians over odd sample sets.
-    ///
-    /// The outcomes are not interchangeable, and misfiling one is a transfer of money
-    /// (`04-ORACLE.md` §2's routing rule):
-    ///
-    /// * `Ok(Reading)` — settlement-grade.
-    /// * `Ok(Unusable)` — about the **records inside the window**. Routes to the void branch: the
-    ///   bidder is refunded in full and depositors gain nothing.
-    /// * `Ok(OutOfReach)` — about the **anchor being older than the feed can serve**. Routes to
-    ///   unresolved: depositors keep the premium, the bidder gets nothing.
-    /// * `Err(_)` — about the **feed's live configuration or reachability**, i.e. about *this
-    ///   ledger*. Routes to `Transient`: nothing terminates, anyone retries, and the round still
-    ///   settles once the fault clears.
-    ///
-    /// The last row is the one that keeps being misfiled, because it *feels* like a dead feed. It
-    /// is not: the records are intact and only our ability to derive a grid over them has lapsed. A
-    /// feed that re-times itself can re-time itself back, and classifying that as `Unusable`
-    /// annuls a round and hands an out-of-the-money bidder his whole premium on a healthy feed —
-    /// the incentive D-59 exists to destroy.
+    // The outcomes are not interchangeable, and misfiling one is a transfer of money
+    // (`04-ORACLE.md` §2's routing rule):
+    //
+    //   Ok(Reading)    settlement-grade
+    //   Ok(Unusable)   about the RECORDS INSIDE THE WINDOW -> void: bidder refunded in full,
+    //                  depositors gain nothing
+    //   Ok(OutOfReach) about the ANCHOR being older than the feed can serve -> unresolved:
+    //                  depositors keep the premium, the bidder gets nothing
+    //   Err(_)         about the feed's LIVE CONFIG OR REACHABILITY, i.e. about this ledger ->
+    //                  Transient: nothing terminates, anyone retries, the round still settles
+    //                  once the fault clears
+    //
+    // The last row is the one that keeps being misfiled, because it *feels* like a dead feed. It
+    // is not: the records are intact and only our ability to derive a grid over them has lapsed. A
+    // feed that re-times itself can re-time itself back, and classifying that as `Unusable` annuls
+    // a round and hands an out-of-the-money bidder his whole premium on a healthy feed — the
+    // incentive D-59 exists to destroy.
+    /// Seven point queries on a grid derived from the feed's live resolution, reduced to two
+    /// medians. Costs roughly 12 M CPU instructions, and that cost does not vary with the age
+    /// of the anchor.
     fn reading(
         env: Env,
         anchor: u64,
@@ -222,14 +221,12 @@ impl PriceSource for ReflectorAdapter {
         api::fold(end, &points, &samples, short_window, guard_window, decimals)
     }
 
-    /// The freshest tick, for the in-the-money bid guard (D-29). Cheap and **not**
-    /// settlement-grade — it guards bids only, and settlement never touches it.
-    ///
-    /// The asymmetry with `reading` is deliberate: a bid wrongly rejected costs an epoch's premium
-    /// at most and a lapsed epoch is free, while a settlement needs the full TWAP and breaker
-    /// machinery. Every failure here is simply `None`, which the vault routes to
-    /// `OracleUnreachable` — never to `InTheMoney`, because the keeper counts those two separately
-    /// and only genuine no-bid epochs advance the stop gate.
+    // The asymmetry with `reading` is deliberate: a bid wrongly rejected costs an epoch's premium
+    // at most and a lapsed epoch is free, while a settlement needs the full TWAP and breaker
+    // machinery. Every failure here is simply `None`, which the vault routes to
+    // `OracleUnreachable` — never to `InTheMoney`, because the keeper counts those two separately
+    // and only genuine no-bid epochs advance the stop gate.
+    /// One `lastprice` call. Cheap, and not settlement-grade.
     fn spot_check(env: Env, max_staleness: u64, expected_decimals: u32) -> Option<i128> {
         ReflectorAdapter::pay_rent(&env);
 
@@ -263,17 +260,15 @@ impl PriceSource for ReflectorAdapter {
         api::normalize(record.price, decimals).filter(|px| *px > 0)
     }
 
-    /// Can this feed honour this round's timing? The vault learns yes or no and nothing else.
-    ///
-    /// It never sees `resolution()`, the reach limit, the expiry timestamp, the Reflector address
-    /// or the `Asset` variant — that is the seam D-58 opened and D-64 kept closed, and it is why
-    /// this question lives in the adapter at all. The eight conditions themselves belong to
-    /// `price-source-api` and are evaluated by the same function the mock calls, so the matrix that
-    /// drives them to `false` through the mock is testing the code that ships here.
-    ///
-    /// **Returns `false` on any fault, never a panic.** Every arithmetic step inside is checked and
-    /// an unreadable feed config is a `false` rather than a trap escaping the vault's constructor.
-    /// The vault wraps this call as well, which is belt and braces on purpose.
+    // The vault never sees `resolution()`, the reach limit, the expiry timestamp, the Reflector
+    // address or the `Asset` variant — that is the seam D-58 opened and D-64 kept closed, and it
+    // is why this question lives in the adapter at all. The eight conditions belong to
+    // `price-source-api` and are evaluated by the same function the mock calls, so the matrix that
+    // drives them to `false` through the mock is testing the code that ships here. Every
+    // arithmetic step inside is checked; an unreadable feed config is a `false` rather than a trap
+    // escaping the vault's constructor. The vault wraps this call as well, on purpose.
+    /// Answers yes or no for this round's timing against the live feed. Returns `false` on any
+    /// fault rather than trapping. `round_span = 0` skips the feed-expiry check.
     fn supports_round(
         env: Env,
         twap_window: u64,

@@ -19,11 +19,12 @@
 
 use soroban_sdk::{contractclient, contracttype, Address, Env, Symbol};
 
-/// Reflector's asset identifier.
-///
-/// XLM is `Other(symbol!("XLM"))` on the CEX & DEX feed — **not** `Stellar(Address)`, which was an
-/// open implementation question closed by a single live call (D-48). `Stellar` is declared because
-/// the enum must round-trip Reflector's XDR, not because this adapter ever constructs one.
+// Reflector's asset identifier.
+//
+// XLM is `Other(symbol!("XLM"))` on the CEX & DEX feed — **not** `Stellar(Address)`, which was an
+// open implementation question closed by a single live call (D-48). `Stellar` is declared because
+// the enum must round-trip Reflector's XDR, not because this adapter ever constructs one.
+/// Reflector's asset identifier. XLM on the CEX & DEX feed is `Other("XLM")`.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Asset {
@@ -31,7 +32,9 @@ pub enum Asset {
     Other(Symbol),
 }
 
-/// One price record at the feed's own `decimals()` scale.
+// One price record at the feed's own `decimals()` scale.
+/// One Reflector record: the price at the feed's own `decimals()` scale, and its timestamp
+/// in seconds.
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PriceData {
@@ -39,32 +42,32 @@ pub struct PriceData {
     pub timestamp: u64,
 }
 
-/// The six calls this adapter makes. Every one of them is invoked through the generated `try_`
-/// method: `04-ORACLE.md` §3b requires the adapter to be written so it does not trap, and a bare
-/// call to a feed that has changed its interface or been archived would trap us in turn.
+// The six calls this adapter makes. Every one of them is invoked through the generated `try_`
+// method: `04-ORACLE.md` §3b requires the adapter to be written so it does not trap, and a bare
+// call to a feed that has changed its interface or been archived would trap us in turn.
 #[contractclient(name = "ReflectorClient")]
 pub trait Reflector {
-    /// Tick period in **seconds**. Read live on every call — the whole grid derives from it, and a
-    /// stale copy is what D-58 and D-64 each removed once.
+    // Tick period in **seconds**. Read live on every call — the whole grid derives from it, and a
+    // stale copy is what D-58 and D-64 each removed once.
     fn resolution(env: Env) -> u32;
 
-    /// Price precision. Configuration, not a constant (D-28) — the adapter normalizes against the
-    /// live value and reports it on every reading so the vault can pin it per round (D-68).
+    // Price precision. Configuration, not a constant (D-28) — the adapter normalizes against the
+    // live value and reports it on every reading so the vault can pin it per round (D-68).
     fn decimals(env: Env) -> u32;
 
-    /// Newest record timestamp, in seconds. This is the quantity Reflector's own record cap is
-    /// measured against, so it is what the reach check compares to (D-69).
+    // Newest record timestamp, in seconds. This is the quantity Reflector's own record cap is
+    // measured against, so it is what the reach check compares to (D-69).
     fn last_timestamp(env: Env) -> u64;
 
-    /// The record at a tick, or `None` — which means either "no record" or "beyond the cap", and
-    /// the adapter must not confuse the two. Rule 3 rejects an out-of-reach anchor **before** any
-    /// sampling, precisely so that a `None` reaching rule 2 is always a statement about records.
+    // The record at a tick, or `None` — which means either "no record" or "beyond the cap", and
+    // the adapter must not confuse the two. Rule 3 rejects an out-of-reach anchor **before** any
+    // sampling, precisely so that a `None` reaching rule 2 is always a statement about records.
     fn price(env: Env, asset: Asset, timestamp: u64) -> Option<PriceData>;
 
-    /// Freshest tick, for the bid guard only. Never settlement-grade.
+    // Freshest tick, for the bid guard only. Never settlement-grade.
     fn lastprice(env: Env, asset: Asset) -> Option<PriceData>;
 
-    /// The feed's sponsorship expiry, in seconds. `None` is an unsponsored feed (§5), which
-    /// `supports_round` condition 7 treats as false.
+    // The feed's sponsorship expiry, in seconds. `None` is an unsponsored feed (§5), which
+    // `supports_round` condition 7 treats as false.
     fn expires(env: Env, asset: Asset) -> Option<u64>;
 }
