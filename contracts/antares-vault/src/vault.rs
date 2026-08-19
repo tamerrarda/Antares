@@ -14,12 +14,18 @@
 //! a wrap, and the lint refuses the unchecked form at compile time.
 
 use price_source_api::PriceSourceClient;
-use soroban_sdk::{contractimpl, Address, Env, String};
+use soroban_sdk::{contractimpl, token::TokenClient, Address, Env, String};
 
 use crate::errors::Error;
-use crate::events::Initialized;
+use crate::events::{
+    DepositCancelled, Deposited, EpochLapsed, Initialized, PendingRedeemed, PositionRestored,
+    WithdrawClaimed, WithdrawRequested,
+};
 use crate::storage::{self, Rent};
-use crate::types::{Config, EpochParams, Phase, State, DEAD_SHARES, INITIAL_PPS};
+use crate::types::{
+    Config, EpochParams, PendingDeposit, PendingWithdraw, Phase, Round, RoundOutcome, State,
+    DEAD_SHARES, INITIAL_PPS, PRECISION,
+};
 // `#[contractimpl]` in a module other than the one holding `#[contract]` refers
 // to the client and args types the latter generates, so they are imported rather
 // than re-declared. This is what lets the contract surface be split across
@@ -357,3 +363,634 @@ impl AntaresVault {
 
 /// Genesis schema version. `migrate` is monotonic from here (D-13).
 pub const APP_VERSION: u32 = 1;
+
+// =================================================================================================
+// §2.5 — the single exit from a live round, and the lazy path that reaches it
+// =================================================================================================
+
+/// **Every** round terminates here. Four call sites — settle, lazy lapse, void,
+/// unresolved — with different `pps` and `assets_after`, but identical
+/// bookkeeping, because the withdrawal-queue accounting below is easy to forget
+/// in one branch and that omission is a solvency bug rather than a style issue.
+/// It was forgotten once, in the Lapsed branch, and D-32 is the repair.
+///
+/// ```text
+/// wclaims                   = ⌊burned_this_round × pps / PRECISION⌋
+/// withdraw_claimable_total += wclaims
+/// locked_assets             = assets_after − wclaims
+/// ```
+///
+/// **`wclaims ≤ assets_after` needs no guard, and that is exactly why `pps` is
+/// never clamped** (D-66): `pps = ⌊assets_R·P/S⌋` gives `S·pps ≤ assets_R·P`,
+/// hence `wclaims ≤ burned·pps/P ≤ S·pps/P ≤ assets_after`. Any rule that raises
+/// `pps` above the computed value breaks that chain and makes the subtraction
+/// below underflow — and capping `wclaims` instead would not have helped, because
+/// `claim_withdraw` recomputes each user's amount from the round record and never
+/// reads the aggregate.
+pub fn finalize_round(
+    env: &Env,
+    state: &mut State,
+    rent: Rent,
+    outcome: RoundOutcome,
+    pps: i128,
+    assets_after: i128,
+) -> Result<i128, Error> {
+    let wclaims = mul_div_floor(state.burned_this_round, pps, PRECISION)?;
+
+    state.withdraw_claimable_total = state
+        .withdraw_claimable_total
+        .checked_add(wclaims)
+        .ok_or(Error::InvalidAmount)?;
+    state.locked_assets = assets_after
+        .checked_sub(wclaims)
+        .ok_or(Error::InvalidAmount)?;
+
+    // Immutable from here (I7). Written once, never rewritten, by anything.
+    let record = Round {
+        outcome,
+        pps,
+        strike: state.strike,
+        expiry: state.expiry,
+        notional_sold: state.notional_sold,
+        premium: state.premium_collected,
+        fee: 0,
+        settled_spot: 0,
+        payout_total: 0,
+    };
+    storage::set_round(env, rent, state.round, &record);
+
+    state.last_pps = pps;
+    state.last_finalize_time = env.ledger().timestamp();
+    state.phase = Phase::Idle;
+    state.burned_this_round = 0;
+
+    Ok(wclaims)
+}
+
+/// Runs at the top of every state-mutating entry point, **after `require_auth`
+/// and before the pause check** (§16's canonical order). Returns whether it
+/// actually finalized a round, because `open_epoch` and `close_round` both branch
+/// on that (D-43, D-61) — so the signature has to carry it.
+///
+/// `Active → Settled/Voided` is never lazy: it needs the oracle and stays an
+/// explicit `close_round`. What is lazy is the empty auction, which keeps
+/// `Lapsed` permissionless by construction — nobody has to send a dedicated
+/// "close the empty auction" transaction, the next interaction of any kind
+/// absorbs it.
+pub fn lazy_finalize(env: &Env, state: &mut State, rent: Rent) -> Result<bool, Error> {
+    if state.phase != Phase::Auction || env.ledger().timestamp() < state.auction_end {
+        return Ok(false);
+    }
+
+    if state.notional_sold > 0 {
+        // The auction closed with fills: the option is live, and this is not a
+        // finalization — the round still has to be closed against the oracle.
+        state.phase = Phase::Active;
+        return Ok(false);
+    }
+
+    let wclaims = finalize_round(
+        env,
+        state,
+        rent,
+        RoundOutcome::Lapsed,
+        state.last_pps,
+        state.locked_at_open,
+    )?;
+    EpochLapsed {
+        round: state.round,
+        notional_offered: state.notional_offered,
+        pps: state.last_pps,
+        wclaims,
+    }
+    .publish(env);
+    Ok(true)
+}
+
+/// `⌊a × b / d⌋` with every step checked.
+///
+/// Floor division, always in the vault's favour — that is what makes I1 hold
+/// under rounding (D-20, §6). The checked operations are not redundant with the
+/// profile's `overflow-checks`: §8's bounds are proofs about the inputs, and a
+/// checked op is what turns a violated proof into a revert rather than a wrap.
+fn mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    a.checked_mul(b)
+        .and_then(|p| p.checked_div(d))
+        .ok_or(Error::InvalidAmount)
+}
+
+// =================================================================================================
+// §2.4 — deposit, pending, withdraw. The heart.
+// =================================================================================================
+
+/// `Config` and `State` exist from the moment the contract does.
+///
+/// There is no `NotInitialized` error and deliberately so (§3): with a
+/// `__constructor`, an uninitialized-but-deployed contract is unrepresentable. A
+/// missing entry here is not a foreseeable condition returning an error — it is
+/// an assumption having broken, and the transaction must die rather than
+/// continue on a default.
+fn load(env: &Env) -> (Config, State) {
+    let config = storage::get_config(env).expect("Config: unrepresentable after __constructor");
+    let state = storage::get_state(env).expect("State: unrepresentable after __constructor");
+    (config, state)
+}
+
+/// §16's canonical order, in one place.
+///
+/// `require_auth` stays at the call site — only the entry point knows whose auth
+/// it is — and everything after it lives here, so no entry point can get the
+/// order wrong and no two can disagree about *which* rejection a given call
+/// produces. That last part is the reason the order is canonical at all.
+struct Ctx {
+    config: Config,
+    state: State,
+    rent: Rent,
+}
+
+fn enter(env: &Env, pause_blocks: bool) -> Result<Ctx, Error> {
+    let (config, mut state) = load(env);
+    let rent = Rent::effective(env, &config);
+
+    // After auth, before the pause check and the preconditions. A revert later
+    // discards these writes along with everything else, which is why the pause
+    // check's position is *not* load-bearing (§16) — pause cannot trap funds,
+    // because the unpausable entry points finalize instead of reverting.
+    lazy_finalize(env, &mut state, rent)?;
+
+    if pause_blocks && config.paused {
+        return Err(Error::Paused);
+    }
+    Ok(Ctx {
+        config,
+        state,
+        rent,
+    })
+}
+
+fn commit(env: &Env, ctx: &Ctx) {
+    storage::set_state(env, &ctx.state);
+    storage::bump_instance(env, ctx.rent);
+}
+
+/// The SAC at `Config.asset`. Not a third-party dependency and no conflict with
+/// D-24: this is the SDK's binding to platform code, the same way `Address` is.
+/// What D-24 forbids is importing somebody else's vault or token implementation.
+fn asset_client<'a>(env: &'a Env, config: &Config) -> TokenClient<'a> {
+    // outbound: config.asset
+    TokenClient::new(env, &config.asset)
+}
+
+/// Mint at the **current** price, and only ever in Idle (D-18).
+///
+/// Two guards, both from D-36 and both mandatory, because either alone is
+/// insufficient: `DEAD_SHARES` floors the supply so it can never be driven back
+/// to zero, and `ZeroShares` refuses a mint that would round to nothing rather
+/// than absorbing the deposit silently.
+fn mint(env: &Env, ctx: &mut Ctx, to: &Address, amount: i128) -> Result<i128, Error> {
+    let minted = mul_div_floor(amount, PRECISION, ctx.state.last_pps)?;
+    if minted <= 0 {
+        return Err(Error::ZeroShares);
+    }
+
+    // The very first deposit pays for the dead shares out of its own amount.
+    // `min_deposit > DEAD_SHARES` (§1) is what makes this subtraction safe: at
+    // genesis `last_pps == INITIAL_PPS`, so `minted == amount ≥ min_deposit`.
+    let credited = if ctx.state.shares_outstanding == 0 {
+        let vault = env.current_contract_address();
+        storage::set_shares(env, ctx.rent, &vault, DEAD_SHARES);
+        minted.checked_sub(DEAD_SHARES).ok_or(Error::ZeroShares)?
+    } else {
+        minted
+    };
+    if credited <= 0 {
+        return Err(Error::ZeroShares);
+    }
+
+    let balance = storage::get_shares(env, to)
+        .checked_add(credited)
+        .ok_or(Error::InvalidAmount)?;
+    storage::set_shares(env, ctx.rent, to, balance);
+
+    ctx.state.shares_outstanding = ctx
+        .state
+        .shares_outstanding
+        .checked_add(minted)
+        .ok_or(Error::InvalidAmount)?;
+    ctx.state.locked_assets = ctx
+        .state
+        .locked_assets
+        .checked_add(amount)
+        .ok_or(Error::InvalidAmount)?;
+
+    Ok(credited)
+}
+
+/// Convert a pending deposit at `last_pps` — **the current price, not the pps of
+/// the round it was deposited during** (D-37).
+///
+/// Capital sitting as a pending deposit took no risk in that round and none in
+/// the rounds since, so it has earned none of their premium and must enter at
+/// today's price. Converting at the old `pps[R]` broke I9 — whose proof sketch
+/// silently assumes the mint price *equals* `last_pps` — and handed the depositor
+/// a free lookback option: wait, watch `pps` across several rounds, redeem into
+/// the best one.
+fn redeem_pending(
+    env: &Env,
+    ctx: &mut Ctx,
+    user: &Address,
+    pending: &PendingDeposit,
+) -> Result<i128, Error> {
+    ctx.state.pending_deposits_total = ctx
+        .state
+        .pending_deposits_total
+        .checked_sub(pending.amount)
+        .ok_or(Error::InvalidAmount)?;
+
+    let shares = mint(env, ctx, user, pending.amount)?;
+    storage::remove_pending_deposit(env, user);
+
+    PendingRedeemed {
+        user: user.clone(),
+        round: pending.round,
+        amount: pending.amount,
+        shares,
+        pps: ctx.state.last_pps,
+    }
+    .publish(env);
+
+    Ok(shares)
+}
+
+#[contractimpl]
+impl AntaresVault {
+    /// Returns the shares minted — `0` for a pending deposit.
+    pub fn deposit(env: Env, from: Address, amount: i128) -> Result<i128, Error> {
+        from.require_auth();
+        let mut ctx = enter(&env, true)?;
+
+        // §11, and not cosmetic: a SAC self-transfer **succeeds while moving
+        // nothing**, so without this the vault would mint shares against a
+        // transfer that never happened.
+        if from == env.current_contract_address() {
+            return Err(Error::InvalidAddress);
+        }
+        // §15: `Config.params`, because deposits happen in every phase —
+        // including before the first round exists, when there is no snapshot.
+        if amount < ctx.config.params.min_deposit {
+            return Err(Error::BelowMinDeposit);
+        }
+        // A mint divides by `pps`, and §16 allows `pps == 0` in the degenerate
+        // state where the pool is worth less than a stroop per PRECISION
+        // share-units. Withdrawals still work there; minting does not.
+        if ctx.state.last_pps == 0 {
+            return Err(Error::VaultWorthless);
+        }
+        if ctx.config.deposit_cap != 0 {
+            let total = ctx
+                .state
+                .locked_assets
+                .checked_add(ctx.state.pending_deposits_total)
+                .and_then(|t| t.checked_add(amount))
+                .ok_or(Error::InvalidAmount)?;
+            if total > ctx.config.deposit_cap {
+                return Err(Error::DepositCapExceeded);
+            }
+        }
+
+        let minted = if ctx.state.phase == Phase::Idle {
+            // Every pending is finalized in Idle by construction, so this is the
+            // auto-redeem §10 requires to be emitted **first**, before `deposited`.
+            if let Some(pending) = storage::get_pending_deposit(&env, &from) {
+                redeem_pending(&env, &mut ctx, &from, &pending)?;
+            }
+            mint(&env, &mut ctx, &from, amount)?
+        } else {
+            match storage::get_pending_deposit(&env, &from) {
+                // A second deposit in the same live round accumulates.
+                Some(p) if p.round == ctx.state.round => {
+                    let sum = p.amount.checked_add(amount).ok_or(Error::InvalidAmount)?;
+                    storage::set_pending_deposit(
+                        &env,
+                        ctx.rent,
+                        &from,
+                        &PendingDeposit {
+                            round: p.round,
+                            amount: sum,
+                        },
+                    );
+                }
+                // **Finalized, not settled**: a lapsed or voided round also leaves
+                // a redeemable pending, and `PendingDeposit(user)` is one slot —
+                // the narrower word would let this deposit overwrite it, stranding
+                // the old amount inside `pending_deposits_total` forever.
+                Some(_) => return Err(Error::UnredeemedPending),
+                None => storage::set_pending_deposit(
+                    &env,
+                    ctx.rent,
+                    &from,
+                    &PendingDeposit {
+                        round: ctx.state.round,
+                        amount,
+                    },
+                ),
+            }
+            ctx.state.pending_deposits_total = ctx
+                .state
+                .pending_deposits_total
+                .checked_add(amount)
+                .ok_or(Error::InvalidAmount)?;
+            0
+        };
+
+        let instant = ctx.state.phase == Phase::Idle;
+        let round = ctx.state.round;
+        commit(&env, &ctx);
+
+        // Checks, effects, then interactions — the transfer is last.
+        let vault = env.current_contract_address();
+        asset_client(&env, &ctx.config).transfer(&from, &vault, &amount);
+
+        Deposited {
+            user: from,
+            round,
+            amount,
+            shares_minted: minted,
+            instant,
+        }
+        .publish(&env);
+
+        Ok(minted)
+    }
+
+    /// Any phase, **unpausable**, exact amount back (D-37).
+    ///
+    /// The only instant exit that works during a live round, and it is safe
+    /// precisely because that capital never backed an option — I4's own stated
+    /// exception, and the counterexample that makes a naive reading of it fail.
+    pub fn cancel_pending_deposit(env: Env, from: Address) -> Result<i128, Error> {
+        from.require_auth();
+        let mut ctx = enter(&env, false)?;
+
+        let pending = storage::get_pending_deposit(&env, &from).ok_or(Error::NothingPending)?;
+
+        ctx.state.pending_deposits_total = ctx
+            .state
+            .pending_deposits_total
+            .checked_sub(pending.amount)
+            .ok_or(Error::InvalidAmount)?;
+        storage::remove_pending_deposit(&env, &from);
+        commit(&env, &ctx);
+
+        asset_client(&env, &ctx.config).transfer(
+            &env.current_contract_address(),
+            &from,
+            &pending.amount,
+        );
+
+        DepositCancelled {
+            user: from,
+            round: pending.round,
+            amount: pending.amount,
+        }
+        .publish(&env);
+
+        Ok(pending.amount)
+    }
+
+    /// Idle only, and at `last_pps` — never at the pps of the round the deposit
+    /// was made during (D-37).
+    pub fn redeem_shares(env: Env, from: Address) -> Result<i128, Error> {
+        from.require_auth();
+        let mut ctx = enter(&env, false)?;
+
+        if ctx.state.phase != Phase::Idle {
+            return Err(Error::WrongPhase);
+        }
+        if ctx.state.last_pps == 0 {
+            return Err(Error::VaultWorthless);
+        }
+        let pending = storage::get_pending_deposit(&env, &from).ok_or(Error::NothingPending)?;
+
+        let shares = redeem_pending(&env, &mut ctx, &from, &pending)?;
+        commit(&env, &ctx);
+        Ok(shares)
+    }
+}
+
+/// Pay out a `PendingWithdraw` whose round has finalized.
+///
+/// A `Round` record exists **iff** the round finalized — `finalize_round` is the
+/// only writer — so its presence is the finalization test, and there is no second
+/// flag that could disagree with it.
+fn claim_pending_withdraw(
+    env: &Env,
+    ctx: &mut Ctx,
+    user: &Address,
+    pending: &PendingWithdraw,
+) -> Result<i128, Error> {
+    let record = storage::get_round(env, pending.round).ok_or(Error::WithdrawNotSettled)?;
+
+    // Recomputed from the immutable round record, exactly as every other claim
+    // is. This is the half a cap on the aggregate `wclaims` would not have
+    // fixed, and the reason `pps` is never clamped (D-66).
+    let amount = mul_div_floor(pending.shares, record.pps, PRECISION)?;
+
+    ctx.state.withdraw_claimable_total = ctx
+        .state
+        .withdraw_claimable_total
+        .checked_sub(amount)
+        .ok_or(Error::InvalidAmount)?;
+    storage::remove_pending_withdraw(env, user);
+
+    Ok(amount)
+}
+
+#[contractimpl]
+impl AntaresVault {
+    /// Returns the XLM paid now, or `0` when the request was queued.
+    ///
+    /// `require_idle` is D-46: with it true the call reverts unless the vault is
+    /// Idle, so a user asking for an instant exit can never be silently converted
+    /// into a queued one by an `open_epoch` landing first. Unpausable (I8).
+    pub fn request_withdraw(
+        env: Env,
+        from: Address,
+        shares: i128,
+        require_idle: bool,
+    ) -> Result<i128, Error> {
+        from.require_auth();
+        let mut ctx = enter(&env, false)?;
+
+        if shares <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if shares > storage::get_shares(&env, &from) {
+            return Err(Error::InsufficientShares);
+        }
+        if require_idle && ctx.state.phase != Phase::Idle {
+            return Err(Error::WrongPhase);
+        }
+
+        // An older finalized request is settled first: there is one
+        // `PendingWithdraw` slot per user, so a second request would otherwise
+        // overwrite a claim the user has already earned.
+        let mut paid = 0i128;
+        let mut claimed_round = 0u32;
+        if let Some(existing) = storage::touch_pending_withdraw(&env, ctx.rent, &from) {
+            if storage::get_round(&env, existing.round).is_some() {
+                paid = claim_pending_withdraw(&env, &mut ctx, &from, &existing)?;
+                claimed_round = existing.round;
+            }
+        }
+
+        // Burn now, in both paths. The queued path prices the shares at the
+        // round's recorded pps once it finalizes; the instant path prices them
+        // at `last_pps` here.
+        let balance = storage::get_shares(&env, &from)
+            .checked_sub(shares)
+            .ok_or(Error::InsufficientShares)?;
+        storage::set_shares(&env, ctx.rent, &from, balance);
+        ctx.state.shares_outstanding = ctx
+            .state
+            .shares_outstanding
+            .checked_sub(shares)
+            .ok_or(Error::InvalidAmount)?;
+
+        let round = ctx.state.round;
+        let instant_amount = if ctx.state.phase == Phase::Idle {
+            let amount = mul_div_floor(shares, ctx.state.last_pps, PRECISION)?;
+
+            // §16's zero-value rule, and its one exception. Rejecting a dust
+            // payout stops shares being burned for nothing — but at
+            // `last_pps == 0` the *vault* is worth nothing, and the same reject
+            // would turn "your shares are worth nothing" into "you cannot remove
+            // your shares", making I8's promise false. So the reject applies only
+            // where a zero payout means the caller's stake is dust.
+            if amount == 0 && ctx.state.last_pps > 0 {
+                return Err(Error::InvalidAmount);
+            }
+
+            ctx.state.locked_assets = ctx
+                .state
+                .locked_assets
+                .checked_sub(amount)
+                .ok_or(Error::InvalidAmount)?;
+            amount
+        } else {
+            // A second request in the same live round accumulates into the
+            // existing record rather than replacing or rejecting it (§16).
+            let queued = match storage::get_pending_withdraw(&env, &from) {
+                Some(p) if p.round == round => {
+                    p.shares.checked_add(shares).ok_or(Error::InvalidAmount)?
+                }
+                _ => shares,
+            };
+            storage::set_pending_withdraw(
+                &env,
+                ctx.rent,
+                &from,
+                &PendingWithdraw {
+                    round,
+                    shares: queued,
+                },
+            );
+            ctx.state.burned_this_round = ctx
+                .state
+                .burned_this_round
+                .checked_add(shares)
+                .ok_or(Error::InvalidAmount)?;
+            0
+        };
+
+        let total_out = paid
+            .checked_add(instant_amount)
+            .ok_or(Error::InvalidAmount)?;
+        commit(&env, &ctx);
+
+        if total_out > 0 {
+            asset_client(&env, &ctx.config).transfer(
+                &env.current_contract_address(),
+                &from,
+                &total_out,
+            );
+        }
+
+        if paid > 0 || claimed_round != 0 {
+            WithdrawClaimed {
+                user: from.clone(),
+                round: claimed_round,
+                shares: 0,
+                amount: paid,
+            }
+            .publish(&env);
+        }
+
+        WithdrawRequested {
+            user: from.clone(),
+            round,
+            shares,
+        }
+        .publish(&env);
+
+        // An instant Idle withdrawal emits both events in the same transaction,
+        // both carrying the last opened round — already finalized, and the one
+        // whose `pps` was used (§10).
+        if ctx.state.phase == Phase::Idle {
+            WithdrawClaimed {
+                user: from,
+                round,
+                shares,
+                amount: instant_amount,
+            }
+            .publish(&env);
+        }
+
+        Ok(total_out)
+    }
+
+    /// Any phase, unpausable, at the referenced round's **recorded** `pps`.
+    ///
+    /// A `pps == 0` round pays 0 and **succeeds** — rejecting would strand the
+    /// record while the shares are already burned (D-66's test).
+    pub fn claim_withdraw(env: Env, from: Address) -> Result<i128, Error> {
+        from.require_auth();
+        let mut ctx = enter(&env, false)?;
+
+        let pending =
+            storage::touch_pending_withdraw(&env, ctx.rent, &from).ok_or(Error::NothingPending)?;
+        let amount = claim_pending_withdraw(&env, &mut ctx, &from, &pending)?;
+        commit(&env, &ctx);
+
+        // Zero is a success, not a transfer: a zero-amount SAC call is a legal
+        // no-op but would publish a transfer event for money that did not move.
+        if amount > 0 {
+            asset_client(&env, &ctx.config).transfer(
+                &env.current_contract_address(),
+                &from,
+                &amount,
+            );
+        }
+
+        WithdrawClaimed {
+            user: from,
+            round: pending.round,
+            shares: pending.shares,
+            amount,
+        }
+        .publish(&env);
+
+        Ok(amount)
+    }
+
+    /// Permissionless storage maintenance (03-STORAGE-TTL §4), on I8's
+    /// unpausable list — a paused vault whose entries are archiving must still be
+    /// reachable, and a helper must be able to maintain a dormant user's position.
+    pub fn restore_position(env: Env, user: Address) -> Result<(), Error> {
+        let ctx = enter(&env, false)?;
+        storage::restore_position_keys(&env, ctx.rent, &user);
+        commit(&env, &ctx);
+        PositionRestored { user }.publish(&env);
+        Ok(())
+    }
+}

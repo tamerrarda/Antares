@@ -119,3 +119,21 @@ pub struct PositionRestored {
     #[topic]
     pub user: Address,
 }
+
+/// The lapse. **Mine rather than DEV2's**, and the rule is *which call path
+/// arrives*: `finalize_round` emits all four outcome events, but the lapse comes
+/// through `lazy_finalize` in `vault.rs` while `settled`, `epoch_voided` and
+/// `epoch_unresolved` arrive through `close_round` in `settle.rs`.
+///
+/// `wclaims` is here because **all four finalization events carry it** — the
+/// indexer half of D-32's regression, and the field most easily left out, since
+/// no on-chain assertion needs it.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EpochLapsed {
+    #[topic]
+    pub round: u32,
+    pub notional_offered: i128,
+    pub pps: i128,
+    pub wclaims: i128,
+}

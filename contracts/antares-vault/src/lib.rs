@@ -20,6 +20,9 @@ pub mod types;
 pub mod vault;
 
 #[cfg(test)]
+mod test_accounting;
+
+#[cfg(test)]
 mod test_common;
 
 #[cfg(test)]
