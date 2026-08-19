@@ -99,6 +99,28 @@ jobs:
           rustup show
       - run: cargo fmt --all --check
 
+  # ------------------------------------------------- 1b. static source rules ---
+
+  static-rules:
+    name: static rules (D-70, D-63)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rules a reviewer will not re-derive
+        # Both rules were already written down and both had already decayed by the
+        # time this job existed — D-70 by eight sites worth 1 453 bytes, in a
+        # contract with four figures of headroom left. The script says what each
+        # rule defends and where it stops; read it rather than this comment.
+        #
+        # Its own failure modes are the ones this project keeps producing, so both
+        # rules were run against a tree with a violation planted in each and were
+        # seen to exit 1 before this job was written. A check nobody has watched
+        # fail is a check nobody has tested.
+        run: python3 scripts/ci/static_rules.py
+
   # ------------------------------------------------------------- 2. clippy ---
   clippy:
     name: clippy (-D warnings)
@@ -146,6 +168,19 @@ jobs:
             echo "::notice::Mandatory from Phase 2 (06-TEST-PLAN §1). Nothing to diff today."
             exit 0
           fi
+          # Regression guard, and the reason the exclusion below exists at all.
+          # These files were committed once and made this job fail on every run,
+          # because proptest reseeds from entropy and rewrites all 145 of them.
+          # An always-red gate is read as broken, not as a finding, and it takes
+          # the 198 deterministic snapshots down with it.
+          tracked_props=$(git ls-files -- '*test_snapshots/test_properties*')
+          if [ -n "$tracked_props" ]; then
+            echo "::error::Property-test snapshots are tracked again:"
+            echo "$tracked_props"
+            echo "They differ on every run and carry no review signal — see .gitignore."
+            exit 1
+          fi
+
           changed=$(git status --porcelain -- '*test_snapshots*')
           if [ -n "$changed" ]; then
             echo "::error::Test snapshots changed but were not committed:"
@@ -154,7 +189,17 @@ jobs:
             git --no-pager diff -- '*test_snapshots*' | head -200
             exit 1
           fi
-          echo "Snapshots match the committed state."
+          echo "Snapshots match the committed state ($(git ls-files -- '*test_snapshots*' | wc -l) deterministic)."
+
+      - name: Surface the failing seed if a property broke
+        # proptest writes the seed that broke an invariant to
+        # `proptest-regressions/` — but only on failure, and only into the
+        # runner's filesystem, which is discarded. Printing it is the difference
+        # between a reproducible bug and "CI was red once".
+        if: failure()
+        run: |
+          find . -name '*.proptest-regressions' -not -path './target/*' \
+            -exec echo '--- {} ---' \; -exec cat {} \; || true
 
   # -------------------------------------------------------- 4. vector-diff ---
   vector-diff:
