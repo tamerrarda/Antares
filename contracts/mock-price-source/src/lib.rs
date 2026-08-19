@@ -79,6 +79,9 @@ enum Key {
     Mode,
     Trap,
     Records,
+    /// `Some(v)` makes `spot_check` answer `Some(v)` verbatim, whatever the records say and
+    /// whatever its own checks would have concluded. See `set_spot_override`.
+    SpotOverride,
 }
 
 #[contract]
@@ -106,6 +109,7 @@ impl MockPriceSource {
         s.set(&Key::Mode, &Mode::Normal);
         s.set(&Key::Trap, &false);
         s.set(&Key::Records, &Map::<u64, (i128, u64)>::new(&env));
+        s.set(&Key::SpotOverride, &None::<i128>);
     }
 
     pub fn set_resolution(env: Env, seconds: u32) {
@@ -186,6 +190,22 @@ impl MockPriceSource {
     pub fn set_mode(env: Env, mode: Mode) {
         Self::auth(&env);
         env.storage().instance().set(&Key::Mode, &mode);
+    }
+
+    /// Make `spot_check` answer with **exactly this**, bypassing every check it would otherwise
+    /// make — including its own non-positive filter.
+    ///
+    /// Added 2026-08-19 because `cargo-mutants` proved the gap: the vault's `spot_check` wrapper
+    /// filters a non-positive price to `None`, and **that filter is unreachable through an honest
+    /// source**, since this mock refuses a non-positive record before returning one. So the guard
+    /// that exists precisely for a source that misbehaves could only ever be exercised by a source
+    /// that misbehaves. Same shape as `ForceReading`, and the same reason that exists.
+    ///
+    /// It is not a second implementation of `spot_check`: it makes the *call* answer differently,
+    /// not the checks evaluate differently.
+    pub fn set_spot_override(env: Env, spot: Option<i128>) {
+        Self::auth(&env);
+        env.storage().instance().set(&Key::SpotOverride, &spot);
     }
 
     /// The trap switch: `reading`, `spot_check` and `supports_round` panic rather than return.
@@ -354,6 +374,14 @@ impl PriceSource for MockPriceSource {
 
     fn spot_check(env: Env, max_staleness: u64, expected_decimals: u32) -> Option<i128> {
         MockPriceSource::maybe_trap(&env);
+        if let Some(forced) = env
+            .storage()
+            .instance()
+            .get::<Key, Option<i128>>(&Key::SpotOverride)
+            .unwrap_or(None)
+        {
+            return Some(forced);
+        }
         let decimals = MockPriceSource::decimals(env.clone());
         // A changed scale makes the tick incomparable with the round's strike, and `spot_check`
         // cannot report the value it used — it returns a bare `Option` — so it takes the expected

@@ -10,8 +10,9 @@
 //! that decides who gets paid: whether a given failure is read as a fact about the **expiry
 //! window** — evidence a round may be annulled on — or a fact about **now**, which is not.
 
-use crate::oracle::{anchored_reading, spot_check, supports_round, GuardOutcome};
-use crate::types::VoidReason;
+use crate::oracle::{anchored_reading, live_reading, spot_check, supports_round, GuardOutcome};
+use crate::types::{EpochParams, VoidReason};
+use crate::Error;
 use mock_price_source::{MockPriceSource, MockPriceSourceClient, Mode};
 use price_source_api::OracleReading;
 use soroban_sdk::{
@@ -362,6 +363,34 @@ fn spot_check_answers_none_on_every_failure_and_never_a_price() {
 }
 
 #[test]
+fn spot_check_refuses_a_non_positive_tick_rather_than_returning_it_as_a_spot() {
+    // The predicate that separates this wrapper from a plausible-looking one, and it is not
+    // hypothetical: DEV3 wrote a second `spot_check` inline in `auction.rs` — their branch never
+    // had `oracle.rs` on it — and theirs accepts a non-positive price **as a spot**. A zero or
+    // negative tick then compares as `spot < strike` and walks straight through the in-the-money
+    // guard, which is the one thing that guard exists to stop.
+    //
+    // They are deleting theirs and calling this. Pinning the predicate here first, so that if their
+    // three refusal cases ever fail against this function the failure is a finding in my seam
+    // rather than in their fix.
+    let f = setup();
+    assert_eq!(
+        spot_check(&f.env, &f.oracle, 600, DEC),
+        Some(PX_1E7),
+        "the baseline answers"
+    );
+
+    for bad in [0i128, -1] {
+        f.mock.set_price(&ANCHOR, &bad);
+        assert_eq!(
+            spot_check(&f.env, &f.oracle, 600, DEC),
+            None,
+            "a tick of {bad} is not a price, and must never reach the ITM comparison"
+        );
+    }
+}
+
+#[test]
 fn supports_round_surfaces_a_trapping_source_as_false_and_never_as_a_host_trap() {
     // O-13e. This is called from the vault's constructor: a trap escaping here arrives as a host
     // trap rather than `InvalidParams`, and the vault cannot be registered at all. The source is
@@ -399,4 +428,95 @@ fn supports_round_surfaces_a_trapping_source_as_false_and_never_as_a_host_trap()
         reach_limit + 1,
         0
     ));
+}
+
+// =================================================================================================
+// What `cargo-mutants` proved was untested
+// =================================================================================================
+
+#[test]
+fn the_vault_filters_a_non_positive_spot_even_when_the_source_returns_one() {
+    // **The mutation layer earned its keep here.** `spot_check`'s `> 0` filter survived every
+    // mutation, and the test written one block earlier *for that exact predicate* did not reach it:
+    // the mock refuses a non-positive record before returning, so the vault-side filter — the one
+    // that exists for a source that misbehaves — could only be exercised by a source that
+    // misbehaves. The mock can now lie, and this is the assertion that was missing.
+    //
+    // It is not hypothetical: DEV3's inline copy accepted a non-positive tick as a spot, where it
+    // compares as `spot < strike` and walks through the in-the-money guard.
+    let f = setup();
+    assert_eq!(spot_check(&f.env, &f.oracle, 600, DEC), Some(PX_1E7));
+
+    for lie in [0i128, -1, i128::MIN] {
+        f.mock.set_spot_override(&Some(lie));
+        assert_eq!(
+            spot_check(&f.env, &f.oracle, 600, DEC),
+            None,
+            "a source answering {lie} must not produce a spot"
+        );
+    }
+
+    // And a positive lie is passed through — the filter rejects the sign, not the source.
+    f.mock.set_spot_override(&Some(42));
+    assert_eq!(spot_check(&f.env, &f.oracle, 600, DEC), Some(42));
+}
+
+#[test]
+fn the_live_coarse_bound_rejects_in_both_directions_and_is_inclusive_at_the_band() {
+    // Six mutants survived on this one line, because **every `open_epoch` test runs on round 1**,
+    // where `last_settled_spot == 0` and the whole branch is skipped. Its anchored twin was tested;
+    // this one was not — a guard whose duplicate is covered is the easiest kind to believe covered.
+    let f = setup();
+    let base = PX_1E7;
+
+    // Inside the band, both directions, and inclusive at exactly 100x — which is what "outside the
+    // band" means and what the `<`/`>` pair encodes.
+    for inside in [base, base * 100, base / 100] {
+        f.mock.set_mode(&Mode::ForceReading(OracleReading {
+            short_twap: inside,
+            guard_twap: inside,
+            newest_ts: ANCHOR,
+            feed_decimals: DEC,
+        }));
+        assert_eq!(
+            live_reading(&f.env, &f.oracle, &params(), base),
+            Ok((inside, DEC)),
+            "{inside} is inside the band"
+        );
+    }
+
+    // Outside it, both directions.
+    for outside in [base * 100 + 1, base / 100 - 1] {
+        f.mock.set_mode(&Mode::ForceReading(OracleReading {
+            short_twap: outside,
+            guard_twap: outside,
+            newest_ts: ANCHOR,
+            feed_decimals: DEC,
+        }));
+        assert_eq!(
+            live_reading(&f.env, &f.oracle, &params(), base),
+            Err(Error::OracleInvalidPrice),
+            "{outside} is outside it"
+        );
+    }
+
+    // And with no prior settle the whole branch is skipped, however absurd the price (O-8).
+    f.mock.set_mode(&Mode::ForceReading(OracleReading {
+        short_twap: base * 1_000_000,
+        guard_twap: base * 1_000_000,
+        newest_ts: ANCHOR,
+        feed_decimals: DEC,
+    }));
+    assert!(live_reading(&f.env, &f.oracle, &params(), 0).is_ok());
+}
+
+/// The fast-test profile, as `live_reading` needs it: the windows the mock's `resolution() = 1`
+/// admits, and a staleness budget wide enough that the guard under test is the one that fires.
+fn params() -> EpochParams {
+    let mut p = crate::test_common::valid_params();
+    p.twap_window = TW;
+    p.guard_window = GW;
+    p.max_staleness = 100_000;
+    p.max_deviation_bps = 10_000;
+    p
 }
