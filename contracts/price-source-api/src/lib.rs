@@ -29,61 +29,58 @@ use soroban_sdk::{contracterror, contracttrait, contracttype, Env};
 // Values
 // =================================================================================================
 
-/// One anchored read, normalized to 1e7 fixed point.
-///
-/// `feed_decimals` is the scale the prices were normalized **from**, and it travels with every
-/// reading because the vault has to pin it per round and compare it later (D-68). The adapter
-/// cannot make that comparison itself: `reading` has no snapshot parameter, and one adapter serves
-/// every vault instance, so it cannot hold per-round state either. It reports; the vault compares.
+// `feed_decimals` travels with every reading because the vault has to pin it per round and compare
+// it later (D-68). The source cannot make that comparison itself: `reading` has no snapshot
+// parameter, and one adapter serves every vault instance, so it cannot hold per-round state
+// either. It reports; the vault compares.
+/// One anchored read. Prices are 1e7 fixed point; `feed_decimals` is the scale they came from.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OracleReading {
-    /// Median over `short_window`, ending at the anchor — the settlement price.
+    /// Median over the short window, ending at the anchor. The settlement price.
     pub short_twap: i128,
-    /// Median over `guard_window`, ending at the anchor — the breaker's reference.
+    /// Median over the guard window, ending at the anchor.
     pub guard_twap: i128,
     /// Timestamp of the newest record used.
     pub newest_ts: u64,
-    /// The `decimals()` these prices were normalized from.
+    /// The feed's `decimals()` these prices were normalized from.
     pub feed_decimals: u32,
 }
 
-/// The outcome of an anchored read. **All three are successful returns** (D-64): the adapter
-/// answered. Only a genuine malfunction — a trap, a wrong interface, an archived instance, or a
-/// live-configuration fault — arrives on the error channel.
-///
-/// That split is the whole of D-60's organizing question, made structural rather than left to a
-/// decoding convention: **`Ok` is a statement about the window, `Err` is a statement about this
-/// ledger.** The two failure variants here are opposites and must never be conflated (D-59) — one
-/// says the feed was dead at that moment, the other says we can no longer see that moment.
+// All three are successful returns (D-64): the source answered. Only a genuine malfunction — a
+// trap, a wrong interface, an archived instance, or a live-configuration fault — arrives on the
+// error channel. That split is the whole of D-60's organizing question, made structural rather
+// than left to a decoding convention: `Ok` is a statement about the window, `Err` is a statement
+// about this ledger. The two failure variants are opposites and must never be conflated (D-59) —
+// one says the feed was dead at that moment, the other says we can no longer see that moment.
+/// The outcome of an anchored read. All three are answers; failures arrive as `Err`.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadResult {
     /// Settlement-grade.
     Reading(OracleReading),
-    /// No settlement-grade records inside the anchored window — a fact about **history**.
+    /// No settlement-grade records inside the window. A fact about history.
     Unusable,
-    /// The anchor predates the feed's reachable depth — a fact about **now**.
+    /// The anchor is older than the feed can serve. A fact about now.
     OutOfReach,
 }
 
-/// The adapter's own error enum, in its own numbering space.
-///
-/// It exists so the vault's recoverable call has a concrete `E: TryFrom<Error>` and so a
-/// malfunction carries a diagnosable code. The vault treats **every** variant identically
-/// (`Transient`) and never branches on one — the codes are for a human reading a failed
-/// simulation, not for control flow.
+// Its own numbering space, independent of the vault's. It exists so the vault's recoverable call
+// has a concrete `E: TryFrom<Error>` and so a malfunction carries a diagnosable code. The vault
+// treats every variant identically (`Transient`) and never branches on one — the codes are for a
+// human reading a failed simulation, not for control flow. `BadConfig` is a fact about *now*,
+// never about the window: filing one as `Unusable` annuls a round on a healthy feed
+// (`04-ORACLE.md` §2).
+/// Faults a price source can report. Callers treat all of them alike: retry later.
 #[contracterror]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum AdapterError {
-    /// The underlying feed call itself failed, under the adapter's own recoverable wrapper.
+    /// The underlying feed call failed.
     FeedUnreachable = 1,
-    /// A live-configuration fault: `resolution()`/`decimals()` unreadable, zero, or such that the
-    /// requested windows no longer fit the live grid. A fact about *now*, never about the window —
-    /// filing one of these as `Unusable` annuls a round on a healthy feed (`04-ORACLE.md` §2).
+    /// The feed's live configuration cannot serve the requested windows.
     BadConfig = 2,
-    /// The adapter has no feed pinned.
+    /// No feed is pinned.
     NotInitialized = 3,
 }
 
@@ -91,17 +88,15 @@ pub enum AdapterError {
 // The trait
 // =================================================================================================
 
-/// Implemented by `ReflectorAdapter` and by `MockPriceSource`; consumed by the vault through the
-/// generated `PriceSourceClient`, whose `try_` methods are the recoverable form every call site
-/// uses (`04-ORACLE.md` §3b).
+// Implemented by `ReflectorAdapter` and by `MockPriceSource`; consumed by the vault through the
+// generated `PriceSourceClient`, whose `try_` methods are the recoverable form every call site
+// uses (`04-ORACLE.md` §3b).
 #[contracttrait]
 pub trait PriceSource {
-    /// Both TWAPs over the windows **ending at `anchor`**, not at `now`. `anchor == 0` means
-    /// "ending now" and is what `open_epoch` passes; `close_round` passes `expiry`.
-    ///
-    /// `Unusable` and `OutOfReach` are **answers** and ride in the `Ok` arm. The `Err` arm carries
-    /// only a live-configuration fault. That split is the routing rule of `04-ORACLE.md` §2, and
-    /// this signature is what makes the compiler hold it rather than a comment.
+    // `Unusable` and `OutOfReach` are answers and ride in the `Ok` arm; the `Err` arm carries only
+    // a live-configuration fault. That split is the routing rule of `04-ORACLE.md` §2, and this
+    // signature is what makes the compiler hold it rather than a comment.
+    /// Both TWAPs over the windows ending at `anchor`; `anchor == 0` means "ending now".
     fn reading(
         env: Env,
         anchor: u64,
@@ -109,28 +104,24 @@ pub trait PriceSource {
         guard_window: u64,
     ) -> Result<ReadResult, AdapterError>;
 
-    /// Freshest single tick, for the in-the-money bid guard (D-29). Cheap, and **not**
-    /// settlement-grade — it guards bids only; settlement never touches it.
-    ///
-    /// `max_staleness` is the caller's tolerance, measured **on top of one feed tick**: the
-    /// adapter adds its own `resolution()` internally, because resolution is a property of the
-    /// feed and the vault has no `resolution` field and must never grow one (D-58).
-    ///
-    /// `expected_decimals` is the scale the round was opened under. Returns `None` on any
-    /// mismatch — a changed scale makes the tick incomparable with the round's strike (D-68) — and
-    /// on missing, non-positive or too-old data.
+    // Cheap, and deliberately not settlement-grade: it guards bids only, and a bid wrongly
+    // rejected costs an epoch's premium at most, while a settlement needs the full TWAP and
+    // breaker machinery (D-29). The source adds its own `resolution()` to `max_staleness` because
+    // resolution is a property of the feed — the vault has no `resolution` field and must never
+    // grow one (D-58). A mismatched scale makes the tick incomparable with the round's strike, so
+    // it is refused rather than rescaled (D-68).
+    /// Freshest single tick at `expected_decimals`, or `None`. Tolerance is `max_staleness`
+    /// plus one feed tick. Not settlement-grade.
     fn spot_check(env: Env, max_staleness: u64, expected_decimals: u32) -> Option<i128>;
 
-    /// Can this source honour this round's timing on its feed? (D-64, D-68.)
-    ///
-    /// The vault calls this from `validate_params` — constructor and `set_epoch_params` alike —
-    /// with `round_span = 0`, and from `open_epoch` with
-    /// `round_span = epoch_duration + unresolved_after`. It learns only yes or no: never the
-    /// resolution, never the reach limit, never the feed's expiry. That is the seam D-58 opened
-    /// and D-64 kept closed.
-    ///
-    /// Both implementations answer by calling [`supports_round`] with their own live inputs, so
-    /// there is exactly one copy of the eight conditions.
+    // The vault learns yes or no and nothing else — never the resolution, the reach limit or the
+    // feed's expiry. That is the seam D-58 opened and D-64 kept closed. `validate_params` passes
+    // `round_span = 0`, which skips the sponsorship condition so that a shortfall cannot block the
+    // very call that repairs it; `open_epoch` passes `epoch_duration + unresolved_after` and
+    // enforces it. Both implementations answer by calling this crate's `supports_round`, so there
+    // is exactly one copy of the eight conditions.
+    /// Can this source honour a round with this timing? `round_span = 0` skips the feed-expiry
+    /// check; otherwise pass `epoch_duration + unresolved_after`.
     fn supports_round(
         env: Env,
         twap_window: u64,

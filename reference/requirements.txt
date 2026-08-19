@@ -1,0 +1,10 @@
+# Standard library only, and deliberately (06-TEST-PLAN §5).
+#
+# There is nothing to install. The reference exists to be an *independent* derivation of the
+# protocol's integer arithmetic, and every dependency is a second implementation of something we
+# would then be trusting rather than checking. numpy in particular is barred by name: its integer
+# types are fixed-width and wrap silently, so a term that overflows would agree with a buggy Rust
+# instead of disagreeing with a correct one — which is the whole failure this layer exists to
+# catch.
+#
+# Python 3.12, per the CI job.

@@ -142,6 +142,8 @@ interface Env {
   readonly sourceAccount: string | undefined;
   readonly full: boolean;
   readonly jsonOut: string | undefined;
+  /** A prior `--full` record to union this sweep with (06-TEST-PLAN §7b). */
+  readonly unionWith: string | undefined;
 }
 
 function need(name: string): string {
@@ -171,6 +173,10 @@ function readEnv(argv: readonly string[]): Env {
     sourceAccount: process.env['SOURCE_ACCOUNT']?.trim() || undefined,
     full: argv.includes('--full'),
     jsonOut: jsonIdx >= 0 ? argv[jsonIdx + 1] : undefined,
+    unionWith: (() => {
+      const i = argv.indexOf('--union-with');
+      return i >= 0 ? argv[i + 1] : undefined;
+    })(),
   };
 }
 
@@ -549,6 +555,71 @@ async function main(): Promise<void> {
       'visible before a deploy rather than discovered by a rejected open.',
   );
 
+  // -- E-12  The union of two sweeps, which is what >24 h of coverage actually means ---------------
+  // A single sweep can only ever see the reachable depth (~21 h 15 m), so ">= 24 h" is reached by
+  // sweeping twice and unioning, never by asking one call to see past the cap. The union is
+  // computed here rather than asserted in prose, so a deploy can reproduce it.
+  let union: {
+    spanSeconds: number;
+    points: number;
+    gaps: number;
+    completeness: number;
+    runs: { at: number; ticks: number }[];
+  } | null = null;
+
+  if (env.full && env.unionWith !== undefined) {
+    const { readFileSync } = await import('node:fs');
+    const prior = JSON.parse(readFileSync(env.unionWith, 'utf8')) as {
+      oracle: { lastTimestamp: number; resolution: number };
+      measurements: { reachableDepthTicks: number; tickCompletenessGaps: number[] | null };
+    };
+    // Absolute timestamps, because the two sweeps are anchored at different last_timestamps and a
+    // tick index means nothing across them.
+    const answering = new Set<number>();
+    const add = (last: number, res: number, ticks: number, holes: number[] | null): void => {
+      const missing = new Set(holes ?? []);
+      for (let k = 0; k <= ticks; k++) if (!missing.has(k)) answering.add(last - k * res);
+    };
+    add(prior.oracle.lastTimestamp, prior.oracle.resolution, prior.measurements.reachableDepthTicks,
+        prior.measurements.tickCompletenessGaps);
+    add(lastTimestamp, resolution, deepestAnswering, gaps);
+
+    const sorted = [...answering].sort((a, b) => a - b);
+    const lo = sorted[0] ?? 0;
+    const hi = sorted[sorted.length - 1] ?? 0;
+    const spanSeconds = hi - lo;
+    const expected = resolution > 0 ? Math.floor(spanSeconds / resolution) + 1 : 0;
+    const holes = expected - answering.size;
+    union = {
+      spanSeconds,
+      points: answering.size,
+      gaps: holes,
+      completeness: expected > 0 ? answering.size / expected : 0,
+      runs: [
+        { at: prior.oracle.lastTimestamp, ticks: prior.measurements.reachableDepthTicks },
+        { at: lastTimestamp, ticks: deepestAnswering },
+      ],
+    };
+    record(
+      'E-12',
+      'the union of two sweeps spans more than 24 h, with the gap rate over that union',
+      spanSeconds > 24 * 3600 && holes === 0 ? 'PASS' : spanSeconds > 24 * 3600 ? 'INFO' : 'FAIL',
+      `union spans ${hms(spanSeconds)} over ${answering.size} answering grid points; ` +
+        `${holes} gap(s); completeness ${(union.completeness * 100).toFixed(2)} %`,
+      'One sweep can only see the reachable depth, so a single call can never cover 24 h — the ' +
+        'oldest stretch of a 24-hour window is missing BY THE CAP, not by any gap. Two sweeps far ' +
+        'enough apart cover it between them, and this row is the union computed from both records ' +
+        'rather than a claim about them.',
+    );
+  } else if (env.full) {
+    record(
+      'E-12',
+      'the union of two sweeps spans more than 24 h',
+      'INFO',
+      'not computed — pass --union-with <prior --full record> to close 06-TEST-PLAN §7b\'s union row',
+    );
+  }
+
   // -- Record and verdict ------------------------------------------------------------------------------
   const failures = checks.filter((c) => c.status === 'FAIL');
   const report = {
@@ -566,6 +637,7 @@ async function main(): Promise<void> {
       reachableDepthSeconds: cutoffSeconds,
       requiredDepthSeconds: requiredSeconds,
       tickCompletenessGaps: env.full ? gaps : null,
+      unionOfSweeps: union,
       sevenPointCostByAnchorAge: perAge,
       pricesCollapseAt: pricesCollapse,
       expires,

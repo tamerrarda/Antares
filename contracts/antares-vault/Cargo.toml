@@ -14,6 +14,20 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# The interface, not either implementation. The vault knows an address and a
+# trait; which contract answers is a constructor argument (D-50). `version` as
+# well as `path` because a bare path dependency carries an implicit `*` and
+# `deny.toml` denies wildcards — the same reason DEV2 gave on the mock.
+price-source-api = { path = "../price-source-api", version = "0.1.0" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# The vault's `__constructor` calls `supports_round`, so without a settable
+# `PriceSource` the vault cannot be registered in a test at all — which is why
+# 00-ROADMAP calls the mock the first line of code in the project. Dev-only: the
+# deployed wasm knows an address, never an implementation.
+mock-price-source = { path = "../mock-price-source", version = "0.1.0" }
+# The property layer (06-TEST-PLAN §3). Dev-only, so it adds nothing to the wasm —
+# which is why this block is the one place in the project where a dependency is
+# not a size decision.
+proptest = "1"
