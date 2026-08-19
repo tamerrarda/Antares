@@ -127,6 +127,17 @@ jobs:
         # of a duplicate pair. Every rule here was run against a tree with a
         # violation planted in it and seen to exit 1; that one was seen to fail on
         # the real defect.
+        #
+        # **The script is standard-library only, and `setup-python` above is what
+        # keeps it that way.** Its first version imported PyYAML, which is absent
+        # from the clean interpreter this step installs — so the rule refused rather
+        # than skipping, which was right and still cost the run: `wasm` needs this
+        # job and `reproducible` needs `wasm`, so D-50's two-checkout evidence never
+        # ran. `reference/requirements.txt` had already written the principle down —
+        # there is nothing to install, because a dependency is a second
+        # implementation of something we would then be trusting rather than
+        # checking. A clean interpreter is now a feature: a third-party import added
+        # here fails on the runner instead of passing on somebody's laptop.
         run: python3 scripts/ci/static_rules.py
 
   # ------------------------------------------------------------- 2. clippy ---

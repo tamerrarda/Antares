@@ -14,6 +14,7 @@ checked remotely.
 
 Run locally with `python3 scripts/ci/static_rules.py`. Non-zero means a rule fired.
 """
+import ast
 import pathlib
 import re
 import sys
@@ -260,51 +261,136 @@ def no_signing_secrets():
 
 
 def workflow_keys_unique():
-    """No duplicate mapping key in any workflow file.
+    """No duplicate sibling key in any workflow file.
 
     This rule exists because it cost two CI runs. A second job keyed `static-rules`
-    was added beside the existing one; GitHub rejects the file outright, but a
-    plain `yaml.safe_load` **silently keeps the last of a duplicate pair**, so the
-    local validation printed "yaml valid" both times and proved nothing. That is
-    the same shape as every other defect this month: a check returning a benign
-    value while nothing exercises it.
+    was added beside the existing one; GitHub rejects the file outright, but a plain
+    `yaml.safe_load` **silently keeps the last of a duplicate pair**, so the local
+    validation printed "yaml valid" both times and proved nothing.
 
-    A missing PyYAML fails this rule rather than skipping it. A dependency that
-    disappears must not look like a pass.
+    **It then cost a third run for the opposite reason, and that is why it is written
+    this way.** The first version imported PyYAML. PyYAML is absent from the runner —
+    `actions/setup-python` provides a clean interpreter, which is exactly the trap,
+    since the system Python has it and local runs passed. The rule refused rather than
+    skipping, which was correct and was still a failed job: `wasm` needs
+    `static-rules` and `reproducible` needs `wasm`, so D-50's two-checkout evidence
+    never ran.
+
+    `reference/requirements.txt` had already written the principle down one directory
+    over — *there is nothing to install*, because a dependency is a second
+    implementation of something we would then be trusting rather than checking. This
+    file broke that principle and got bitten at precisely the point where it broke it.
+    **A local check is only as portable as its imports**, and a job named "runnable
+    locally" is not, if it is runnable only for people who happened to run a pip
+    install.
+
+    **What this scan does and does not do, stated rather than implied.** It compares
+    sibling keys at each indentation level, which is where duplicates are rejected by
+    YAML and where both real failures lived. It understands block scalars (`|`, `>`
+    and their chomping forms), comments and list items, because without those it would
+    report duplicates that are not there — and a check that cries wolf is switched off
+    within the week, which this repository has already recorded once. It does **not** parse
+    flow mappings written on one line (`{a: 1, a: 2}`) — measured: a strict loader finds
+    that duplicate and this scan does not. **So it refuses them rather than passing
+    them.** No workflow here uses one, and this rule's whole contract is that it cannot
+    silently pass; a construct it cannot check has to be a failure, or the gap becomes
+    the next thing somebody finds the expensive way.
     """
     out = []
-    try:
-        import yaml
-    except ImportError:
-        return ["PyYAML is not installed, so duplicate workflow keys cannot be checked "
-                "— install it rather than treating this as a pass"], []
-
-    class Strict(yaml.SafeLoader):
-        pass
-
-    def no_dupes(loader, node, deep=False):
-        seen = {}
-        for k, v in node.value:
-            key = loader.construct_object(k, deep=deep)
-            if key in seen:
-                out.append(
-                    f"duplicate key `{key}` at line {k.start_mark.line + 1} "
-                    f"(first seen at line {seen[key] + 1}) — GitHub rejects the file, "
-                    f"and yaml.safe_load would silently keep the last one"
-                )
-            seen[key] = k.start_mark.line
-        return yaml.SafeLoader.construct_mapping(loader, node, deep)
-
-    Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_dupes)
+    key_re = re.compile(r"^(\s*)(-\s+)?((?:[A-Za-z0-9_.\-]+|\"[^\"]*\"|'[^']*')):(\s|$)")
+    block_re = re.compile(r":\s*[|>][+-]?\d*\s*(#.*)?$")
+    # `${{ ... }}` is GitHub expression syntax, not a YAML flow mapping — excluded, or
+    # every workflow line carrying one would be refused.
+    flow_re = re.compile(r"(?<![$\w])\{(?!\{)[^}]*:")
 
     for f in sorted((WORKFLOWS / "workflows").glob("*.yml")):
-        before = len(out)
-        try:
-            yaml.load(f.read_text(), Loader=Strict)
-        except yaml.YAMLError as e:
-            out.append(f"{rel(f)}: does not parse — {str(e)[:80]}")
-        for i in range(before, len(out)):
-            out[i] = f"{rel(f)}: {out[i]}"
+        stack = []            # [indent, {key: first_line}]
+        block_indent = None
+        for n, ln in enumerate(f.read_text().split("\n"), 1):
+            if block_indent is not None:
+                if not ln.strip():
+                    continue
+                if len(ln) - len(ln.lstrip()) > block_indent:
+                    continue
+                block_indent = None
+            if not ln.strip() or ln.lstrip().startswith("#"):
+                continue
+            if flow_re.search(ln):
+                out.append(
+                    f"{rel(f)}:{n}  flow mapping — this rule scans block style only and "
+                    f"cannot decide duplicates inside `{{...}}`. Rewrite it in block "
+                    f"style or widen the rule; it will not pass what it cannot check"
+                )
+                continue
+            m = key_re.match(ln)
+            if not m:
+                continue
+            pad, dash, key = m.group(1), m.group(2), m.group(3)
+            indent = len(pad) + (len(dash) if dash else 0)
+
+            while stack and stack[-1][0] > indent:
+                stack.pop()
+            if dash:
+                # A new list element is a new mapping, so its keys are not siblings of
+                # the previous element's. Without this every step's `name:` collides.
+                while stack and stack[-1][0] >= indent:
+                    stack.pop()
+                stack.append([indent, {}])
+            if not stack or stack[-1][0] < indent:
+                stack.append([indent, {}])
+
+            seen = stack[-1][1]
+            if key in seen:
+                out.append(
+                    f"{rel(f)}:{n}  duplicate key `{key}` (first seen at line {seen[key]}) "
+                    f"— GitHub rejects the file, and yaml.safe_load would keep the last one"
+                )
+            else:
+                seen[key] = n
+
+            if block_re.search(ln):
+                block_indent = indent
+    return out, []
+
+
+def python_is_stdlib_only():
+    """Every Python file this project runs locally imports the standard library only.
+
+    Written the day the audit was asked for, because doing the audit once is weaker
+    than making it permanent — the next dependency arrives in somebody else's commit.
+
+    `reference/requirements.txt` already stated the principle for the references: there
+    is nothing to install, because a dependency is a second implementation of something
+    we would then be trusting rather than checking, and numpy is barred there by name
+    for wrapping silently on integer overflow. This extends the same rule to
+    `scripts/ci/`, which broke it and lost a CI run — PyYAML is absent from the runner's
+    clean interpreter, the rule that needed it refused rather than skipping, and `wasm`
+    and `reproducible` were skipped beneath it, taking D-50's two-checkout evidence with
+    them.
+
+    `sys.stdlib_module_names` is itself standard library, so this rule cannot violate
+    the rule it enforces.
+    """
+    out = []
+    stdlib = set(sys.stdlib_module_names)
+    for d in (ROOT / "scripts/ci", ROOT / "reference"):
+        for f in sorted(d.glob("*.py")):
+            tree = ast.parse(f.read_text())
+            local = {q.stem for q in d.glob("*.py")}
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name.split(".")[0] for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    names = [node.module.split(".")[0]]
+                for name in names:
+                    if name in stdlib or name in local:
+                        continue
+                    out.append(
+                        f"{rel(f)}:{node.lineno}  imports `{name}`, which is neither "
+                        f"standard library nor a sibling module — a local check is only "
+                        f"as portable as its imports"
+                    )
     return out, []
 
 
@@ -316,6 +402,7 @@ RULES = (
     ("07-SECURITY §3 outbound calls declared", outbound_calls),
     ("07-SECURITY §6 no signing-capable secret", no_signing_secrets),
     ("workflow keys unique", workflow_keys_unique),
+    ("python is standard-library only", python_is_stdlib_only),
 )
 
 
