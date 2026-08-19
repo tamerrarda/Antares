@@ -1334,6 +1334,7 @@ dependencies = [
 name = "reflector-adapter"
 version = "0.1.0"
 dependencies = [
+ "price-source-api",
  "soroban-sdk",
 ]
 

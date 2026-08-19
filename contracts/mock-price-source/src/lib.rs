@@ -20,7 +20,7 @@
 //! which is why its setters are admin-gated rather than open. Such deployments are economically
 //! meaningless by construction and are labelled so: they prove mechanism, never demand.
 
-use price_source_api::{self as api, AdapterError, PriceSource, ReadResult, Sample};
+use price_source_api::{self as api, AdapterError, OracleReading, PriceSource, ReadResult, Sample};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Env, Map, Vec,
 };
@@ -33,7 +33,8 @@ use soroban_sdk::{
 /// routing rule's third row can be forced without having to pick a resolution that violates one
 /// specific window.
 #[contracttype]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// Not `Copy` any more: `ForceReading` carries an `OracleReading`, which is not.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     /// Compute honestly from the records. The default.
     Normal,
@@ -43,6 +44,21 @@ pub enum Mode {
     ForceOutOfReach,
     /// Answer `Err(BadConfig)` — a live-configuration fault, which routes to `Transient`.
     ForceBadConfig,
+    /// Answer with **exactly this reading**, however implausible.
+    ///
+    /// Added 2026-08-19, and the reason is worth stating because it looks like a hole in the
+    /// "compute honestly from the records" rule. The vault's guard ladder has two steps — a
+    /// non-positive aggregate (§3 step 3) and the coarse 100× bound (step 5) — that exist
+    /// **precisely because the vault does not trust the adapter**. A correct source cannot produce
+    /// either: a median of positive records is positive, and a sane feed stays inside 100×. So
+    /// those two branches are unreachable from an honest implementation and would be untestable
+    /// and indistinguishable from dead code — while being the only thing standing between a
+    /// malfunctioning adapter and a strike of zero, which rejects every bid forever and divides by
+    /// zero at settlement.
+    ///
+    /// 06-TEST-PLAN's I10 grid says *"drive every outcome from `MockPriceSource`"*. This is what
+    /// makes that true for the vault-side ladder as well as the read.
+    ForceReading(OracleReading),
 }
 
 #[contracterror]
@@ -304,6 +320,7 @@ impl PriceSource for MockPriceSource {
             Mode::ForceUnusable => return Ok(ReadResult::Unusable),
             Mode::ForceOutOfReach => return Ok(ReadResult::OutOfReach),
             Mode::ForceBadConfig => return Err(AdapterError::BadConfig),
+            Mode::ForceReading(r) => return Ok(ReadResult::Reading(r)),
             Mode::Normal => {}
         }
 

@@ -217,3 +217,27 @@ pub struct Mint {
     pub to: Address,
     pub amount: i128,
 }
+
+// **DEV2's**, in DEV1's file: §10's event ABI is split by the module that *emits*, and
+// `epoch_opened` is emitted by `open_epoch` in `epoch.rs` (DEV-PROTOCOL §3). Added here rather
+// than in a second events module so that §10 stays one file, and flagged in STANDUP.
+//
+// It carries every input the decay curve needs — `opened_at` is the origin `bid` measures from,
+// and `premium_start_bps`/`premium_floor_bps` are the band — so the reference bidder and the UI
+// can evaluate `premium_bps(t)` from events alone, with no view call. `open_twap` is the number
+// the strike was derived from, which makes the derivation auditable rather than merely
+// reproducible.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EpochOpened {
+    #[topic]
+    pub round: u32,
+    pub strike: i128,
+    pub expiry: u64,
+    pub opened_at: u64,
+    pub auction_end: u64,
+    pub notional_offered: i128,
+    pub open_twap: i128,
+    pub premium_start_bps: u32,
+    pub premium_floor_bps: u32,
+}
