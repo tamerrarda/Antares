@@ -332,7 +332,15 @@ jobs:
         # persistent archival.
         run: |
           set -euo pipefail
-          if hits=$(grep -rn '\.temporary()' contracts/ --include='*.rs' || true); [ -n "$hits" ]; then
+          # Comment lines are stripped first. 03-STORAGE-TTL §1 states the rule as
+          # the absence of any `temporary()` **call**, and a comment is not a call —
+          # the plan explains this rule in prose in several places, and a check that
+          # reddens when somebody documents it is a check that gets switched off.
+          # Found the honest way: `test_storage.rs` explains why it never reaches for
+          # temporary storage, and that sentence broke this grep. The sentence stays
+          # where it is; it is now the fixture proving the fix.
+          if hits=$(grep -rn '\.temporary()' contracts/ --include='*.rs' \
+                     | grep -vE ':[[:space:]]*(//|/\*|\*)' || true); [ -n "$hits" ]; then
             echo "::error::temporary() storage is used in the contracts:"
             echo "$hits"; exit 1
           fi
