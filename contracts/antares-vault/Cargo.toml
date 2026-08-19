@@ -27,3 +27,7 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 # 00-ROADMAP calls the mock the first line of code in the project. Dev-only: the
 # deployed wasm knows an address, never an implementation.
 mock-price-source = { path = "../mock-price-source", version = "0.1.0" }
+# The property layer (06-TEST-PLAN §3). Dev-only, so it adds nothing to the wasm —
+# which is why this block is the one place in the project where a dependency is
+# not a size decision.
+proptest = "1"
