@@ -262,8 +262,14 @@ impl AntaresVault {
             .ok_or(Error::InvalidAmount)?;
         let filled = fill_amount(notional, remaining);
 
+        // Unreachable through any transaction — the phase check above has already
+        // rejected the only state that produces it (§5 step 6, §16) — and kept
+        // anyway, folded into the rejection the phase check itself would have given.
+        // Error 33 was retired because an integrator cannot be handed it; the
+        // refusal is not the same thing as the code, and `round_numbers` is the
+        // precedent for keeping a domain guard a caller is believed to satisfy.
         if filled == 0 {
-            return Err(Error::SoldOut);
+            return Err(Error::WrongPhase);
         }
         // The sliver exception, and it is not a griefing vector: to *create* a
         // sub-`min_fill` remainder an attacker must place a real fill of at least

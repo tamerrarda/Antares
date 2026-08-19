@@ -176,7 +176,9 @@ fn replay_curve(vector: &Value) -> Value {
             let remaining = state.notional_offered - state.notional_sold;
             let filled = fill_amount(requested, remaining);
             if filled == 0 {
-                return Err("SoldOut");
+                // Matches `auction.rs` after error 33's retirement: the refusal
+                // stays, the code it reports does not.
+                return Err("WrongPhase");
             }
             if filled < state.params.min_fill && filled != remaining {
                 return Err("BelowMinFill");

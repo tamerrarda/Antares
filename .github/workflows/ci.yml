@@ -336,7 +336,13 @@ jobs:
   # ----------------------------------------------- 8. wasm build + size ------
   wasm:
     name: wasm build + size check
-    needs: [test, static-rules]
+    # `static-rules` is deliberately **not** here (ruled 2026-08-19). A source-rule
+    # violation says nothing about whether the binary builds or what it weighs, and
+    # the coupling already cost D-50's two-checkout evidence at IP-3 — `wasm` needed
+    # `static-rules`, `reproducible` needed `wasm`, and a missing PyYAML took both
+    # down. **A check that can take down an unrelated check has reach it was never
+    # granted.**
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

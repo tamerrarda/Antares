@@ -85,7 +85,15 @@ pub enum Error {
     // The bidder's own slippage guard tripped.
     PremiumAboveMax = 31,
     BelowMinFill = 32,
-    SoldOut = 33,
+    // 33 retired — was `SoldOut`, and this is the **first amendment to a signed
+    // integration point** (IP-1's frozen surface, ruled 2026-08-19). §5 step 6 flips
+    // the phase to `Active` the instant the offer fills, and §16 checks phase before
+    // `filled` is computed, so no transaction can reach a zero fill: `filled == 0`
+    // needs `remaining == 0`, which is the state the phase check already rejected.
+    // Same shape as 5, 23, 28, 55 and 56 — ABI an integrator must handle and can
+    // never be handed. **The guard did not go with the code**: `bid` still refuses a
+    // zero fill, folded into `WrongPhase`, because "other code guarantees this" is
+    // the gap `round_numbers`' fuzz target walked straight into.
     // Spot ≥ strike: the vault refuses to sell intrinsic value. An **unreadable**
     // spot is `OracleUnreachable`, never this — the two are counted separately so
     // a feed outage is not read as absent demand (D-29).
