@@ -19,12 +19,7 @@
     "",
     "To widen: add the path here in the same commit as the Rust replay that produces it."
   ],
-  "sections": [
-    "claims_ref.per_bidder",
-    "claims_ref.withdraw_claims",
-    "curve_ref",
-    "settle_ref"
-  ],
+  "sections": ["claims_ref.per_bidder", "claims_ref.withdraw_claims", "curve_ref", "settle_ref"],
   "known_disagreements": {
     "_read_this_before_changing_either_side": [
       "Building the generated corpus (ANTARES_VECTOR_DUMP) currently makes the diff fail on about",
