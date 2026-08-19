@@ -25,11 +25,11 @@ use soroban_sdk::{contractimpl, Address, Env};
 
 use crate::errors::Error;
 use crate::events::BidFilled;
+use crate::oracle;
 use crate::storage;
 use crate::types::{Fill, Phase, State, BPS};
-use crate::vault::{self, Ctx};
+use crate::vault::{self};
 use crate::{AntaresVault, AntaresVaultArgs, AntaresVaultClient};
-use price_source_api::PriceSourceClient;
 
 // =================================================================================================
 // §5's linear decay curve (D-03)
@@ -96,35 +96,6 @@ pub(crate) fn premium_bps(state: &State, now: u64) -> u32 {
 }
 
 // =================================================================================================
-// The in-the-money guard (D-29)
-// =================================================================================================
-
-// `spot_check` through the client's recoverable form, and **two outcomes that
-// must never be conflated**.
-//
-// `InTheMoney` means a readable price at or above the strike; `OracleUnreachable`
-// means the check itself could not be made. The keeper counts them separately and
-// only genuine no-bid epochs advance the D-34 stop gate (08-OFFCHAIN §1), so
-// collapsing an outage into "no demand" would feed a feed failure straight into
-// the gate that can end this project.
-//
-// `try_` per 04-ORACLE §3b: a trapping, archived or wrong-interface adapter must
-// surface as a typed error rather than let a host trap escape `bid`. `None` and a
-// trap are the same answer here — the guard could not be made — which is why both
-// arms map to one code. The adapter adds its own `resolution()` to
-// `max_staleness` internally, so the vault passes its own tolerance and never
-// grows a `resolution` field (D-58).
-fn spot_check(env: &Env, ctx: &Ctx) -> Result<i128, Error> {
-    // outbound: config.oracle
-    let client = PriceSourceClient::new(env, &ctx.config.oracle);
-    client
-        .try_spot_check(&ctx.state.params.max_staleness, &ctx.state.feed_decimals)
-        .map_err(|_| Error::OracleUnreachable)?
-        .map_err(|_| Error::OracleUnreachable)?
-        .ok_or(Error::OracleUnreachable)
-}
-
-// =================================================================================================
 // §5's `bid`
 // =================================================================================================
 
@@ -151,19 +122,26 @@ impl AntaresVault {
         // produces. A zero-notional bid on a paused vault returns `Paused`.
         let mut ctx = vault::enter(&env, true)?;
 
-        // §11, and its position is deliberately the same as `deposit`'s rather
-        // than the one DEV3 proposed for the §16 row (after `notional > 0`).
-        // `deposit` already answers this pair in code — self-address first, then
-        // the amount — and two entry points ordering the same two guards
-        // differently is the defect §16's canonical order exists to prevent, one
-        // level up. A SAC self-transfer succeeds while moving nothing, so without
-        // this a "fill" would cost the bidder no premium at all.
-        if bidder == env.current_contract_address() {
-            return Err(Error::InvalidAddress);
-        }
-
         if notional <= 0 {
             return Err(Error::InvalidAmount);
+        }
+
+        // §11, immediately after the first check on the arguments' values —
+        // **DEV1's F-6 ruling, 2026-08-19**, applied to both call sites at once.
+        // This file shipped it in the other order for one commit, matching what
+        // `deposit` did at the time; DEV1 ruled the other way and moved `deposit`,
+        // so `bid` follows. One ruling for both is the only form that stays true
+        // when two people write the two call sites, which is the whole reason §16
+        // has a canonical order.
+        //
+        // Pause still dominates, and a zero-notional self-bid answers
+        // `InvalidAmount` rather than `InvalidAddress` — the ordering is asserted
+        // rather than left to the reader.
+        //
+        // A SAC self-transfer succeeds while moving nothing, so without this a
+        // "fill" would cost the bidder no premium at all.
+        if bidder == env.current_contract_address() {
+            return Err(Error::InvalidAddress);
         }
 
         // Phase and time. `AuctionClosed` (5) is retired and stays retired:
@@ -207,7 +185,32 @@ impl AntaresVault {
         // *descends*, so once spot crosses it every fill hands the buyer
         // collateral for pennies. Lapsing keeps the upside, and a lapse costs
         // depositors nothing while a mispriced fill costs them collateral.
-        let spot = spot_check(&env, &ctx)?;
+        // **`oracle::spot_check` is DEV2's and is the only one.** §5 step 2 names the
+        // call site exactly, and the seam exists so that one place decides what an
+        // unreadable price *is*.
+        //
+        // This file briefly carried its own, written before DEV2's oracle seam had
+        // ever been on this branch. The two disagreed on one predicate and the
+        // difference was a hole: theirs filters a non-positive price to `None`,
+        // mine accepted it as a spot. A feed reporting `0` then gives `spot = 0`,
+        // and `0 >= strike` is false for every positive strike — so the guard
+        // *passes* and the vault sells the call believing it is deep out of the
+        // money. If the real spot is above the strike that is the vault selling
+        // intrinsic value: exactly what D-29 exists to stop, reached **through**
+        // the guard rather than around it.
+        //
+        // What stays here is the classification, which is the caller's job: `None`
+        // is `OracleUnreachable` and **never** `InTheMoney`. The keeper counts the
+        // two separately and only genuine no-bid epochs advance the D-34 stop gate
+        // (08-OFFCHAIN §1), so conflating them feeds a feed outage into the gate
+        // that can end this project.
+        let spot = oracle::spot_check(
+            &env,
+            &ctx.config.oracle,
+            ctx.state.params.max_staleness,
+            ctx.state.feed_decimals,
+        )
+        .ok_or(Error::OracleUnreachable)?;
         if spot >= ctx.state.strike {
             return Err(Error::InTheMoney);
         }

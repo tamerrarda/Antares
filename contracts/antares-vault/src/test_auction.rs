@@ -551,6 +551,16 @@ fn refuses_the_vault_bidding_into_its_own_auction() {
         Err(Error::InvalidAddress)
     );
     assert_no_events(&a.f, "a self-bid");
+
+    // The ordering DEV1 ruled on (F-6): the amount check comes first, so a
+    // zero-notional self-bid answers `InvalidAmount` and not `InvalidAddress`.
+    // Both guards would fire and exactly one may — the same shape as the paused
+    // zero-notional case, one guard further down.
+    assert_eq!(a.bid(&vault, 0, BPS as u32), Err(Error::InvalidAmount));
+
+    // And pause still dominates both of them.
+    a.f.client().set_paused(&true);
+    assert_eq!(a.bid(&vault, 0, BPS as u32), Err(Error::Paused));
 }
 
 #[test]

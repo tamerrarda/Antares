@@ -10,6 +10,13 @@ node_modules/
 # would have put it on a code branch. DEV-PROTOCOL §9 forbids exactly that.
 /plan
 
+# Python bytecode from the differential reference. `reference/` is source that two
+# implementations are diffed against; a .pyc in a commit is noise at best and, in a
+# layer whose whole value is that its arithmetic was derived rather than ported, a
+# stale one is worse than noise.
+__pycache__/
+*.py[cod]
+
 # Tool output that must never reach a commit
 .stellar/
 mutants.out*/
