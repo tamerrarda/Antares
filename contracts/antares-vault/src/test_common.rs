@@ -15,7 +15,7 @@
 #![allow(clippy::inconsistent_digit_grouping)]
 
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, EnvTestConfig, Ledger},
     token::StellarAssetClient,
     Address, Env, String,
 };
@@ -67,7 +67,30 @@ pub struct Deployed {
 /// `supports_round`, which is why 00-ROADMAP calls the `PriceSource` mock the
 /// first line of code in the project rather than a testing convenience.
 pub fn deploy() -> Deployed {
-    let env = Env::default();
+    deploy_into(Env::default())
+}
+
+/// The same vault on an `Env` that writes **no** test snapshot when it drops. For the property
+/// suite, and for nothing else.
+///
+/// Soroban writes `test_snapshots/{test}.N.json` on every `Env` drop. For a deterministic test
+/// that file is a record worth keeping — the footprint and the budget of a fixed sequence, which
+/// changes only when the contract does. For a *generated* test it is the opposite: proptest builds
+/// a fresh random call sequence on every run, so the file records one arbitrary sequence and is
+/// rewritten wholesale by the next `cargo test` that touches it.
+///
+/// Measured before turning it off: the three property tests rewrote **145 files, ~100 000 lines**
+/// of tracked JSON per run. That is enough churn to bury a real diff, and it was introduced by the
+/// commit that added the property suite (1ba23a7) — so the noise is removed here rather than
+/// hidden behind a `.gitignore`, which would leave the files being written and merely stop anyone
+/// from seeing it.
+pub fn deploy_no_snapshot() -> Deployed {
+    deploy_into(Env::new_with_config(EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    }))
+}
+
+fn deploy_into(env: Env) -> Deployed {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);

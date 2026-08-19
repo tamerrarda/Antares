@@ -43,7 +43,7 @@
 extern crate std;
 use std::{format, vec};
 
-use crate::test_common::{deploy, Deployed};
+use crate::test_common::{deploy_no_snapshot, Deployed};
 use crate::types::*;
 use proptest::prelude::*;
 use soroban_sdk::{
@@ -183,7 +183,9 @@ struct World {
 
 impl World {
     fn new() -> World {
-        let d = deploy();
+        // `deploy_no_snapshot`, not `deploy`: see its doc comment. Every test in this module is
+        // generated, so every snapshot it would write is a record of one arbitrary sequence.
+        let d = deploy_no_snapshot();
         let actors = core::array::from_fn(|_| {
             let a = Address::generate(&d.env);
             d.fund(&a, 10_000 * XLM);
