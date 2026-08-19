@@ -41,6 +41,7 @@
 // The crate is `#![no_std]`; proptest is not. Bound here rather than crate-wide so
 // the deployed wasm is untouched — this module only ever compiles under `cfg(test)`.
 extern crate std;
+use std::collections::BTreeMap;
 use std::{format, vec};
 
 use crate::test_common::{deploy_no_snapshot, Deployed};
@@ -179,11 +180,37 @@ struct Observed {
     /// than assumed. Measured once at 418 of 1 029 Idle checks across the suite;
     /// what matters per case is that it is not zero.
     i9_backed: usize,
+    /// How many finalized rounds I6's biconditional was actually decided on, and
+    /// how many of those were the degenerate `pps == 0` side. The second number
+    /// is the one that matters: D-66 exists for a state the naive `pps > 0` form
+    /// would have passed straight through, so a run that never reaches it has
+    /// tested the easy half.
+    i6_rounds: usize,
+    i6_degenerate: usize,
+    /// Finalized `Round` records re-read and found unchanged (I7).
+    i7_rechecks: usize,
+}
+
+/// State read before an operation, so a finalization can be measured rather than
+/// recomputed. `assets_R` is not stored anywhere and re-deriving it in the test
+/// would be a second copy of `settle.rs`'s formula agreeing with itself; it comes
+/// out of observable state instead: `finalize_round` writes
+/// `locked_assets = assets_after - wclaims` and adds the same `wclaims` to
+/// `withdraw_claimable_total`, so the sum of the two deltas is `assets_R`.
+#[derive(Clone, Debug)]
+struct Pre {
+    round: u32,
+    withdraw_claimable: i128,
+    shares_snapshot: i128,
+    last_pps: i128,
 }
 
 struct World {
     d: Deployed,
     actors: [Address; ACTORS],
+    /// Every finalized round as first observed. I7 is that this map never needs
+    /// updating.
+    rounds: BTreeMap<u32, Round>,
     observed: Observed,
 }
 
@@ -201,6 +228,7 @@ impl World {
             d,
             actors,
             observed: Observed::default(),
+            rounds: BTreeMap::new(),
         };
         w.prime_feed();
         w
@@ -316,6 +344,109 @@ impl World {
             st.shares_outstanding,
             st.last_pps,
         );
+    }
+
+    fn capture(&self) -> Pre {
+        let st = self.d.state();
+        Pre {
+            round: st.round,
+            withdraw_claimable: st.withdraw_claimable_total,
+            shares_snapshot: st.shares_snapshot,
+            last_pps: st.last_pps,
+        }
+    }
+
+    /// **I6 in its D-66 form, and I7.**
+    ///
+    /// I6 is `pps >= 0` on every finalized round, and `== 0` **exactly when**
+    /// `assets_R × PRECISION < shares_snapshot`. The biconditional is the whole
+    /// decision: asserting `pps > 0` unconditionally is not merely incomplete, it
+    /// is *wrong* — it fails in the state D-66 deliberately allows, where forcing
+    /// a floor of 1 would make `Σ claim_withdraw` exceed what was credited and
+    /// break I1. Where I6 and I1 conflict, solvency wins, and that is the state
+    /// this checks rather than assumes.
+    ///
+    /// I7 is round immutability. 06-TEST-PLAN §3 puts it in the fuzz harness
+    /// "since it quantifies over call orderings, not values" — and this suite
+    /// *is* arbitrary call orderings, so the stated reason is satisfied here too.
+    /// DEV1.md §364 lists it as mine. Both hold; the fuzz version stays DEV3's and
+    /// hashes across interleavings this generator will not reach.
+    fn assert_i6_i7(&mut self, pre: &Pre, after: &str) {
+        let st = self.d.state();
+
+        for r in 1..=st.round {
+            let Some(rec) = self
+                .d
+                .env
+                .as_contract(&self.d.vault, || crate::storage::get_round(&self.d.env, r))
+            else {
+                continue;
+            };
+
+            if let Some(seen) = self.rounds.get(&r) {
+                assert_eq!(
+                    seen, &rec,
+                    "I7 violated after {after}: round {r} was rewritten. It is \
+                     immutable once written, and every late claim is computed from it"
+                );
+                self.observed.i7_rechecks += 1;
+                continue;
+            }
+
+            // Newly finalized in this step. `assets_R` from the two deltas rather
+            // than from a copy of the formula.
+            if r == pre.round + 1 || r == pre.round {
+                let wclaims = st.withdraw_claimable_total - pre.withdraw_claimable;
+                let assets_r = st.locked_assets + wclaims;
+                let snapshot = pre.shares_snapshot;
+                assert!(
+                    rec.pps >= 0,
+                    "I6 violated after {after}: round {r} finalized at pps {}",
+                    rec.pps
+                );
+                // **The biconditional only applies where `pps` was computed.**
+                // `settle` and `unresolved` divide `assets_R` by
+                // `shares_snapshot`; `lapse` and `void` finalize with
+                // `pps = last_pps`, carried from the previous round and never
+                // derived from this one's assets. Asserting D-66's "exactly when"
+                // against a carried price compares two unrelated numbers, and it
+                // was green only because this generator had not yet produced the
+                // pairing that separates them. Each outcome is checked against the
+                // rule that actually governs it.
+                match rec.outcome {
+                    RoundOutcome::Settled | RoundOutcome::Unresolved if snapshot > 0 => {
+                        let degenerate = assets_r
+                            .checked_mul(PRECISION)
+                            .expect("assets_R × PRECISION overflowed, which §8's bounds forbid")
+                            < snapshot;
+                        assert_eq!(
+                            rec.pps == 0,
+                            degenerate,
+                            "I6 violated after {after}: round {r} has pps {} with assets_R \
+                             {assets_r} against {snapshot} shares — D-66 makes those two \
+                             statements the same one",
+                            rec.pps
+                        );
+                        self.observed.i6_rounds += 1;
+                        if degenerate {
+                            self.observed.i6_degenerate += 1;
+                        }
+                    }
+                    RoundOutcome::Lapsed | RoundOutcome::Voided => {
+                        assert_eq!(
+                            rec.pps, pre.last_pps,
+                            "round {r} {:?} at pps {} but the price entering it was {} — \
+                             exiting shares leave at the unchanged price; a lapse costs \
+                             depositors nothing and earns them nothing",
+                            rec.outcome, rec.pps, pre.last_pps
+                        );
+                        self.observed.i6_rounds += 1;
+                    }
+                    _ => {}
+                }
+            }
+            self.rounds.insert(r, rec);
+        }
     }
 
     fn i9_backed_seen(&mut self) {
@@ -437,11 +568,13 @@ proptest! {
         w.assert_i9("genesis");
 
         for (i, op) in ops.iter().enumerate() {
+            let pre = w.capture();
             w.apply(op);
             let label = format!("op {i}: {op:?}");
             w.assert_i1(&label);
             w.assert_i5(&label);
             w.assert_i9(&label);
+            w.assert_i6_i7(&pre, &label);
         }
 
         // The three terms this phase can move must actually have moved, or the
@@ -477,14 +610,36 @@ proptest! {
         w.assert_i9("forced open");
 
         for (i, op) in ops.iter().enumerate() {
+            let pre = w.capture();
             w.apply(op);
             let label = format!("live-round op {i}: {op:?}");
             w.assert_i1(&label);
             w.assert_i5(&label);
             w.assert_i9(&label);
+            w.assert_i6_i7(&pre, &label);
         }
 
         prop_assert!(w.observed.round > 0, "no round was ever live");
+
+        // **Force a terminal outcome so I6 and I7 are decided rather than merely
+        // reachable.** A free sequence may leave the round open, and then both
+        // assertions run zero times while the case still passes — the shape this
+        // suite exists to refuse. Measured before this was added: I6 decided 28
+        // rounds and I7 matched 230 times across a run, but nothing held that at
+        // more than zero *per case*.
+        w.apply(&Op::Jump(4_000));
+        let pre = w.capture();
+        w.apply(&Op::CloseRound { bounty_to: 0 });
+        w.assert_i6_i7(&pre, "forced close");
+        prop_assert!(
+            w.observed.i6_rounds > 0,
+            "I6 was never decided: no round reached a terminal outcome, so the \
+             assertion ran on nothing"
+        );
+        prop_assert!(
+            w.observed.i7_rechecks > 0 || w.rounds.len() == 1,
+            "I7 never re-read a finalized round, so immutability was never tested"
+        );
     }
 
     /// Deposits alone, in bulk, so the run that most exercises `locked_assets`

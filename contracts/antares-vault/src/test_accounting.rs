@@ -19,6 +19,7 @@
 use crate::errors::Error;
 use crate::test_common::{deploy, valid_params, CAP};
 use crate::types::*;
+use mock_price_source::{MockPriceSourceClient, Mode};
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger},
     Address, Env,
@@ -771,4 +772,75 @@ fn the_chain_that_makes_the_guard_unnecessary_holds_across_shapes() {
             );
         }
     }
+}
+
+// ======================= I6 in its D-66 form, constructed ========================
+//
+// 06-TEST-PLAN §3 names "the degenerate-`pps` test below" and no such test existed
+// anywhere in the crate. The property suite now asserts I6 on every finalized
+// round — measured at 28 rounds across a run — but **`i6_degenerate` came back 0**:
+// the generator never reaches the state D-66 exists for, so the assertion was
+// exercising its easy half. An invariant with a number beside it looks covered,
+// and this is the second time that has been the finding.
+//
+// So the state is built rather than waited for. Degenerate means
+// `assets_R × PRECISION < shares_snapshot` — the pool worth less than one stroop
+// per PRECISION share-units — where `pps` floors to zero. `bid` is DEV3's, and a
+// payout large enough to do this to a real pool needs one, so the fills are written
+// to `State` directly, exactly as `test_settle.rs` does for the same reason.
+
+#[test]
+fn a_round_whose_pool_cannot_cover_one_stroop_per_share_finalizes_at_pps_zero() {
+    let d = deploy();
+    let user = d.user(1_000 * XLM);
+    d.client().deposit(&user, &(100 * XLM));
+    d.open_round_manually(1, Phase::Active, d.env.ledger().timestamp() + 100);
+
+    // The smallest numbers that satisfy D-66's condition: 1 stroop of assets
+    // against 2·PRECISION share-units.
+    d.env.as_contract(&d.vault, || {
+        let mut s = crate::storage::get_state(&d.env).unwrap();
+        s.notional_sold = 1; // past the `notional_sold == 0` lapse branch
+        s.premium_collected = 0;
+        // `open_round_manually` leaves `strike` at genesis zero, and `round_numbers`
+        // refuses a non-positive strike rather than trusting its caller — the exact
+        // domain guard cited as precedent for `finalize_numbers`, catching a bad
+        // fixture on its first use. Set to a real strike so the refusal under test
+        // is D-66's and not a fixture's.
+        s.strike = 100 * PRECISION;
+        s.locked_assets = 1;
+        s.locked_at_open = 1;
+        s.shares_snapshot = 2 * PRECISION;
+        crate::storage::set_state(&d.env, &s);
+    });
+
+    // Out of reach, past every window: the unresolved path, which is one of the two
+    // that *computes* `pps` rather than carrying it.
+    MockPriceSourceClient::new(&d.env, &d.oracle).set_mode(&Mode::ForceOutOfReach);
+    d.advance(100_000);
+
+    let outcome = d.client().close_round(&Address::generate(&d.env));
+    assert_eq!(outcome, RoundOutcome::Unresolved, "the computed-pps path");
+
+    let rec = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_round(&d.env, 1))
+        .expect("round 1 finalized");
+    assert_eq!(rec.pps, 0, "1 × PRECISION / 2·PRECISION floors to zero");
+
+    // **The half that makes D-66 a decision rather than an accident.** A `pps >= 1`
+    // floor would credit `shares_snapshot × 1 / PRECISION = 2` stroops of withdrawal
+    // claims against a pool holding 1 — `Σ claim_withdraw` exceeding what was
+    // credited, which is I1. Where I6 and I1 conflict, solvency wins, and this is
+    // the arithmetic that decides it rather than a sentence asserting it.
+    let floor_pps = 1i128; // the `pps >= 1` clamp D-66 removed
+    let promised_under_a_floor = (2 * PRECISION) * floor_pps / PRECISION;
+    assert!(
+        promised_under_a_floor > 1,
+        "a pps floor would have promised {promised_under_a_floor} against 1 stroop"
+    );
+
+    let st = d.state();
+    assert!(st.locked_assets >= 0, "and the pool never goes negative");
+    assert_eq!(st.phase, Phase::Idle, "terminal either way (I10)");
 }
