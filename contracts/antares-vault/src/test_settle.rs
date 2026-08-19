@@ -674,3 +674,65 @@ fn the_bounty_reaches_the_caller_on_both_paying_branches() {
         assert_eq!(d.balance(&to), expected, "{outcome:?}");
     }
 }
+
+// =================================================================================================
+// The fuzzer's finding, as a permanent regression
+// =================================================================================================
+
+#[test]
+fn round_numbers_refuses_every_input_outside_its_domain() {
+    // `06-TEST-PLAN.md` §4: *every crash becomes a permanent regression unit test*. This is
+    // `fuzz_settlement_math`'s first, found within seconds of the target existing.
+    //
+    // At `notional_sold < 0` the settlement math produced a **negative payout** — arithmetically
+    // consistent and economically a transfer *from* the bidder. No caller can construct it:
+    // `notional_sold` starts at 0 and only `bid` raises it. "No caller can" was the load-bearing
+    // word, and it is exactly the kind this layer exists to distrust — the function already
+    // refused to *return* a negative `assets_R` while trusting every number it was handed.
+    use crate::settle::round_numbers;
+
+    // The legitimate shape, so the rejections below are about one field each.
+    let ok = round_numbers(Some(2_000_000), 1_000_000, 100, 1_000, 10, 1_000, 0, 25);
+    assert!(
+        ok.is_ok(),
+        "the baseline must be accepted or this test proves nothing"
+    );
+
+    let cases: [(&str, Result<crate::settle::RoundNumbers, Error>); 5] = [
+        (
+            "notional_sold < 0 — the crash",
+            round_numbers(Some(2_000_000), 1_000_000, -1, 1_000, 10, 1_000, 0, 25),
+        ),
+        (
+            "strike <= 0",
+            round_numbers(Some(2_000_000), 0, 100, 1_000, 10, 1_000, 0, 25),
+        ),
+        (
+            "shares_snapshot <= 0",
+            round_numbers(Some(2_000_000), 1_000_000, 100, 1_000, 10, 0, 0, 25),
+        ),
+        (
+            "locked_at_open < 0",
+            round_numbers(Some(2_000_000), 1_000_000, 100, -1, 10, 1_000, 0, 25),
+        ),
+        (
+            "premium_collected < 0",
+            round_numbers(Some(2_000_000), 1_000_000, 100, 1_000, -1, 1_000, 0, 25),
+        ),
+    ];
+    for (why, result) in cases {
+        assert_eq!(result, Err(Error::InvalidAmount), "{why}");
+    }
+}
+
+#[test]
+fn an_out_of_the_money_settle_and_an_unresolved_round_compute_identically() {
+    // D-64's "two entrances, one path", asserted on the pure function as well as on the contract.
+    // They share `round_numbers`, so this is structural — and "structural" is precisely the claim
+    // that stops being true after a refactor, which is why it is pinned in both places.
+    use crate::settle::round_numbers;
+    let settled = round_numbers(Some(1_000_000), 2_000_000, 500, 1_000, 20, 1_000, 500, 25);
+    let unresolved = round_numbers(None, 2_000_000, 500, 1_000, 20, 1_000, 500, 25);
+    assert_eq!(settled, unresolved);
+    assert_eq!(settled.unwrap().payout_total, 0);
+}
