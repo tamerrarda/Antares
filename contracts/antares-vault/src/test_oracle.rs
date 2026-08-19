@@ -362,6 +362,34 @@ fn spot_check_answers_none_on_every_failure_and_never_a_price() {
 }
 
 #[test]
+fn spot_check_refuses_a_non_positive_tick_rather_than_returning_it_as_a_spot() {
+    // The predicate that separates this wrapper from a plausible-looking one, and it is not
+    // hypothetical: DEV3 wrote a second `spot_check` inline in `auction.rs` — their branch never
+    // had `oracle.rs` on it — and theirs accepts a non-positive price **as a spot**. A zero or
+    // negative tick then compares as `spot < strike` and walks straight through the in-the-money
+    // guard, which is the one thing that guard exists to stop.
+    //
+    // They are deleting theirs and calling this. Pinning the predicate here first, so that if their
+    // three refusal cases ever fail against this function the failure is a finding in my seam
+    // rather than in their fix.
+    let f = setup();
+    assert_eq!(
+        spot_check(&f.env, &f.oracle, 600, DEC),
+        Some(PX_1E7),
+        "the baseline answers"
+    );
+
+    for bad in [0i128, -1] {
+        f.mock.set_price(&ANCHOR, &bad);
+        assert_eq!(
+            spot_check(&f.env, &f.oracle, 600, DEC),
+            None,
+            "a tick of {bad} is not a price, and must never reach the ITM comparison"
+        );
+    }
+}
+
+#[test]
 fn supports_round_surfaces_a_trapping_source_as_false_and_never_as_a_host_trap() {
     // O-13e. This is called from the vault's constructor: a trap escaping here arrives as a host
     // trap rather than `InvalidParams`, and the vault cannot be registered at all. The source is
