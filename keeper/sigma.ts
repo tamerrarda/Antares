@@ -23,10 +23,12 @@
  * D-67 does not say what a 5-minute return is when the feed skipped a tick, and the keeper cannot
  * avoid the question. The rule implemented here — a return is formed **only between adjacent
  * samples exactly one resolution apart**, gaps break the chain, dropped pairs are counted and a
- * `completeness` figure is published beside σ — and the arithmetic that chooses it over bridging
- * are in **01-DECISIONS, `D-67 follow-on · σ_realized has no rule for a missing tick`**. Read it
- * there: the document is where a rule belongs, and this comment would be the wrong place for
- * anyone approaching from D-67 to find it.
+ * `completeness` figure is published beside σ — the arithmetic that chooses it over bridging, and
+ * the **rejected alternative it was chosen over** (keep the pair and scale it by its own span,
+ * which is equally unbiased and better at a gap rate this feed has never shown), are in
+ * **01-DECISIONS, `D-67 follow-on · σ_realized has no rule for a missing tick`**. Read it there:
+ * the document is where a rule belongs, and a reader who finds only the chosen half here cannot
+ * tell whether the other was weighed or missed.
  */
 
 /** Five-minute intervals in a day (24 × 12), and the year D-67 annualizes over. */
