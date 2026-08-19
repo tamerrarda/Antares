@@ -1,0 +1,60 @@
+{
+  "bids": [],
+  "burns": [
+    {
+      "shares": 10000000000
+    }
+  ],
+  "expected": {
+    "assets_R": 100000000000,
+    "bounty": 0,
+    "fee": 0,
+    "fills": [],
+    "locked_after": 90000000000,
+    "payout_total": 0,
+    "per_bidder": [],
+    "pps": 10000000,
+    "rejects": [],
+    "wclaims": 10000000000,
+    "withdraw_claims": [
+      {
+        "amount": 10000000000,
+        "shares": 10000000000
+      }
+    ]
+  },
+  "initial": {
+    "locked": 100000000000,
+    "pps": 10000000,
+    "shares": 100000000000
+  },
+  "name": "lapsed-with-a-burn",
+  "note": "05 \u00a74: 'The lapse vector carries a burn, and that is not decoration.' D-32's exact shape - request_withdraw during the auction, no bids, lapse - so wclaims and the locked_assets subtraction after it are actually exercised. Without it all four vectors run at wclaims = 0.",
+  "open": {
+    "at": 1800000000,
+    "strike": 4400000,
+    "twap": 4000000
+  },
+  "outcome": {
+    "kind": "lapsed"
+  },
+  "params": {
+    "auction_duration": 2700,
+    "epoch_duration": 604800,
+    "fee_bps": 0,
+    "guard_window": 3600,
+    "max_deviation_bps": 100,
+    "max_staleness": 600,
+    "min_deposit": 100000000,
+    "min_fill": 1000000000,
+    "min_idle_gap": 14400,
+    "oracle_dead_after": 43200,
+    "premium_floor_bps": 10,
+    "premium_start_bps": 300,
+    "settle_bounty_bps": 25,
+    "settle_grace": 7200,
+    "strike_bps_otm": 1000,
+    "twap_window": 900,
+    "unresolved_after": 75600
+  }
+}

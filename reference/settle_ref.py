@@ -387,3 +387,56 @@ def _pps_of(assets_R: int, shares_snapshot: int, branch: str) -> int:
             f"computing a price"
         )
     return _floor_div(assets_R * PRECISION, shares_snapshot)
+
+
+# =============================================================================================
+# The vector-schema adapter — marshalling only, no arithmetic
+# =============================================================================================
+
+
+def compute(vector: dict, curve_out: dict) -> dict:
+    """The entry point ``run_vectors.py`` calls, matching ``claims_ref.compute``'s shape.
+
+    **Added after this file was frozen, and it adds no arithmetic.** The seven computed
+    quantities still come from :func:`resolve` exactly as authored; this only reads
+    ``06-TEST-PLAN.md`` §5's document into :class:`RoundInputs`. The freeze recorded in
+    ``plan/STANDUP.md`` is on the derivation, and the derivation is untouched — verifiable by
+    diffing every function above this banner against blob
+    ``6b31a19b4eac272e444209958464296175ef4b91``.
+
+    ``notional_offered``/``locked_at_open``/``shares_snapshot`` are not fields of §5's schema and
+    do not need to be: ``open_epoch`` sets all three from ``locked_assets``/``shares_outstanding``
+    at open (02-CONTRACT-SPEC §5 step 3), and mints happen only in Idle (D-06/D-18), so the
+    ``initial`` block *is* the snapshot.
+    """
+    params = vector["params"]
+    initial = vector["initial"]
+
+    # Taken straight from ``curve_ref``'s totals rather than re-summed here. Summation is
+    # arithmetic, and a harness that adds up fills has quietly acquired a fourth derivation that
+    # nothing diffs — 06-TEST-PLAN §5's "no protocol math in the harness" applies to a `sum()` as
+    # much as to a formula.
+    result = resolve(
+        RoundInputs(
+            locked_at_open=initial["locked"],
+            shares_snapshot=initial["shares"],
+            last_pps=initial["pps"],
+            notional_sold=curve_out["notional_sold"],
+            premium_collected=curve_out["premium_collected"],
+            burned_this_round=sum(b["shares"] for b in vector.get("burns", [])),
+            strike=vector["open"]["strike"],
+            fee_bps_snapshot=params["fee_bps"],
+            settle_bounty_bps=params["settle_bounty_bps"],
+            outcome=Outcome(vector["outcome"]["kind"].capitalize()),
+            spot=vector["outcome"].get("spot"),
+        )
+    )
+    return {
+        "payout_total": result.payout_total,
+        "fee": result.fee,
+        "bounty": result.bounty,
+        "assets_R": result.assets_R,
+        "pps": result.pps,
+        "wclaims": result.wclaims,
+        "locked_after": result.locked_after,
+    }

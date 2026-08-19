@@ -64,6 +64,9 @@ mod test_token;
 mod test_types;
 
 #[cfg(test)]
+mod test_vectors;
+
+#[cfg(test)]
 mod test_views;
 
 #[cfg(test)]

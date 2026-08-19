@@ -1,0 +1,87 @@
+{
+  "bids": [
+    {
+      "at": 1800001680,
+      "bidder": "A",
+      "max_premium_bps": 10000,
+      "requested": 60000000000
+    },
+    {
+      "at": 1800002425,
+      "bidder": "B",
+      "max_premium_bps": 10000,
+      "requested": 40000000000
+    }
+  ],
+  "burns": [],
+  "expected": {
+    "assets_R": 88877800000,
+    "bounty": 2200000,
+    "fee": 0,
+    "fills": [
+      {
+        "bidder": "A",
+        "filled": 60000000000,
+        "premium": 720000000,
+        "premium_bps_at": 120
+      },
+      {
+        "bidder": "B",
+        "filled": 40000000000,
+        "premium": 160000000,
+        "premium_bps_at": 40
+      }
+    ],
+    "locked_after": 88877800000,
+    "payout_total": 12000000000,
+    "per_bidder": [
+      {
+        "amount": 7200000000,
+        "bidder": "A"
+      },
+      {
+        "amount": 4800000000,
+        "bidder": "B"
+      }
+    ],
+    "pps": 8887780,
+    "rejects": [],
+    "wclaims": 0,
+    "withdraw_claims": []
+  },
+  "initial": {
+    "locked": 100000000000,
+    "pps": 10000000,
+    "shares": 100000000000
+  },
+  "name": "settled-in-the-money",
+  "note": "05-AUCTION-SETTLEMENT \u00a74 steps 1-5. Spot 0.50 above a 0.44 strike.",
+  "open": {
+    "at": 1800000000,
+    "strike": 4400000,
+    "twap": 4000000
+  },
+  "outcome": {
+    "kind": "settled",
+    "spot": 5000000
+  },
+  "params": {
+    "auction_duration": 2700,
+    "epoch_duration": 604800,
+    "fee_bps": 0,
+    "guard_window": 3600,
+    "max_deviation_bps": 100,
+    "max_staleness": 600,
+    "min_deposit": 100000000,
+    "min_fill": 1000000000,
+    "min_idle_gap": 14400,
+    "oracle_dead_after": 43200,
+    "premium_floor_bps": 10,
+    "premium_start_bps": 300,
+    "settle_bounty_bps": 25,
+    "settle_grace": 7200,
+    "strike_bps_otm": 1000,
+    "twap_window": 900,
+    "unresolved_after": 75600
+  }
+}

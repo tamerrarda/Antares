@@ -96,6 +96,37 @@ pub(crate) fn premium_bps(state: &State, now: u64) -> u32 {
 }
 
 // =================================================================================================
+// The fill split and the premium — extracted so the differential layer can reach them
+// =================================================================================================
+
+// `filled = min(notional, notional_offered - notional_sold)` — §5 step 3.
+//
+// **I2's only load-bearing line.** `notional_offered >= notional_sold` holds at open and every
+// fill preserves it, so the caller's subtraction cannot underflow; it is still checked there,
+// because §8's bounds are proofs about the inputs and a checked op is what turns a violated proof
+// into a revert rather than a wrapped value.
+//
+// Extracted from `bid` rather than left inline **so the differential layer can reach it.** DEV1's
+// `curve_ref.py` decomposes the curve into `premium_bps`, `fill_amount` and `premium_for_fill`;
+// the arithmetic was identical inline, but a replay harness cannot call the inside of an entry
+// point, and a term the layer cannot reach is a term it does not cover.
+pub(crate) fn fill_amount(notional: i128, remaining: i128) -> i128 {
+    if notional < remaining {
+        notional
+    } else {
+        remaining
+    }
+}
+
+// `premium = floor(filled * p / BPS)` — D-20.
+//
+// The only **inbound** floor in the contract, so the rounding favours the bidder by at most a
+// stroop and solvency is unaffected (§6's table). Every other division in §5 floors the vault's way.
+pub(crate) fn premium_for_fill(filled: i128, bps: u32) -> Result<i128, Error> {
+    vault::mul_div_floor(filled, i128::from(bps), BPS)
+}
+
+// =================================================================================================
 // §5's `bid`
 // =================================================================================================
 
@@ -224,11 +255,7 @@ impl AntaresVault {
             .notional_offered
             .checked_sub(ctx.state.notional_sold)
             .ok_or(Error::InvalidAmount)?;
-        let filled = if notional < remaining {
-            notional
-        } else {
-            remaining
-        };
+        let filled = fill_amount(notional, remaining);
 
         if filled == 0 {
             return Err(Error::SoldOut);
@@ -242,10 +269,7 @@ impl AntaresVault {
             return Err(Error::BelowMinFill);
         }
 
-        // `⌊filled × p / BPS⌋` — floor, D-20. The only inbound floor in the
-        // contract, so the rounding favours the bidder by at most a stroop and
-        // solvency is unaffected.
-        let premium = vault::mul_div_floor(filled, i128::from(premium_bps_now), BPS)?;
+        let premium = premium_for_fill(filled, premium_bps_now)?;
         // A fill that costs nothing is a free option. Reachable rather than
         // theoretical: a 1-stroop sliver at the floor rounds to zero premium.
         if premium == 0 {

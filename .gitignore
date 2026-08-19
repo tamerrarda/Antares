@@ -35,3 +35,7 @@ fuzz/artifacts/
 # uncommitted `dist/` either — belt and braces, in opposite directions.
 dist/
 *.tsbuildinfo
+
+# Python bytecode from the differential reference. Build output, like dist/ and target/.
+__pycache__/
+*.py[cod]
