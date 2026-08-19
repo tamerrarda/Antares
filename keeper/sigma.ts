@@ -18,18 +18,15 @@
  *   XLM trades continuously, and a trading-day convention borrowed from equities would understate
  *   σ by `√(365/252)` ≈ 20 %.
  *
- * # The gap rule, which D-67 does not state
+ * # The gap rule
  *
- * A 5-minute return needs two samples **five minutes apart**. Reflector's feed is a 300 s grid but
- * a tick can be missing, and a pair straddling a gap spans 10 minutes or more. Treating it as a
- * 5-minute return inflates σ — the return is larger and the interval it is scaled by is not.
- *
- * So a return is formed **only between adjacent samples exactly one resolution apart**, and a gap
- * breaks the chain rather than being bridged. The dropped pairs are counted and returned, because
- * an estimate over a feed that dropped a third of its ticks is not the estimate D-67 defines and
- * the caller has to be able to see that rather than infer it. This is recorded as a finding against
- * D-67 rather than treated as settled: it is an implementation choice standing in for a rule the
- * decision does not carry.
+ * D-67 does not say what a 5-minute return is when the feed skipped a tick, and the keeper cannot
+ * avoid the question. The rule implemented here — a return is formed **only between adjacent
+ * samples exactly one resolution apart**, gaps break the chain, dropped pairs are counted and a
+ * `completeness` figure is published beside σ — and the arithmetic that chooses it over bridging
+ * are in **01-DECISIONS, `D-67 follow-on · σ_realized has no rule for a missing tick`**. Read it
+ * there: the document is where a rule belongs, and this comment would be the wrong place for
+ * anyone approaching from D-67 to find it.
  */
 
 /** Five-minute intervals in a day (24 × 12), and the year D-67 annualizes over. */
