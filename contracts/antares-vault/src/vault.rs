@@ -635,16 +635,24 @@ impl AntaresVault {
         from.require_auth();
         let mut ctx = enter(&env, true)?;
 
-        // §11, and not cosmetic: a SAC self-transfer **succeeds while moving
-        // nothing**, so without this the vault would mint shares against a
-        // transfer that never happened.
-        if from == env.current_contract_address() {
-            return Err(Error::InvalidAddress);
-        }
         // §15: `Config.params`, because deposits happen in every phase —
         // including before the first round exists, when there is no snapshot.
         if amount < ctx.config.params.min_deposit {
             return Err(Error::BelowMinDeposit);
+        }
+        // §11, and not cosmetic: a SAC self-transfer **succeeds while moving
+        // nothing**, so without this the vault would mint shares against a
+        // transfer that never happened.
+        //
+        // Position per F-6's ruling, which is one ruling for `deposit` and `bid`
+        // because the hole was identical in both: immediately after the first
+        // check on the arguments' values. Pause still dominates, so a paused
+        // self-deposit answers `Paused` — §16's own rule, and the reason there is
+        // a canonical order at all. This sat before `min_deposit` until the
+        // ruling; moving it costs nothing and matching `bid` is worth more than
+        // my preference, since the two are written by different people.
+        if from == env.current_contract_address() {
+            return Err(Error::InvalidAddress);
         }
         // A mint divides by `pps`, and §16 allows `pps == 0` in the degenerate
         // state where the pool is worth less than a stroop per PRECISION
