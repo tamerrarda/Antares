@@ -425,3 +425,21 @@ pub struct FeeRecipientChanged {
     pub old: Address,
     pub new: Address,
 }
+
+// The launch control, and whether it is on. No topic beyond the name: there is
+// one allowlist, so there is nothing to filter by.
+#[contractevent(data_format = "single-value")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AllowlistToggled {
+    pub enabled: bool,
+}
+
+// `bidder` is a topic because the Claims and Vault pages both filter by it — a
+// bidder wants to know whether *they* were added, not that somebody was.
+#[contractevent(data_format = "single-value")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AllowedChanged {
+    #[topic]
+    pub bidder: Address,
+    pub allowed: bool,
+}

@@ -157,9 +157,9 @@ impl AntaresVault {
         storage::get_allowance_amount(&env, &from, &spender)
     }
 
+    //
+    // `amount == 0` deletes the allowance and the ledger argument is ignored.
     /// Authorize `spender` for `amount` until `live_until_ledger`.
-    ///
-    /// `amount == 0` deletes the allowance and the ledger argument is ignored.
     pub fn approve(
         env: Env,
         from: Address,
@@ -209,11 +209,11 @@ impl AntaresVault {
         storage::get_shares(&env, &id)
     }
 
+    // underlying address either way, and the multiplexing id rides in the event.
+    //
+    // Storing per-muxed-address balances would create an unbounded key space and
+    // break I5.
     /// Move shares. The destination may be muxed; the balance is keyed by the
-    /// underlying address either way, and the multiplexing id rides in the event.
-    ///
-    /// Storing per-muxed-address balances would create an unbounded key space and
-    /// break I5.
     pub fn transfer(env: Env, from: Address, to: MuxedAddress, amount: i128) -> Result<(), Error> {
         from.require_auth();
         reject_self(&env, &from)?;
@@ -273,10 +273,10 @@ impl AntaresVault {
         Ok(())
     }
 
+    //
+    // This donates the holder's claim to everyone else: supply drops, the pool
+    // does not, and `pps` rises for the remaining holders from the next round on.
     /// Destroy your own shares. Permitted in any phase.
-    ///
-    /// This donates the holder's claim to everyone else: supply drops, the pool
-    /// does not, and `pps` rises for the remaining holders from the next round on.
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
         reject_self(&env, &from)?;
@@ -319,11 +319,11 @@ impl AntaresVault {
         String::from_str(&env, NAME)
     }
 
+    //
+    // Five concurrent vaults issue five non-interchangeable tokens, and showing
+    // them all as `aXLM` in a wallet is not a cosmetic problem — it is a way for
+    // someone to believe they hold something they do not (D-52).
     /// `aXLM`, plus this instance's suffix.
-    ///
-    /// Five concurrent vaults issue five non-interchangeable tokens, and showing
-    /// them all as `aXLM` in a wallet is not a cosmetic problem — it is a way for
-    /// someone to believe they hold something they do not (D-52).
     pub fn symbol(env: Env) -> Result<String, Error> {
         let config =
             storage::get_config(&env).expect("Config: unrepresentable after __constructor");

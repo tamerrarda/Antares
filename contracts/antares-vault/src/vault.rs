@@ -416,6 +416,41 @@ impl Settlement {
     };
 }
 
+/// The bookkeeping every outcome shares: `(wclaims, locked_after)`.
+// Lifted out of `finalize_round` so the differential layer can reach it, following
+// `round_numbers` and `payout_for_fill` rather than inventing a third shape. A replay
+// harness cannot call the inside of an entry point, and a term the layer cannot reach
+// is a term it does not cover — `settle_ref.py` has been undiffed since the second
+// commit in this project for exactly this reason, and `claims_ref.withdraw_claims`
+// behind it.
+//
+// `finalize_round` calls this, so the vectors exercise the shipped arithmetic rather
+// than a copy of it. That is the whole point of the extraction and the reason it is
+// not simply duplicated into the test.
+//
+// **An asymmetry against the reference is left standing here deliberately, and it is
+// not an oversight.** `settle_ref.finalize_round` raises when `locked_after < 0`;
+// this returns it. `checked_sub` catches overflow, not negativity, so the two differ
+// on inputs where the reference refuses. Nothing reachable reaches it — `settle.rs`
+// rejects `assets_R < 0` upstream, and `wclaims ≤ burned·pps/P ≤ S·pps/P ≤
+// assets_after` holds whenever `burned ≤ shares_snapshot`, which is the same chain I9
+// rests on. Two arguments say add the guard: `round_numbers` refuses its own bad
+// inputs because a fuzz target found a negative payout outside its caller's domain,
+// and the reference agrees. I found this by reading their Python, which is the one
+// input D-22 says not to move on — so it goes to 02-CONTRACT-SPEC §5 and to Tamer,
+// not into this function. Reversible in one line if the ruling goes the other way.
+pub fn finalize_numbers(
+    burned_this_round: i128,
+    pps: i128,
+    assets_after: i128,
+) -> Result<(i128, i128), Error> {
+    let wclaims = mul_div_floor(burned_this_round, pps, PRECISION)?;
+    let locked_after = assets_after
+        .checked_sub(wclaims)
+        .ok_or(Error::InvalidAmount)?;
+    Ok((wclaims, locked_after))
+}
+
 pub fn finalize_round(
     env: &Env,
     state: &mut State,
@@ -425,15 +460,13 @@ pub fn finalize_round(
     assets_after: i128,
     settlement: Settlement,
 ) -> Result<i128, Error> {
-    let wclaims = mul_div_floor(state.burned_this_round, pps, PRECISION)?;
+    let (wclaims, locked_after) = finalize_numbers(state.burned_this_round, pps, assets_after)?;
 
     state.withdraw_claimable_total = state
         .withdraw_claimable_total
         .checked_add(wclaims)
         .ok_or(Error::InvalidAmount)?;
-    state.locked_assets = assets_after
-        .checked_sub(wclaims)
-        .ok_or(Error::InvalidAmount)?;
+    state.locked_assets = locked_after;
 
     // Immutable from here (I7). Written once, never rewritten, by anything.
     let record = Round {

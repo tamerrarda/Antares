@@ -40,20 +40,27 @@ dist/
 __pycache__/
 *.py[cod]
 
-# Property-test snapshots are NOT committed, unlike every other snapshot in the repo.
+# Property-test snapshots carry no review signal, and committing them broke the
+# gate that reviews the others.
 #
-# 06-TEST-PLAN §8 commits snapshots so "a PR that changes behavior shows it in the diff". A
-# proptest snapshot cannot serve that: soroban writes one per test *invocation*, proptest invokes
-# the body a few hundred times with **randomly generated inputs**, and the file records those
-# inputs. Measured 2026-08-19 by running the suite twice on one machine with no code change
-# between: 145 files, different content each time (a deposit of 16 060 410 675 became
-# 13 944 294 598, and the number of recorded invocations moved). So the gate fails on correct code
-# on every run, which is the one failure mode this project has recorded four times and which ends
-# with the gate switched off.
+# `proptest` seeds from entropy, so the 145 files under `test_properties/` record
+# a different generated call sequence on every run. Committed, they turned
+# `cargo test` into a 200 000-line diff and made CI's snapshot job fail
+# unconditionally — and a gate that always fires teaches everyone to skip the
+# 198 deterministic snapshots where it genuinely works.
 #
-# The deterministic unit snapshots still commit and still carry the review value. Untracking these
-# removes noise, not coverage — the property suite's assertions are what prove I1/I5, and they run
-# either way.
+# The seed is deliberately *not* pinned. Freezing it would make these files
+# meaningful, at the price of turning an invariant suite that hunts for inputs
+# nobody thought of into 48 fixed examples. For I1 and I5 the hunting is the
+# point. The artefact worth keeping is `proptest-regressions/` — written only
+# when a property actually fails, and committed, because that seed is the bug.
+#
+# DEV1 and DEV3 reached this rule independently on the same day and from opposite
+# ends: DEV3 measured it (two runs, one machine, no code change, 145 files with
+# different content both times) and DEV1 reasoned it from what the suite is for.
+# DEV1's text is the one kept, because the seed question is theirs and their
+# answer is better than the alternative DEV3 had offered — "pinning it would turn
+# an invariant hunt into 48 fixed examples" is the argument nobody had made.
 contracts/*/test_snapshots/test_properties/
 
 # The generated vector corpus is built on demand, never committed.

@@ -227,13 +227,13 @@ impl AntaresVault {
         }
     }
 
+    //
+    // A zeroed struct for an address that never filled — **not** an error. The
+    // Claims page scans rounds looking for money owed, so "no fill" is its
+    // ordinary answer and must be cheap and unambiguous; an error would make the
+    // common case indistinguishable from a malformed call. `RoundNotFound` is
+    // still returned for a round that never existed.
     /// What one bidder holds in one round.
-    ///
-    /// A zeroed struct for an address that never filled — **not** an error. The
-    /// Claims page scans rounds looking for money owed, so "no fill" is its
-    /// ordinary answer and must be cheap and unambiguous; an error would make the
-    /// common case indistinguishable from a malformed call. `RoundNotFound` is
-    /// still returned for a round that never existed.
     pub fn bidder_position(env: Env, round: u32, bidder: Address) -> Result<BidderPosition, Error> {
         let (_, state) = load(&env);
         if round == 0 || round > state.round {
@@ -262,10 +262,10 @@ impl AntaresVault {
         })
     }
 
+    //
+    // Not an error for the live round: a live round has no price yet, and
+    // erroring would make "not settled" indistinguishable from "does not exist".
     /// A finalized round's recorded price. A live round returns `last_pps`.
-    ///
-    /// Not an error for the live round: a live round has no price yet, and
-    /// erroring would make "not settled" indistinguishable from "does not exist".
     pub fn price_per_share(env: Env, round: u32) -> Result<i128, Error> {
         let (_, state) = load(&env);
         match storage::get_round(&env, round) {
@@ -275,21 +275,21 @@ impl AntaresVault {
         }
     }
 
+    //
+    // Deliberately excludes pending deposits (not yet shares), claimable
+    // balances (already owed to someone) and raw donations (belong to nobody).
+    // External tooling reads this as TVL, which is why it is pinned rather than
+    // convenient.
     /// Capital actually backing shares.
-    ///
-    /// Deliberately excludes pending deposits (not yet shares), claimable
-    /// balances (already owed to someone) and raw donations (belong to nobody).
-    /// External tooling reads this as TVL, which is why it is pinned rather than
-    /// convenient.
     pub fn total_assets(env: Env) -> i128 {
         let (_, state) = load(&env);
         state.locked_assets
     }
 
+    //
+    // Does **not** imply a mint is currently possible: minting happens only in
+    // the idle window (D-18), and not at all while the vault is worthless.
     /// Indicative conversion at the last settled price.
-    ///
-    /// Does **not** imply a mint is currently possible: minting happens only in
-    /// the idle window (D-18), and not at all while the vault is worthless.
     pub fn convert_to_shares(env: Env, assets: i128) -> i128 {
         let (_, state) = load(&env);
         if state.last_pps == 0 {
