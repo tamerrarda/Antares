@@ -14,14 +14,16 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-# The PriceSource trait and the generated client. Pinned rather than a bare path: a bare `path`
-# carries an implicit `*` and deny.toml refuses wildcards, since D-23 pins exact versions and
-# D-50's gate is stated against a byte. Added by DEV2 with `oracle.rs`, in DEV1's manifest and
-# flagged in STANDUP rather than landed quietly — the vault needs it for its own constructor too,
-# which calls supports_round.
+# The interface, not either implementation. The vault knows an address and a
+# trait; which contract answers is a constructor argument (D-50). `version` as
+# well as `path` because a bare path dependency carries an implicit `*` and
+# `deny.toml` denies wildcards — the same reason DEV2 gave on the mock.
 price-source-api = { path = "../price-source-api", version = "0.1.0" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-# Every oracle failure mode is forced through the mock rather than waited for (04-ORACLE §6).
+# The vault's `__constructor` calls `supports_round`, so without a settable
+# `PriceSource` the vault cannot be registered in a test at all — which is why
+# 00-ROADMAP calls the mock the first line of code in the project. Dev-only: the
+# deployed wasm knows an address, never an implementation.
 mock-price-source = { path = "../mock-price-source", version = "0.1.0" }

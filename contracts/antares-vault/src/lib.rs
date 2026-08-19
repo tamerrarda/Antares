@@ -14,15 +14,31 @@
 use soroban_sdk::{contract, contractimpl};
 
 pub mod errors;
+pub mod events;
 // The vault's side of the oracle seam: the anchored guard ladder and the four-way GuardOutcome
 // (04-ORACLE §3). DEV2's file, declared here by them — the live branch ships with `open_epoch`.
 pub mod oracle;
+pub mod storage;
 pub mod types;
+pub mod vault;
+
+#[cfg(test)]
+mod test_accounting;
+
+#[cfg(test)]
+mod test_common;
 
 #[cfg(test)]
 mod test_oracle;
+
+#[cfg(test)]
+mod test_storage;
+
 #[cfg(test)]
 mod test_types;
+
+#[cfg(test)]
+mod test_vault;
 
 pub use errors::Error;
 pub use types::{
