@@ -483,13 +483,10 @@ fn settlement_uses_the_fee_the_round_opened_under() {
     let before = d.state();
     assert_eq!(before.fee_bps_snapshot, 0, "ships at 0, D-56");
 
-    // Move `Config.fee_bps` mid-round. `set_fee_bps` is DEV1's and lands in Phase 4; until it does
-    // the field is moved through storage. A harness affordance, recorded as one.
-    d.env.as_contract(&d.vault, || {
-        let mut c = crate::storage::get_config(&d.env).unwrap();
-        c.fee_bps = 2_000; // 20 %, the validation ceiling
-        crate::storage::set_config(&d.env, &c);
-    });
+    // Move `Config.fee_bps` mid-round through the real setter. This was a storage write until
+    // DEV1's `set_fee_bps` landed; switched the moment it did, because a harness affordance that
+    // outlives its reason stops being recorded and starts being believed.
+    d.client().set_fee_bps(&2_000); // 20 %, the validation ceiling
 
     force(&d, before.strike * 2, before.strike * 2, 14);
     assert_eq!(close(&d).unwrap(), RoundOutcome::Settled);
@@ -517,12 +514,8 @@ fn a_fee_recipient_that_cannot_receive_does_not_block_the_close() {
     // asset and has no trustline analogue in the SAC's eyes; the fee accrues regardless.
     let d = expired_round();
     let before = d.state();
-    d.env.as_contract(&d.vault, || {
-        let mut c = crate::storage::get_config(&d.env).unwrap();
-        c.fee_recipient = Address::generate(&d.env);
-        c.fee_bps = 2_000;
-        crate::storage::set_config(&d.env, &c);
-    });
+    d.client().set_fee_recipient(&Address::generate(&d.env));
+    d.client().set_fee_bps(&2_000);
     d.env.as_contract(&d.vault, || {
         let mut s = crate::storage::get_state(&d.env).unwrap();
         s.fee_bps_snapshot = 2_000; // as if the round had opened under it
