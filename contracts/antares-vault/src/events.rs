@@ -330,3 +330,20 @@ pub struct SettleBounty {
     pub to: Address,
     pub amount: i128,
 }
+
+// `{old, new}` rather than just the new value (§10). A fee that changed is a
+// thing participants care about the *size* of, and an indexer that only sees the
+// destination cannot report the move without having watched every prior one.
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeChanged {
+    pub old: u32,
+    pub new: u32,
+}
+
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeRecipientChanged {
+    pub old: Address,
+    pub new: Address,
+}
