@@ -39,3 +39,19 @@ dist/
 # Python bytecode from the differential reference. Build output, like dist/ and target/.
 __pycache__/
 *.py[cod]
+
+# Property-test snapshots are NOT committed, unlike every other snapshot in the repo.
+#
+# 06-TEST-PLAN §8 commits snapshots so "a PR that changes behavior shows it in the diff". A
+# proptest snapshot cannot serve that: soroban writes one per test *invocation*, proptest invokes
+# the body a few hundred times with **randomly generated inputs**, and the file records those
+# inputs. Measured 2026-08-19 by running the suite twice on one machine with no code change
+# between: 145 files, different content each time (a deposit of 16 060 410 675 became
+# 13 944 294 598, and the number of recorded invocations moved). So the gate fails on correct code
+# on every run, which is the one failure mode this project has recorded four times and which ends
+# with the gate switched off.
+#
+# The deterministic unit snapshots still commit and still carry the review value. Untracking these
+# removes noise, not coverage — the property suite's assertions are what prove I1/I5, and they run
+# either way.
+contracts/*/test_snapshots/test_properties/
