@@ -12,6 +12,11 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# Pinned, not a bare path: a bare `path` dependency carries an implicit `*` and
+# `deny.toml` denies wildcards, because D-23 pins exact versions and D-50's gate is
+# stated against a byte. Library only and carrying no `#[contract]`, which is what
+# 04-ORACLE §1 requires of everything in this crate's dependency graph.
+price-source-api = { path = "../price-source-api", version = "0.1.0" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
