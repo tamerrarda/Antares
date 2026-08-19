@@ -21,3 +21,9 @@ deployments/
 # so it is excluded until DEV2 says otherwise — it is one `prettier --write` away from being included
 # and that is DEV2's call, not mine.
 scripts/verify-environment.ts
+
+# The generated vector corpus. Two hundred machine-written files, rebuilt on demand and never
+# committed (see .gitignore), so there is nothing for a formatter to keep tidy — and checking them
+# would put a slow, always-changing set in front of a gate whose value is that it is fast and
+# stable. The four hand-written vectors beside them ARE checked.
+test-vectors/generated/
