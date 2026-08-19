@@ -128,8 +128,17 @@ fn state_from(vector: &Value) -> State {
 /// its own fixture.
 fn replay_curve(vector: &Value) -> Value {
     let mut state = state_from(vector);
+    // Per-bid outcomes, in order. **A rejection is an entry here, not a separate list** — matching
+    // `curve_ref`'s representation, which keeps the list total: every bid has an entry, in
+    // sequence, and "bid 3 was rejected" is visible where bid 3 is.
+    //
+    // §5's schema specifies `expected.rejects: [{bid, code}]` for a *vector's declared* output. It
+    // does not specify the replay document's layout — a gap my own invocation contract left open,
+    // and the generated corpus is what surfaced it, because four hand-written vectors contained no
+    // rejection at all. The two sides have to agree on one wire format or the diff compares
+    // nothing; agreeing a serialization is not taking a disagreement to the other side's source,
+    // and no arithmetic moves for it.
     let mut per_bid: StdVec<Value> = vec![];
-    let mut rejects: StdVec<Value> = vec![];
     // Insertion-ordered by first fill, which is what a re-bid accumulating into one record means.
     let mut order: StdVec<StdString> = vec![];
     let mut fills: std::collections::BTreeMap<StdString, (i128, i128)> =
@@ -137,73 +146,84 @@ fn replay_curve(vector: &Value) -> Value {
 
     let empty = vec![];
     let bids = vector["bids"].as_array().unwrap_or(&empty);
-    for (index, bid) in bids.iter().enumerate() {
+    for bid in bids.iter() {
         let bidder = bid["bidder"].as_str().expect("bid.bidder").to_string();
         let now = u64_at(bid, "at");
         let requested = i128_at(bid, "requested");
         let max_premium_bps = u32_at(bid, "max_premium_bps");
 
-        let mut reject = |code: &str| {
-            rejects.push(json!({ "bid": index, "code": code }));
-        };
+        // `bid`'s guard order, restricted to the guards a vector can express: the curve-arithmetic
+        // ones plus `WrongPhase` and `InvalidAmount`. `Paused`, `AllowlistForbidden`, `InTheMoney`
+        // and `OracleUnreachable` read state a vector does not carry and are pinned by unit tests
+        // instead (06-TEST-PLAN §5) — a replay that invented values for them would be diffing its
+        // own fixture.
+        let outcome: Result<(i128, u32, i128), &str> = (|| {
+            if requested <= 0 {
+                return Err("InvalidAmount");
+            }
+            if now < state.opened_at || now >= state.auction_end {
+                return Err("WrongPhase");
+            }
+            if state.phase != Phase::Auction {
+                return Err("WrongPhase");
+            }
+            let p = premium_bps(&state, now);
+            if p > max_premium_bps {
+                return Err("PremiumAboveMax");
+            }
+            let remaining = state.notional_offered - state.notional_sold;
+            let filled = fill_amount(requested, remaining);
+            if filled == 0 {
+                return Err("SoldOut");
+            }
+            if filled < state.params.min_fill && filled != remaining {
+                return Err("BelowMinFill");
+            }
+            let premium = premium_for_fill(filled, p).expect("premium");
+            if premium == 0 {
+                return Err("ZeroPremium");
+            }
+            Ok((filled, p, premium))
+        })();
 
-        if requested <= 0 {
-            reject("InvalidAmount");
-            continue;
-        }
-        if now < state.opened_at || now >= state.auction_end {
-            reject("WrongPhase");
-            continue;
-        }
-        if state.phase != Phase::Auction {
-            reject("WrongPhase");
-            continue;
-        }
+        match outcome {
+            Err(code) => per_bid.push(json!({ "bidder": bidder, "reject": code })),
+            Ok((filled, p, premium)) => {
+                let entry = fills.entry(bidder.clone()).or_insert_with(|| {
+                    order.push(bidder.clone());
+                    (0, 0)
+                });
+                entry.0 += filled;
+                entry.1 += premium;
 
-        let p = premium_bps(&state, now);
-        if p > max_premium_bps {
-            reject("PremiumAboveMax");
-            continue;
-        }
+                state.notional_sold += filled;
+                state.premium_collected += premium;
+                if state.notional_sold == state.notional_offered {
+                    state.phase = Phase::Active;
+                }
 
-        let remaining = state.notional_offered - state.notional_sold;
-        let filled = fill_amount(requested, remaining);
-        if filled == 0 {
-            reject("SoldOut");
-            continue;
+                per_bid.push(json!({
+                    "bidder": bidder,
+                    "filled": i64::try_from(filled).expect("filled fits i64"),
+                    "premium": i64::try_from(premium).expect("premium fits i64"),
+                    "premium_bps": p,
+                }));
+            }
         }
-        if filled < state.params.min_fill && filled != remaining {
-            reject("BelowMinFill");
-            continue;
-        }
-        let premium = premium_for_fill(filled, p).expect("premium");
-        if premium == 0 {
-            reject("ZeroPremium");
-            continue;
-        }
-
-        let entry = fills.entry(bidder.clone()).or_insert_with(|| {
-            order.push(bidder.clone());
-            (0, 0)
-        });
-        entry.0 += filled;
-        entry.1 += premium;
-
-        state.notional_sold += filled;
-        state.premium_collected += premium;
-        if state.notional_sold == state.notional_offered {
-            state.phase = Phase::Active;
-        }
-
-        per_bid.push(json!({
-            "bidder": bidder,
-            "filled": i64::try_from(filled).expect("filled fits i64"),
-            "premium": i64::try_from(premium).expect("premium fits i64"),
-            "premium_bps": p,
-        }));
     }
 
-    let accumulated: StdVec<Value> = order
+    // **Sorted by bidder, not in first-fill order — and the distinction is the wire-format rule
+    // the corpus forced out of hiding.** `bids` is a *sequence* and keeps its order, because "bid 3
+    // was rejected" is only meaningful in position. `fills` is an *aggregate* over bidders, so its
+    // order carries no information and has to be canonical or the two sides diverge on 4 vectors
+    // out of 204 with byte-identical contents. My own invocation contract in 06-TEST-PLAN §5 said
+    // "keys sorted" and said nothing about arrays, which is the gap.
+    //
+    // `order` is retained rather than deleted: it is what makes the accumulation a per-bidder
+    // aggregate rather than a per-bid list in the first place.
+    let mut sorted_bidders = order.clone();
+    sorted_bidders.sort();
+    let accumulated: StdVec<Value> = sorted_bidders
         .iter()
         .map(|bidder| {
             let (notional, premium_paid) = fills[bidder];
@@ -220,7 +240,6 @@ fn replay_curve(vector: &Value) -> Value {
         "fills": accumulated,
         "notional_sold": i64::try_from(state.notional_sold).expect("fits i64"),
         "premium_collected": i64::try_from(state.premium_collected).expect("fits i64"),
-        "rejects": rejects,
         "sold_out": state.notional_sold == state.notional_offered,
     })
 }
@@ -285,17 +304,30 @@ fn vector_dir() -> std::path::PathBuf {
 }
 
 fn replay_all() -> Value {
-    let mut paths: StdVec<_> = fs::read_dir(vector_dir())
-        .expect("test-vectors/ is readable")
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "json"))
-        // `coverage.json` shares the directory because both sides read it; it is not a vector.
-        .filter(|p| p.file_name().is_some_and(|n| n != "coverage.json"))
-        .collect();
-    // Sorted, so the document does not depend on directory order — a diff that fails because of
-    // filesystem iteration order fails for the wrong reason on someone else's machine.
-    paths.sort();
+    // Hand-written first, then the generated corpus, each sorted — **the same traversal
+    // `run_vectors.py::load_vectors` performs.** The two documents are compared element by element,
+    // so a different order is a false divergence; and a diff that fails because of filesystem
+    // iteration order fails for the wrong reason on someone else's machine.
+    //
+    // An absent or empty `generated/` is not a failure: the corpus is built on demand with
+    // `ANTARES_VECTOR_DUMP` and is not committed, because it is proptest output and differs every
+    // run.
+    let root = vector_dir();
+    let mut paths: StdVec<std::path::PathBuf> = vec![];
+    for dir in [root.clone(), root.join("generated")] {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut batch: StdVec<std::path::PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "json"))
+            // `coverage.json` shares the directory because both sides read it; it is not a vector.
+            .filter(|p| p.file_name().is_some_and(|n| n != "coverage.json"))
+            .collect();
+        batch.sort();
+        paths.extend(batch);
+    }
     assert!(!paths.is_empty(), "no vectors found");
 
     let mut out: StdVec<Value> = vec![];
@@ -387,8 +419,18 @@ fn vector_replay() {
     let dir = vector_dir();
     for entry in document.as_array().expect("array") {
         let name = entry["vector"].as_str().unwrap();
+        // A vector is named by its file name alone, matching `run_vectors.py`, so re-reading it has
+        // to look in both homes: hand-written at the root, generated in `generated/`. The first
+        // version of this looked only at the root and panicked on the first corpus build — which is
+        // the corpus finding a defect in the code that reads the corpus.
+        let root_path = dir.join(name);
+        let path = if root_path.exists() {
+            root_path
+        } else {
+            dir.join("generated").join(name)
+        };
         let vector: Value =
-            serde_json::from_str(&fs::read_to_string(dir.join(name)).expect("read")).expect("json");
+            serde_json::from_str(&fs::read_to_string(path).expect("read")).expect("json");
         let Some(want) = vector.get("expected").and_then(|e| e.get("fills")) else {
             continue;
         };
@@ -401,6 +443,163 @@ fn vector_replay() {
             assert_eq!(g["premium"], w["premium"], "{name}: premium");
             // §5's schema calls it `premium_bps_at`; both references emit `premium_bps`.
             assert_eq!(g["premium_bps"], w["premium_bps_at"], "{name}: premium_bps");
+        }
+    }
+}
+
+// =================================================================================================
+// The generated corpus — 06-TEST-PLAN §5's second producer
+// =================================================================================================
+//
+// The hand-written vectors are four cases a human derived from 05 §4. This turns the same two
+// independently derived implementations loose on hundreds, at no extra authoring cost: the property
+// layer's strategies already know how to construct a valid round, and the differential layer
+// already knows how to compare one.
+//
+// **`ANTARES_VECTOR_DUMP=<dir>` rather than a cargo feature**, per 06-TEST-PLAN §5 as corrected: a
+// `[features]` table in a contract manifest is rejected by §8's own network-agnostic check, and a
+// variable read at test runtime cannot be selected into a `--release` wasm by any invocation —
+// which is the stronger property on D-50's terms. Unset, this test generates and discards, so the
+// suite is unchanged for anyone not producing a corpus.
+//
+// **The output is not committed.** It is proptest output, so it differs every run — the same reason
+// `test_snapshots/test_properties/` is untracked. A corpus is regenerated, not reviewed; what is
+// reviewed is the strategy below.
+//
+// **Every generated vector must be one both sides accept.** `curve_ref`, `settle_ref` and
+// `claims_ref` all *refuse* malformed input rather than computing a number for it, which is correct
+// and means the generator has to respect the same rules `validate_params` does. Where a constraint
+// below looks arbitrary it is a spec rule, and the comment says which.
+
+use proptest::prelude::*;
+
+/// A vector the three references will accept, as §5's document.
+///
+/// Amounts stay well inside `i64` because the JSON readers on both sides go through it — a
+/// generator that overflowed would fail the replay for a reason that has nothing to do with the
+/// arithmetic under test.
+fn arb_vector() -> impl Strategy<Value = Value> {
+    (
+        // Curve shape. §1: `0 < floor <= start`, and the floor's lower bound is load-bearing —
+        // a floor of 0 makes the curve reject every bid with `ZeroPremium` at the end of the window.
+        (1u32..900, 1u64..3_600),
+        // `initial`: locked and shares both positive; `open_epoch` snapshots the offer from locked.
+        (
+            100_000_000i64..1_000_000_000_000,
+            100_000_000i64..1_000_000_000_000,
+        ),
+        // Price scale, 1e7 fixed point. Strike above twap by construction (`strike_bps_otm > 0`).
+        (1_000_000i64..100_000_000, 100u32..3_000),
+        // Fee and bounty, inside §1's caps: fee <= 2 000 bps, bounty <= 100.
+        (0u32..=2_000, 0u32..=100),
+        // Up to four bids, and a burn.
+        prop::collection::vec((0u64..3_600, 1i64..2_000_000_000_000, 0u32..=10_000), 0..4),
+        0i64..100_000_000,
+        0usize..4,
+    )
+        .prop_map(
+            |(
+                (start_span, auction_duration),
+                (locked, shares),
+                (twap, strike_bps_otm),
+                (fee_bps, settle_bounty_bps),
+                bids_raw,
+                burn,
+                outcome_pick,
+            )| {
+                let premium_start_bps = start_span + 10;
+                let premium_floor_bps = 1 + start_span / 2;
+                // §1: `auction_duration <= epoch_duration / 24`.
+                let epoch_duration = auction_duration * 24 + 1;
+                let opened_at = 1_800_000_000u64;
+                let strike = twap * i64::from(10_000 + strike_bps_otm) / 10_000;
+
+                // §5: a lapse *is* `notional_sold == 0`, so a lapsed vector carries no bids —
+                // `settle_ref` refuses the contradiction, correctly.
+                let outcome_kind = ["settled", "voided", "unresolved", "lapsed"][outcome_pick];
+                let bids: StdVec<Value> = if outcome_kind == "lapsed" {
+                    vec![]
+                } else {
+                    bids_raw
+                        .iter()
+                        .map(|(offset, requested, max_bps)| {
+                            json!({
+                                // Inside the window: `bid` requires `now < auction_end` strictly.
+                                "at": opened_at + (offset % auction_duration),
+                                "bidder": format!("B{}", offset % 3),
+                                "requested": requested,
+                                "max_premium_bps": max_bps,
+                            })
+                        })
+                        .collect()
+                };
+
+                // `burned_this_round <= shares_snapshot`, which is what keeps
+                // `wclaims <= assets_after` and stops `locked_after` underflowing (§5).
+                let burn = burn.min(shares);
+                let mut outcome = Map::new();
+                outcome.insert("kind".to_string(), Value::String(outcome_kind.to_string()));
+                if outcome_kind == "settled" {
+                    // A non-positive aggregate classifies as `DeadAtExpiry` and never reaches the
+                    // settle branch (04-ORACLE §4), so a settled vector carries a positive spot.
+                    outcome.insert("spot".to_string(), json!(twap.max(1)));
+                }
+
+                json!({
+                    "name": "generated",
+                    "params": {
+                        "epoch_duration": epoch_duration,
+                        "auction_duration": auction_duration,
+                        "min_idle_gap": (epoch_duration / 50).max(1),
+                        "strike_bps_otm": strike_bps_otm,
+                        "premium_start_bps": premium_start_bps,
+                        "premium_floor_bps": premium_floor_bps,
+                        "twap_window": 900,
+                        "guard_window": 3_600,
+                        "max_staleness": 600,
+                        "max_deviation_bps": 100,
+                        "oracle_dead_after": 43_200,
+                        "settle_grace": 7_200,
+                        "unresolved_after": 75_600,
+                        "min_fill": 1_000_000,
+                        "min_deposit": 10_000_000,
+                        "settle_bounty_bps": settle_bounty_bps,
+                        "fee_bps": fee_bps,
+                    },
+                    "initial": { "locked": locked, "shares": shares, "pps": 10_000_000 },
+                    "open": { "at": opened_at, "twap": twap, "strike": strike },
+                    "bids": bids,
+                    "burns": if burn > 0 { json!([{ "shares": burn }]) } else { json!([]) },
+                    "outcome": Value::Object(outcome),
+                })
+            },
+        )
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 200, max_shrink_iters: 1, ..ProptestConfig::default() })]
+
+    /// Export every generated case into `test-vectors/generated/` when asked.
+    ///
+    /// `max_shrink_iters: 1` on purpose: this test does not assert a property, so there is nothing
+    /// to shrink toward and shrinking would only slow a corpus build. The assertion that matters is
+    /// the **diff**, which runs afterwards over everything this wrote.
+    #[test]
+    fn generated_vectors_are_exported_for_the_differential_layer(vector in arb_vector()) {
+        if let Ok(dir) = std::env::var("ANTARES_VECTOR_DUMP") {
+            let dir = std::path::PathBuf::from(dir);
+            let _ = fs::create_dir_all(&dir);
+            // Content-addressed, so a rebuild of the corpus overwrites rather than accumulating,
+            // and two runs that generate the same case produce one file rather than two.
+            let text = serde_json::to_string_pretty(&vector).expect("serialize");
+            let mut hash: u64 = 1469598103934665603;
+            for byte in text.as_bytes() {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(1099511628211);
+            }
+            let mut out = text;
+            out.push('\n');
+            fs::write(dir.join(format!("gen-{hash:016x}.json")), out).expect("write vector");
         }
     }
 }

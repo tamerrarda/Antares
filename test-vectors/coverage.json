@@ -19,9 +19,45 @@
     "",
     "To widen: add the path here in the same commit as the Rust replay that produces it."
   ],
-  "sections": ["curve_ref", "claims_ref.per_bidder"],
+  "sections": [
+    "curve_ref",
+    "claims_ref.per_bidder"
+  ],
   "not_yet_replayed_in_rust": {
     "settle_ref": "needs finalize_round driven from a Rust replay - DEV1/DEV2",
     "claims_ref.withdraw_claims": "needs claim_withdraw (DEV1's) and pps from a settle replay; DEV3 computing the formula here would be a third derivation that nothing diffs"
+  },
+  "known_disagreements": {
+    "_read_this_before_changing_either_side": [
+      "Building the generated corpus (ANTARES_VECTOR_DUMP) currently makes the diff fail on about",
+      "87 of 204 vectors, from ONE root cause, and it is a specification question rather than a bug",
+      "in either implementation. Do not 'fix' curve_ref.py and do not 'fix' auction.rs.",
+      "",
+      "SYMPTOM: after a full subscription, curve_ref.py reports SoldOut for the next bid (or keeps",
+      "evaluating the curve and reports PremiumAboveMax), while auction.rs reports WrongPhase.",
+      "",
+      "WHY auction.rs IS RIGHT. 02-CONTRACT-SPEC \u00a75 step 6 sets phase = Active *immediately* on full",
+      "subscription, and \u00a716's canonical bid order checks phase/time BEFORE filled is computed. So a",
+      "post-sellout bid meets the phase check first. DEV-PROTOCOL \u00a71's corollary makes",
+      "02-CONTRACT-SPEC authoritative for contract behaviour.",
+      "",
+      "THE CONSEQUENCE, WHICH IS THE ACTUAL FINDING: SoldOut (error 33) is unreachable through the",
+      "contract's own paths. filled = min(notional, remaining) with notional > 0 already checked, so",
+      "filled == 0 iff remaining == 0 iff notional_sold == notional_offered - and step 6 flips the",
+      "phase the instant that holds, while the phase check runs first. open_epoch sets",
+      "notional_sold = 0 and requires locked_assets >= min_fill > 0, so notional_offered > 0. There",
+      "is therefore no reachable state with phase == Auction and filled == 0.",
+      "",
+      "That is the same shape as codes 5 / 23 / 28 / 55 / 56, which D-60 retired as 'ABI an",
+      "integrator must handle and can never observe'.",
+      "",
+      "AND 06-TEST-PLAN \u00a75's OWN SCHEMA NOTE IS THE CONTRADICTING TEXT: it lists SoldOut among the",
+      "diffable curve-arithmetic rejects and scopes WrongPhase to 'a bid at or past",
+      "open.at + auction_duration', i.e. time only. One of those two documents has to move.",
+      "",
+      "OWNERS: 02-CONTRACT-SPEC \u00a73/\u00a716 is DEV1's; 06-TEST-PLAN \u00a75 is shared. Raised by DEV3 in",
+      "plan/STANDUP.md. Until it is ruled, the four hand-written vectors are green and a corpus build",
+      "is red for this reason and no other - verified by categorising every field-level difference."
+    ]
   }
 }

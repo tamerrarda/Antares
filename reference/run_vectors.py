@@ -153,11 +153,16 @@ def replay(name: str, vector: dict) -> dict:
     # So the harness substitutes curve_ref's *computed* fills for the expected ones before
     # handing the vector on. The field names are curve_ref's per-bid results mapped to the names
     # claims_ref reads (`filled`, `premium`, `bidder`), which are §5's schema names.
+    # **Chained from curve_ref's `fills`, which are per-bidder and accumulated — not from `bids`,
+    # which are per-bid.** The generated corpus found this: with `bids` a bidder who bid twice gets
+    # two entries and `claims_ref` computes two payouts for them, while `claim_payout` pays once
+    # against the accumulated `Fill`. Four hand-written vectors, none with a re-bid, could not show
+    # it. The field names are the ones `claims_ref` reads.
     chained = dict(vector)
     chained["expected"] = dict(vector.get("expected", {}))
     chained["expected"]["fills"] = [
-        {"bidder": b["bidder"], "filled": b["filled"], "premium": b["premium"]}
-        for b in curve["bids"]
+        {"bidder": f["bidder"], "filled": f["notional"], "premium": f["premium_paid"]}
+        for f in curve["fills"]
     ]
     claims = claims_ref.compute(chained, settle)
 
@@ -172,7 +177,6 @@ def replay(name: str, vector: dict) -> dict:
             "notional_sold": curve["notional_sold"],
             "premium_collected": curve["premium_collected"],
             "sold_out": curve["sold_out"],
-            "rejects": curve.get("rejects", []),
         },
         "settle_ref": settle,
         "claims_ref": claims,
