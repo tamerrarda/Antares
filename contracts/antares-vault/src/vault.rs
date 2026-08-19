@@ -503,13 +503,13 @@ fn load(env: &Env) -> (Config, State) {
 // it is — and everything after it lives here, so no entry point can get the
 // order wrong and no two can disagree about *which* rejection a given call
 // produces. That last part is the reason the order is canonical at all.
-struct Ctx {
-    config: Config,
-    state: State,
-    rent: Rent,
+pub struct Ctx {
+    pub config: Config,
+    pub state: State,
+    pub rent: Rent,
 }
 
-fn enter(env: &Env, pause_blocks: bool) -> Result<Ctx, Error> {
+pub fn enter(env: &Env, pause_blocks: bool) -> Result<Ctx, Error> {
     let (config, mut state) = load(env);
     let rent = Rent::effective(env, &config);
 
@@ -583,6 +583,10 @@ fn mint(env: &Env, ctx: &mut Ctx, to: &Address, amount: i128) -> Result<i128, Er
         .locked_assets
         .checked_add(amount)
         .ok_or(Error::InvalidAmount)?;
+
+    // §10: the SEP-41 stream is the token view and the vault stream is the
+    // protocol view. Both are emitted; an indexer counts one or the other.
+    crate::token::emit_mint(env, to, credited);
 
     Ok(credited)
 }
@@ -861,6 +865,7 @@ impl AntaresVault {
             .shares_outstanding
             .checked_sub(shares)
             .ok_or(Error::InvalidAmount)?;
+        crate::token::emit_burn(&env, &from, shares);
 
         let round = ctx.state.round;
         let instant_amount = if ctx.state.phase == Phase::Idle {
