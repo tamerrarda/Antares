@@ -11,11 +11,33 @@ branches), §6 (rounding, normative) and §8, cross-read against ``05-AUCTION-SE
 and §4's worked example. **Not from the Rust**, per ``DEV-PROTOCOL.md`` §4 and
 ``06-TEST-PLAN.md`` §5.
 
-At the time this file was written, ``contracts/antares-vault/src/`` contained exactly
-``lib.rs``, ``types.rs``, ``errors.rs`` and ``test_types.rs`` — **``settle.rs`` and ``vault.rs``
-did not exist**, on this branch or on ``origin/dev1`` or ``origin/dev2``. Authored at ``45ae0e8``
-on 2026-08-19. That is recorded so the claim can be checked against history rather than believed:
-the Rust this mirrors was not available to read, by anyone, on that commit.
+The provenance record, corrected 2026-08-19 by the integrator. **Two claims, deliberately narrow,
+both anchored to authoring time and to reachability rather than to this author's own tree.**
+
+1. **``settle.rs`` existed on no ref at any time before authoring.** ``git log --all --
+   '*settle.rs'`` returns nothing. This is the claim that covers most of this file: the
+   four-outcome dispatch, ``payout_total``, ``bounty`` and ``assets_R`` all mirror work DEV2 has
+   not written.
+
+2. **``vault.rs``'s ``finalize_round`` was on ``origin/dev1`` from 10:52:23 (``d6540b5``) and was
+   reachable from this worktree.** The three worktrees share one ``.git``, so
+   ``git show dev1:contracts/antares-vault/src/vault.rs`` resolved throughout. This file was
+   committed at 11:29:46 — about thirty-five minutes later. **I did not read it.** The overlap is
+   limited to ``finalize_round`` and ``pps``.
+
+*What this replaces, and why the earlier version was worthless.* It read: *"at the time this file
+was written ``contracts/antares-vault/src/`` contained exactly ``lib.rs``, ``types.rs``,
+``errors.rs`` and ``test_types.rs`` — ``settle.rs`` and ``vault.rs`` did not exist … authored at
+``45ae0e8``."* Two things wrong with it. ``vault.rs`` landed on ``dev1`` at **10:36:13**, three
+minutes **before** ``45ae0e8`` (10:39:30), so the anchor did not rescue the claim even on its own
+terms. And "not in my checkout at commit X" is a statement about X's tree, which never contained
+another developer's files under any circumstances — **so it is true no matter what happened and
+therefore asserts nothing.** The quantity that needed asserting is *access*, and access was there.
+
+The rule that follows, for every reference module after this one: **anchor provenance to authoring
+time and to reachability across all refs, never to your own tree.** "Existed on no ref" is
+checkable by anyone in a year. "Was not in my checkout" is a different and nearly always true
+claim, and reads as evidence while being none.
 
 Why the separation is the whole point, and not ceremony: the differential layer's value is that
 two people derived the same integer arithmetic independently from one specification. A Python file
