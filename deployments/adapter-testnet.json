@@ -1,0 +1,358 @@
+{
+  "tool": "scripts/profile-adapter.ts",
+  "generated": "2026-08-19T13:57:57.631Z",
+  "finished": "2026-08-19T13:58:05.178Z",
+  "network": "testnet",
+  "rpc": "https://soroban-testnet.stellar.org",
+  "protocolVersion": 27,
+  "rpcVersion": "28.0.0-e29c911f2a720e2bf05028014c00492450547ccc",
+  "toolchain": {
+    "wasmBuiltAtCommit": "18dcef1aa579df659ed01cb109306be92a1c5cce",
+    "profiledAtCommit": "256fbb3c7b1b31dd8bdac7b76ea312908972b905",
+    "stellarCli": "stellar 27.1.0 (8e402ea28202950b272fbabc34caad4d2f64fe87)",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "node": "v22.18.0"
+  },
+  "deployment": {
+    "adapter": "CCZQF5WUF3LCGYONRGNLADUJZGYLOEXY7JBRRGCLDTHTHSL5GJOH2FQP",
+    "feed": "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
+    "asset": "Other(\"XLM\")",
+    "deployer": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+    "wasmBytes": 13179,
+    "wasmSha256OnChain": "d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d",
+    "wasmSha256Local": "d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d",
+    "exportedFunctions": [
+      "__constructor",
+      "reading",
+      "spot_check",
+      "supports_round"
+    ]
+  },
+  "measurements": {
+    "resolution": 300,
+    "decimals": 14,
+    "lastTimestamp": 1787147700,
+    "reachableDepthTicks": 255,
+    "reachLimitSeconds": 72900,
+    "reachBoundary": {
+      "readsAtAgeSeconds": 72783,
+      "outOfReachAtAgeSeconds": 73083
+    },
+    "limits": {
+      "txMaxInstructions": 400000000,
+      "txMaxDiskReadBytes": 200000
+    },
+    "shipped": {
+      "twap_window": 900,
+      "guard_window": 3600
+    },
+    "readingByAnchorAge": [
+      {
+        "ageTicks": 1,
+        "ageSeconds": 300,
+        "variant": "Reading",
+        "cpuInstructions": 8899838,
+        "readBytes": 0,
+        "readEntries": 10,
+        "resourceFeeStroops": 21552
+      },
+      {
+        "ageTicks": 12,
+        "ageSeconds": 3600,
+        "variant": "Reading",
+        "cpuInstructions": 8968204,
+        "readBytes": 0,
+        "readEntries": 11,
+        "resourceFeeStroops": 21844
+      },
+      {
+        "ageTicks": 48,
+        "ageSeconds": 14400,
+        "variant": "Reading",
+        "cpuInstructions": 8965846,
+        "readBytes": 0,
+        "readEntries": 11,
+        "resourceFeeStroops": 21843
+      },
+      {
+        "ageTicks": 96,
+        "ageSeconds": 28800,
+        "variant": "Reading",
+        "cpuInstructions": 8968298,
+        "readBytes": 0,
+        "readEntries": 11,
+        "resourceFeeStroops": 21844
+      },
+      {
+        "ageTicks": 150,
+        "ageSeconds": 45000,
+        "variant": "Reading",
+        "cpuInstructions": 8969964,
+        "readBytes": 0,
+        "readEntries": 11,
+        "resourceFeeStroops": 21845
+      },
+      {
+        "ageTicks": 200,
+        "ageSeconds": 60000,
+        "variant": "Reading",
+        "cpuInstructions": 8968036,
+        "readBytes": 0,
+        "readEntries": 11,
+        "resourceFeeStroops": 21844
+      },
+      {
+        "ageTicks": 242,
+        "ageSeconds": 72600,
+        "variant": "Reading",
+        "cpuInstructions": 8969702,
+        "readBytes": 0,
+        "readEntries": 11,
+        "resourceFeeStroops": 21845
+      },
+      {
+        "ageTicks": 256,
+        "ageSeconds": 76800,
+        "variant": "OutOfReach",
+        "cpuInstructions": 3580185,
+        "readBytes": 0,
+        "readEntries": 4,
+        "resourceFeeStroops": 15510
+      }
+    ],
+    "spotCheck": {
+      "cpuInstructions": 3694091,
+      "resourceFeeStroops": 15470,
+      "value": "1581346"
+    },
+    "supportsRoundMatrix": [
+      {
+        "id": "O-13/pass",
+        "why": "the shipped set",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 159600
+        },
+        "expected": true,
+        "actual": true,
+        "cpu": 3042802
+      },
+      {
+        "id": "O-13/c1",
+        "why": "condition 1: twap_window 301 cannot hold three ticks at res 300",
+        "params": {
+          "twap_window": 301,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 159600
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042278
+      },
+      {
+        "id": "O-13/c2",
+        "why": "condition 2: tw 3000 / gw 3100 — passes guard > twap, fails on the REALIZED spans (04-ORACLE’s worked counter-example)",
+        "params": {
+          "twap_window": 3000,
+          "guard_window": 3100,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 159600
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042802
+      },
+      {
+        "id": "O-13/c4",
+        "why": "condition 4: oracle_dead_after + guard_window + settle_grace >= R",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 76500,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 159600
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042278
+      },
+      {
+        "id": "O-13b",
+        "why": "condition 3 floor: unresolved_after == reach_limit (72900)",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 72900,
+          "round_span": 159600
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042802
+      },
+      {
+        "id": "O-13b+",
+        "why": "one second above the floor",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 72901,
+          "round_span": 159600
+        },
+        "expected": true,
+        "actual": true,
+        "cpu": 3042802
+      },
+      {
+        "id": "O-13c-",
+        "why": "condition 6 ceiling: reach_limit + settle_grace (73500)",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73500,
+          "round_span": 159600
+        },
+        "expected": true,
+        "actual": true,
+        "cpu": 3042802
+      },
+      {
+        "id": "O-13c",
+        "why": "one second above the ceiling",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73501,
+          "round_span": 159600
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042802
+      },
+      {
+        "id": "O-13d",
+        "why": "evaluation order: guard_window of one year, rejected by condition 4 BEFORE R − guard_window is reached",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 31536000,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 159600
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042278
+      },
+      {
+        "id": "O-13f/skip",
+        "why": "round_span = 0 skips condition 7",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 0
+        },
+        "expected": true,
+        "actual": true,
+        "cpu": 2432174
+      },
+      {
+        "id": "O-13f",
+        "why": "condition 7: round_span outruns the feed’s own funding",
+        "params": {
+          "twap_window": 900,
+          "guard_window": 3600,
+          "oracle_dead_after": 3600,
+          "settle_grace": 600,
+          "unresolved_after": 73200,
+          "round_span": 2000000
+        },
+        "expected": false,
+        "actual": false,
+        "cpu": 3042802
+      }
+    ],
+    "spreadPctWholeRange": 0.7879469266743957,
+    "spreadPctDeepTail": 0.045929854249113805,
+    "worstPctOfTxLimit": 2.242491
+  },
+  "checks": [
+    {
+      "id": "P-1",
+      "what": "the deployed wasm is byte-identical to the local build (D-50, end to end)",
+      "status": "PASS",
+      "measured": "on-chain sha256 d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d, 13179 bytes; local d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d",
+      "note": "Until this was fetched back off the network, D-50 was a rule about two local checkouts. It is now a statement about what is running."
+    },
+    {
+      "id": "P-2",
+      "what": "the on-chain export surface is exactly four functions — no admin, no upgrade, no setter",
+      "status": "PASS",
+      "measured": "__constructor, reading, spot_check, supports_round",
+      "note": "09-DEPLOYMENT §2 asserts this at deploy time and 04-ORACLE §1 explains why the adapter is immutable. Parsed from the bytes the network served, so it is checkable without this repository."
+    },
+    {
+      "id": "P-3",
+      "what": "the seven-point read fits the live transaction limit",
+      "status": "PASS",
+      "measured": "worst 8969964 of txMaxInstructions 400000000 = 2.24 %",
+      "note": "One InvokeHostFunction carries all seven samples, so this is the aggregate E-8 was a lower bound for."
+    },
+    {
+      "id": "P-4",
+      "what": "the read’s cost does NOT vary with the anchor’s age — the deep tail",
+      "status": "PASS",
+      "measured": "6 anchors from 12t to 242t spread 0.046 % (8965846..8969964)",
+      "note": "This is the half D-64’s residual rests on. A trend here would mean the contract works in testing and fails at the far end of the window with a round already open."
+    },
+    {
+      "id": "P-5",
+      "what": "the whole-range spread is a step, not a trend",
+      "status": "INFO",
+      "measured": "whole range 0.788 % (8899838..8969964); entries by depth 1t:10 12t:11 48t:11 96t:11 150t:11 200t:11 242t:11",
+      "note": "Recorded separately because a single spread number cannot distinguish the two, and only the trend is a failure. The step is one extra ledger entry at the shallow end."
+    },
+    {
+      "id": "P-6",
+      "what": "past the reachable depth the adapter answers OutOfReach rather than erroring",
+      "status": "PASS",
+      "measured": "at 256t: OutOfReach, 3580185 insn, 4 entries",
+      "note": "D-59 made visible: the answer is cheap precisely because no evidence is gathered, since none can exist there."
+    },
+    {
+      "id": "P-7",
+      "what": "O-13’s rejection matrix, re-run against the real feed",
+      "status": "PASS",
+      "measured": "O-13/pass:true O-13/c1:false O-13/c2:false O-13/c4:false O-13b:false O-13b+:true O-13c-:true O-13c:false O-13d:false O-13f/skip:true O-13f:false",
+      "note": "The only failure family a healthy feed can still produce, because every input is a parameter and the feed contributes only its own resolution() and expires(). Each rejection moves one value by one second."
+    },
+    {
+      "id": "P-8",
+      "what": "the reach limit derived from the 255-tick cap holds against the real feed (D-69)",
+      "status": "PASS",
+      "measured": "reads at now-72783s, OutOfReach at now-73083s; reach_limit 72900 = 255 × 300 − 3600",
+      "note": "Anchors snap to the tick, so the transition can only be located to within one tick; the bracketing pair is the measurement."
+    }
+  ],
+  "verdict": "PASS"
+}

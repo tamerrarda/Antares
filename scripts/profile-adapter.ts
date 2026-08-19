@@ -266,23 +266,119 @@ async function main(): Promise<void> {
   }
   console.log('');
 
-  // -- the two other entry points, for the record ---------------------------------------------
+
+  // -- the other two entry points -------------------------------------------------------------
   const spot = await sim.call(
     env.adapterId,
     'spot_check',
     nativeToScVal(900, { type: 'u64' }),
     nativeToScVal(14, { type: 'u32' }),
   );
-  const supports = await sim.call(
-    env.adapterId,
-    'supports_round',
-    ...[900, 3600, 3600, 600, 73200, 159600].map((n) => nativeToScVal(n, { type: 'u64' })),
-  );
   console.log(`  spot_check(900, 14)      ${String(spot.cpu).padStart(9)} insn   ${pct(spot.cpu, limits.txMaxInstructions)}   -> ${show(spot.value)}`);
-  console.log(`  supports_round(shipped)  ${String(supports.cpu).padStart(9)} insn   ${pct(supports.cpu, limits.txMaxInstructions)}   -> ${show(supports.value)}`);
+
+  // -- O-13, against the real feed --------------------------------------------------------------
+  // The rejection matrix is one of the few failure families a *healthy* feed can still produce,
+  // because every input is a parameter and the only thing the feed contributes is its own
+  // `resolution()` and `expires()`. So it is re-run here rather than left to the mock — and each
+  // rejection moves ONE value by ONE second, because a blanket `false` is indistinguishable from
+  // an adapter that rejects everything.
+  const reachLimit = reach - SHIPPED.guard_window;
+  const SPAN = 159_600;
+  const matrix: { id: string; why: string; tw: number; gw: number; oda: number; sg: number; ua: number; span: number; expect: boolean }[] = [
+    { id: 'O-13/pass', why: 'the shipped set', tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 300, span: SPAN, expect: true },
+    { id: 'O-13/c1', why: `condition 1: twap_window ${resolution + 1} cannot hold three ticks at res ${resolution}`, tw: resolution + 1, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 300, span: SPAN, expect: false },
+    { id: 'O-13/c2', why: 'condition 2: tw 3000 / gw 3100 — passes guard > twap, fails on the REALIZED spans (04-ORACLE’s worked counter-example)', tw: 3000, gw: 3100, oda: 3600, sg: 600, ua: reachLimit + 300, span: SPAN, expect: false },
+    { id: 'O-13/c4', why: 'condition 4: oracle_dead_after + guard_window + settle_grace >= R', tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: reach, sg: 600, ua: reachLimit + 300, span: SPAN, expect: false },
+    { id: 'O-13b', why: `condition 3 floor: unresolved_after == reach_limit (${reachLimit})`, tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit, span: SPAN, expect: false },
+    { id: 'O-13b+', why: 'one second above the floor', tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 1, span: SPAN, expect: true },
+    { id: 'O-13c-', why: `condition 6 ceiling: reach_limit + settle_grace (${reachLimit + 600})`, tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 600, span: SPAN, expect: true },
+    { id: 'O-13c', why: 'one second above the ceiling', tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 601, span: SPAN, expect: false },
+    { id: 'O-13d', why: 'evaluation order: guard_window of one year, rejected by condition 4 BEFORE R − guard_window is reached', tw: SHIPPED.twap_window, gw: 31_536_000, oda: 3600, sg: 600, ua: reachLimit + 300, span: SPAN, expect: false },
+    { id: 'O-13f/skip', why: 'round_span = 0 skips condition 7', tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 300, span: 0, expect: true },
+    { id: 'O-13f', why: 'condition 7: round_span outruns the feed’s own funding', tw: SHIPPED.twap_window, gw: SHIPPED.guard_window, oda: 3600, sg: 600, ua: reachLimit + 300, span: 2_000_000, expect: false },
+  ];
+  const matrixRows: { id: string; why: string; params: Record<string, number>; expected: boolean; actual: unknown; cpu: number }[] = [];
+  for (const m of matrix) {
+    const r = await sim.call(
+      env.adapterId,
+      'supports_round',
+      ...[m.tw, m.gw, m.oda, m.sg, m.ua, m.span].map((n) => nativeToScVal(n, { type: 'u64' })),
+    );
+    matrixRows.push({
+      id: m.id,
+      why: m.why,
+      params: { twap_window: m.tw, guard_window: m.gw, oracle_dead_after: m.oda, settle_grace: m.sg, unresolved_after: m.ua, round_span: m.span },
+      expected: m.expect,
+      actual: r.value,
+      cpu: r.cpu,
+    });
+  }
+  const matrixOk = matrixRows.every((r) => r.actual === matrix.find((m) => m.id === r.id)?.expect);
+  console.log(`  supports_round matrix    ${matrixRows.length} cases, ${matrixOk ? 'all as specified' : 'MISMATCH'}`);
+
+  // -- the reach boundary, bracketed ------------------------------------------------------------
+  // D-69's cap is the number every other constant derives from, so it is measured against the real
+  // feed rather than trusted. Anchors are snapped to the tick, so the transition can only be
+  // located to within one tick — the pair that brackets it is the measurement, not a single value.
+  const wallNow = Math.floor(Date.now() / 1000);
+  const tickFloor = (t: number) => Math.floor(t / resolution) * resolution;
+  let lastRead: number | undefined;
+  let firstOor: number | undefined;
+  for (let end = tickFloor(wallNow - reachLimit + 2 * resolution); end > wallNow - reachLimit - 3 * resolution; end -= resolution) {
+    const r = await sim.call(env.adapterId, 'reading', nativeToScVal(end, { type: 'u64' }), tw, gw);
+    const tag = Array.isArray(r.value) ? String(r.value[0]) : String(r.value);
+    if (tag === 'Reading') lastRead = wallNow - end;
+    else if (tag === 'OutOfReach' && lastRead !== undefined) { firstOor = wallNow - end; break; }
+  }
+  const boundaryOk =
+    lastRead !== undefined && firstOor !== undefined && lastRead <= reachLimit && firstOor > reachLimit;
+  console.log(`  reach boundary           reads at now-${lastRead}s, OutOfReach at now-${firstOor}s, brackets ${reachLimit}`);
+
+  // -- what is actually running on the chain ----------------------------------------------------
+  // D-50 end to end. Until this call the rule was a CI job about two local checkouts; fetching the
+  // code back off the network turns it into a statement about the thing users would be trusting.
+  const { createHash } = await import('node:crypto');
+  const { readFileSync } = await import('node:fs');
+  const onChain = await sim.server.getContractWasmByContractId(env.adapterId);
+  const onChainSha = createHash('sha256').update(onChain).digest('hex');
+  const localPath = process.env['WASM_PATH']?.trim();
+  const localSha = localPath === undefined ? undefined : createHash('sha256').update(readFileSync(localPath)).digest('hex');
+  const shaMatches = localSha !== undefined && localSha === onChainSha;
+
+  // The export surface, parsed off the bytes the network served — not off our source tree. This is
+  // the claim 09-DEPLOYMENT §2 makes at deploy time and 04-ORACLE §1 explains: no admin, no
+  // upgrade, no setter. Anyone can now check it without our repository.
+  const exportsOf = (b: Uint8Array): string[] => {
+    const out: string[] = [];
+    let i = 8;
+    const leb = (): number => { let r = 0, s = 0, x = 0; do { x = b[i++]!; r |= (x & 0x7f) << s; s += 7; } while (x & 0x80); return r; };
+    while (i < b.length) {
+      const id = b[i++]!;
+      const size = leb();
+      const end = i + size;
+      if (id === 7) {
+        const n = leb();
+        for (let k = 0; k < n; k++) {
+          const len = leb();
+          const name = new TextDecoder().decode(b.subarray(i, i + len));
+          i += len;
+          const kind = b[i++]!;
+          leb();
+          if (kind === 0) out.push(name);
+        }
+      }
+      i = end;
+    }
+    return out.sort();
+  };
+  const exported = exportsOf(new Uint8Array(onChain));
+  const EXPECTED_EXPORTS = ['__constructor', 'reading', 'spot_check', 'supports_round'];
+  const surfaceOk = JSON.stringify(exported) === JSON.stringify(EXPECTED_EXPORTS);
+  console.log(`  on-chain export surface  ${exported.join(' ')}`);
+  console.log(`  on-chain sha256          ${onChainSha}${shaMatches ? '  == local build' : localSha === undefined ? '  (no WASM_PATH given)' : '  != local build'}`);
   console.log('');
 
-  // -- the verdict ----------------------------------------------------------------------------
+  // -- the verdict ------------------------------------------------------------------------------
   // Taken from the spread, not from the size. See the header: D-64's residual is a claim about
   // constancy. Only rows that actually returned a reading are compared — an `OutOfReach` answer
   // is a different code path and folding it in would flatter or wreck the spread by accident.
@@ -292,9 +388,6 @@ async function main(): Promise<void> {
   const hi = Math.max(...cpus);
   const spreadPct = cpus.length > 1 && lo > 0 ? ((hi - lo) / lo) * 100 : 0;
   const worstPct = (hi / limits.txMaxInstructions) * 100;
-
-  const constant = cpus.length > 1 && spreadPct < SPREAD_LIMIT_PCT;
-  const fits = hi > 0 && hi < limits.txMaxInstructions;
 
   // The bare spread cannot tell a *trend with depth* — the failure D-64 actually fears — from a
   // one-off step at the shallow end, and the two mean opposite things. So the deep tail is
@@ -307,52 +400,119 @@ async function main(): Promise<void> {
   const tailHi = Math.max(...tailCpus);
   const tailSpread = tailCpus.length > 1 && tailLo > 0 ? ((tailHi - tailLo) / tailLo) * 100 : 0;
 
+  const oor = rows.find((r) => r.ageTicks > deepest);
+  const constant = tailCpus.length > 1 && tailSpread < SPREAD_LIMIT_PCT;
+  const fits = hi > 0 && hi < limits.txMaxInstructions;
+
+  const checks = [
+    { id: 'P-1', what: 'the deployed wasm is byte-identical to the local build (D-50, end to end)',
+      status: shaMatches ? 'PASS' : localSha === undefined ? 'SKIP' : 'FAIL',
+      measured: `on-chain sha256 ${onChainSha}, ${onChain.length} bytes; local ${localSha ?? '(not given)'}`,
+      note: 'Until this was fetched back off the network, D-50 was a rule about two local checkouts. It is now a statement about what is running.' },
+    { id: 'P-2', what: 'the on-chain export surface is exactly four functions — no admin, no upgrade, no setter',
+      status: surfaceOk ? 'PASS' : 'FAIL',
+      measured: exported.join(', '),
+      note: '09-DEPLOYMENT §2 asserts this at deploy time and 04-ORACLE §1 explains why the adapter is immutable. Parsed from the bytes the network served, so it is checkable without this repository.' },
+    { id: 'P-3', what: 'the seven-point read fits the live transaction limit',
+      status: fits ? 'PASS' : 'FAIL',
+      measured: `worst ${hi} of txMaxInstructions ${limits.txMaxInstructions} = ${worstPct.toFixed(2)} %`,
+      note: 'One InvokeHostFunction carries all seven samples, so this is the aggregate E-8 was a lower bound for.' },
+    { id: 'P-4', what: 'the read’s cost does NOT vary with the anchor’s age — the deep tail',
+      status: constant ? 'PASS' : 'FAIL',
+      measured: `${tail.length} anchors from ${guardTicks}t to ${deepest}t spread ${tailSpread.toFixed(3)} % (${tailLo}..${tailHi})`,
+      note: 'This is the half D-64’s residual rests on. A trend here would mean the contract works in testing and fails at the far end of the window with a round already open.' },
+    { id: 'P-5', what: 'the whole-range spread is a step, not a trend',
+      status: 'INFO',
+      measured: `whole range ${spreadPct.toFixed(3)} % (${lo}..${hi}); entries by depth ${readable.map((r) => `${r.ageTicks}t:${r.cost.readEntries}`).join(' ')}`,
+      note: 'Recorded separately because a single spread number cannot distinguish the two, and only the trend is a failure. The step is one extra ledger entry at the shallow end.' },
+    { id: 'P-6', what: 'past the reachable depth the adapter answers OutOfReach rather than erroring',
+      status: oor?.variant === 'OutOfReach' ? 'PASS' : 'FAIL',
+      measured: `at ${oor?.ageTicks}t: ${oor?.variant}, ${oor?.cost.cpu} insn, ${oor?.cost.readEntries} entries`,
+      note: 'D-59 made visible: the answer is cheap precisely because no evidence is gathered, since none can exist there.' },
+    { id: 'P-7', what: 'O-13’s rejection matrix, re-run against the real feed',
+      status: matrixOk ? 'PASS' : 'FAIL',
+      measured: matrixRows.map((r) => `${r.id}:${String(r.actual)}`).join(' '),
+      note: 'The only failure family a healthy feed can still produce, because every input is a parameter and the feed contributes only its own resolution() and expires(). Each rejection moves one value by one second.' },
+    { id: 'P-8', what: 'the reach limit derived from the 255-tick cap holds against the real feed (D-69)',
+      status: boundaryOk ? 'PASS' : 'FAIL',
+      measured: `reads at now-${lastRead}s, OutOfReach at now-${firstOor}s; reach_limit ${reachLimit} = ${RECORD_CAP_TICKS} × ${resolution} − ${SHIPPED.guard_window}`,
+      note: 'Anchors snap to the tick, so the transition can only be located to within one tick; the bracketing pair is the measurement.' },
+  ];
+  const verdict = checks.some((c) => c.status === 'FAIL') ? 'FAIL' : 'PASS';
+
   console.log(`  readable anchors profiled : ${readable.length} of ${rows.length}`);
   console.log(`  CPU spread across depth   : ${spreadPct.toFixed(3)} %  (${lo} .. ${hi})`);
   console.log(`  spread over the deep tail : ${tailSpread.toFixed(3)} %  (${tail.length} anchors from ${guardTicks}t to ${deepest}t)`);
   console.log(`  entries read, by depth    : ${readable.map((r) => `${r.ageTicks}t:${r.cost.readEntries}`).join('  ')}`);
   console.log(`  worst case against limit  : ${worstPct.toFixed(2)} %`);
   console.log('');
-  console.log(`  ${constant && fits ? 'PASS' : 'FAIL'}  ${constant ? 'cost does not vary with the anchor age' : 'COST VARIES WITH THE ANCHOR AGE — D-64’s residual does not hold'}`);
+  for (const c of checks) console.log(`  ${c.status.padEnd(5)} ${c.id}  ${c.what}`);
+  console.log('');
+  console.log(`  ${verdict}`);
   console.log('');
 
   if (env.jsonOut !== undefined) {
     const { writeFileSync } = await import('node:fs');
+    const version = await sim.server.getVersionInfo();
     writeFileSync(
       env.jsonOut,
       JSON.stringify(
         {
-          started,
-          // D-69's discipline: a measurement without provenance is an anecdote. What was
-          // measured, with what, at which commit, against which address.
-          provenance: {
-            commit: process.env['COMMIT']?.trim() ?? '(not supplied)',
-            wasmSha256: process.env['WASM_SHA256']?.trim() ?? '(not supplied)',
-            rpcUrl: env.rpcUrl,
-            networkPassphrase: env.passphrase,
-            sourceAccount: env.sourceAccount ?? '(ephemeral friendbot account)',
+          tool: 'scripts/profile-adapter.ts',
+          generated: started,
+          finished: new Date().toISOString(),
+          network: 'testnet',
+          rpc: env.rpcUrl,
+          protocolVersion: version.protocolVersion,
+          rpcVersion: version.version,
+          toolchain: {
+            // Two commits, deliberately. D-50's claim is about the commit the **wasm** was built
+            // at; the profile can be re-run later from a tree that has moved on, and conflating
+            // the two would let a matching hash be reported against the wrong source.
+            wasmBuiltAtCommit: process.env['WASM_COMMIT']?.trim() ?? '(not supplied)',
+            profiledAtCommit: process.env['COMMIT']?.trim() ?? '(not supplied)',
+            stellarCli: process.env['STELLAR_CLI_VERSION']?.trim() ?? '(not supplied)',
+            rustc: process.env['RUSTC_VERSION']?.trim() ?? '(not supplied)',
+            node: process.version,
           },
-          adapter: env.adapterId,
-          feed: env.feedId,
-          resolution,
-          lastTimestamp,
-          limits,
-          shipped: SHIPPED,
-          rows: rows.map((r) => ({
-            ageTicks: r.ageTicks,
-            ageSeconds: r.ageSeconds,
-            variant: r.variant,
-            cpu: r.cost.cpu,
-            readBytes: r.cost.readBytes,
-            readEntries: r.cost.readEntries,
-            fee: r.cost.fee,
-          })),
-          spotCheck: { cpu: spot.cpu, fee: spot.fee, value: spot.value },
-          supportsRound: { cpu: supports.cpu, fee: supports.fee, value: supports.value },
-          spreadPct,
-          tailSpreadPct: tailSpread,
-          worstPct,
-          verdict: constant && fits ? 'PASS' : 'FAIL',
+          deployment: {
+            adapter: env.adapterId,
+            feed: env.feedId,
+            asset: 'Other("XLM")',
+            deployer: env.sourceAccount ?? '(ephemeral)',
+            wasmBytes: onChain.length,
+            wasmSha256OnChain: onChainSha,
+            wasmSha256Local: localSha ?? '(not supplied)',
+            exportedFunctions: exported,
+          },
+          measurements: {
+            resolution,
+            decimals: 14,
+            lastTimestamp,
+            reachableDepthTicks: RECORD_CAP_TICKS,
+            reachLimitSeconds: reachLimit,
+            reachBoundary: { readsAtAgeSeconds: lastRead ?? null, outOfReachAtAgeSeconds: firstOor ?? null },
+            limits,
+            shipped: SHIPPED,
+            // The seven readings themselves, not their range: a range cannot be re-checked and a
+            // re-run of the script can give different numbers.
+            readingByAnchorAge: rows.map((r) => ({
+              ageTicks: r.ageTicks,
+              ageSeconds: r.ageSeconds,
+              variant: r.variant,
+              cpuInstructions: r.cost.cpu,
+              readBytes: r.cost.readBytes,
+              readEntries: r.cost.readEntries,
+              resourceFeeStroops: r.cost.fee,
+            })),
+            spotCheck: { cpuInstructions: spot.cpu, resourceFeeStroops: spot.fee, value: spot.value },
+            supportsRoundMatrix: matrixRows,
+            spreadPctWholeRange: spreadPct,
+            spreadPctDeepTail: tailSpread,
+            worstPctOfTxLimit: worstPct,
+          },
+          checks,
+          verdict,
         },
         (_k, x) => (typeof x === 'bigint' ? x.toString() : x),
         2,
@@ -362,7 +522,7 @@ async function main(): Promise<void> {
     console.log('');
   }
 
-  process.exit(constant && fits ? 0 : 1);
+  process.exit(verdict === 'PASS' ? 0 : 1);
 }
 
 await main();
