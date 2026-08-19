@@ -1,0 +1,453 @@
+/**
+ * `check-params.ts` — the parameter-coherence gate (09-DEPLOYMENT §2 step 0b, D-31/D-53/D-68).
+ *
+ * `02-CONTRACT-SPEC.md` §1b is the single home for the five gates and for the fast-test exemption;
+ * this enforces them and restates neither. What lives here is the arithmetic §1b describes —
+ * measured realized volatility, Black-Scholes fair value, and the five comparisons — plus the
+ * refusal that stops a deploy.
+ *
+ * # Why this script exists at all
+ *
+ * `strike_bps_otm`, `epoch_duration` and the premium band are not independent. Get them wrong in
+ * one direction and every epoch lapses while the vault looks alive; wrong in the other and it sells
+ * options below fair value on every fill. The first version of §1b hard-coded σ ∈ [60 %, 100 %] as
+ * though volatility were a constant, and the measurement that replaced it (D-53) showed the band
+ * was wrong by a factor of two at the low end — which had priced the five planned vaults at
+ * 7.3 bps against a 28 bps floor, so **not one of them could ever have been filled**.
+ *
+ * So the one rule this file will not bend: **σ is measured, never assumed.** It is computed here
+ * from a price series, and the series is an input rather than a constant. A default baked into
+ * this script would reintroduce exactly the defect it exists to prevent.
+ *
+ * # Gate 3 is the one that survives the fast-test exemption
+ *
+ * `max_deviation_bps < strike_bps_otm / 2` is duration-independent, and **this script is its only
+ * enforcer anywhere** — the on-chain validation bounds the two parameters separately and never
+ * against each other. A fast-test profile is exempt from gates 1, 2, 4 and 5 and never from 3,
+ * because without it such a profile could ship a breaker wider than its own OTM buffer, which is a
+ * strike set below the prevailing market at open (A-7).
+ */
+
+import { readFileSync } from "node:fs";
+
+// --------------------------------------------------------------------------------------------
+// The maths
+// --------------------------------------------------------------------------------------------
+
+/** Basis-point denominator, matching the contract's own `BPS`. */
+export const BPS = 10_000;
+
+const DAYS_PER_YEAR = 365;
+const SECONDS_PER_DAY = 86_400;
+
+/**
+ * Standard normal CDF.
+ *
+ * Abramowitz & Stegun 26.2.17, whose absolute error is below 7.5e-8 — four orders of magnitude
+ * finer than the basis point these gates compare in, so the approximation cannot move a verdict.
+ * Written out rather than pulled from a dependency: this is the only numerical routine in the
+ * script, and a deploy gate with a supply-chain edge for one function is a poor trade (D-24's
+ * reasoning, applied off-chain).
+ */
+export function normalCdf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  const z = Math.abs(x) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * z);
+  const y =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
+      t *
+      Math.exp(-z * z);
+  return 0.5 * (1 + sign * y);
+}
+
+/**
+ * Black-Scholes value of the call this vault writes, as **basis points of notional**.
+ *
+ * `r = 0` deliberately: the position is XLM-denominated collateral against an XLM-denominated
+ * strike, so there is no financing leg to discount. Adding a rate would be modelling a currency
+ * pair this vault does not hold.
+ *
+ * The strike is `spot × (1 + otm)`, so spot cancels and the answer depends only on the OTM offset,
+ * the horizon and σ — which is why the gates can be checked without a live price.
+ *
+ * Verified against §1b's own published table before use: 3 % OTM over 7 days at σ = 33.7 % gives
+ * **75.59 bps** against the document's 75.6, and at σ = 98.4 % gives 414.5 against 414.3. A gate
+ * whose arithmetic disagreed with the table it enforces would be worse than no gate.
+ */
+export function fairValueBps(strikeBpsOtm: number, epochDurationSeconds: number, sigma: number): number {
+  const t = epochDurationSeconds / SECONDS_PER_DAY / DAYS_PER_YEAR;
+  if (t <= 0 || sigma <= 0) return 0;
+  const moneyness = 1 + strikeBpsOtm / BPS;
+  const vol = sigma * Math.sqrt(t);
+  const d1 = (-Math.log(moneyness) + (sigma * sigma * t) / 2) / vol;
+  const d2 = d1 - vol;
+  return (normalCdf(d1) - moneyness * normalCdf(d2)) * BPS;
+}
+
+/**
+ * Annualized realized volatility from a series of closes, over the last `windowDays` observations.
+ *
+ * Log returns, sample standard deviation, scaled by `sqrt(365)`. Daily closes are assumed because
+ * that is what §1b's own measurement used; the series carries its own cadence so a mismatch is a
+ * refusal rather than a silent rescaling.
+ */
+export function realizedVolatility(closes: readonly number[], windowDays: number): number {
+  const slice = closes.slice(-(windowDays + 1));
+  if (slice.length < 3) {
+    throw new ParamError(
+      `a ${windowDays}-day window needs at least 3 closes and the series supplied ${slice.length}`,
+    );
+  }
+  const returns: number[] = [];
+  for (let i = 1; i < slice.length; i += 1) {
+    const prev = slice[i - 1]!;
+    const cur = slice[i]!;
+    if (prev <= 0 || cur <= 0) {
+      throw new ParamError("a non-positive close is not a price; the series is malformed");
+    }
+    returns.push(Math.log(cur / prev));
+  }
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, r) => a + (r - mean) ** 2, 0) / (returns.length - 1);
+  return Math.sqrt(variance) * Math.sqrt(DAYS_PER_YEAR);
+}
+
+export class ParamError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ParamError";
+  }
+}
+
+// --------------------------------------------------------------------------------------------
+// The gates
+// --------------------------------------------------------------------------------------------
+
+export interface CoherenceParams {
+  readonly epoch_duration: number;
+  readonly strike_bps_otm: number;
+  readonly premium_start_bps: number;
+  readonly premium_floor_bps: number;
+  readonly max_deviation_bps: number;
+}
+
+export interface SigmaRange {
+  /** The lowest measured window — §1b's `σ_low`. */
+  readonly low: number;
+  /** The highest measured window — `σ_high`. */
+  readonly high: number;
+  /** Every window that was measured, for the record. */
+  readonly windows: ReadonlyArray<{ days: number; sigma: number }>;
+}
+
+export interface GateResult {
+  readonly gate: 1 | 2 | 3 | 4 | 5;
+  readonly name: string;
+  readonly passed: boolean;
+  /** True when the gate was skipped because the profile is fast-test. */
+  readonly exempt: boolean;
+  readonly detail: string;
+}
+
+/**
+ * The five gates of §1b, in order, against a measured σ range.
+ *
+ * `fastTest` exempts **1, 2, 4 and 5 — never 3**. That is §1b's rule and the asymmetry is not a
+ * convenience: at a second-scale `epoch_duration` the fair value collapses toward zero, so gate 5
+ * compares a positive floor against ~0 and gate 4's regime ratio explodes; gates 1 and 2 then pass
+ * vacuously and are listed only for completeness. Gate 3 is duration-independent and this script
+ * is its only enforcer.
+ */
+export function checkGates(
+  params: CoherenceParams,
+  sigma: SigmaRange,
+  options: { fastTest?: boolean } = {},
+): GateResult[] {
+  const fastTest = options.fastTest ?? false;
+  const fairLow = fairValueBps(params.strike_bps_otm, params.epoch_duration, sigma.low);
+  const fairHigh = fairValueBps(params.strike_bps_otm, params.epoch_duration, sigma.high);
+  const round = (n: number) => Math.round(n * 100) / 100;
+
+  const exempted = (gate: 1 | 2 | 4 | 5, name: string): GateResult => ({
+    gate,
+    name,
+    passed: true,
+    exempt: true,
+    detail: "exempt: --fast-test profile (§1b). The record is stamped economically meaningless.",
+  });
+
+  const results: GateResult[] = [];
+
+  // 1 — the vault must not open below fair value at the top of the measured regime.
+  results.push(
+    fastTest
+      ? exempted(1, "premium_start_bps >= fair(σ_high)")
+      : {
+          gate: 1,
+          name: "premium_start_bps >= fair(σ_high)",
+          passed: params.premium_start_bps >= fairHigh,
+          exempt: false,
+          detail: `start ${params.premium_start_bps} bps vs fair(σ_high=${round(sigma.high * 100)}%) = ${round(fairHigh)} bps`,
+        },
+  );
+
+  // 2 — the floor is a reserve price, not a giveaway.
+  results.push(
+    fastTest
+      ? exempted(2, "premium_floor_bps >= fair(σ_low) / 2")
+      : {
+          gate: 2,
+          name: "premium_floor_bps >= fair(σ_low) / 2",
+          passed: params.premium_floor_bps >= fairLow / 2,
+          exempt: false,
+          detail: `floor ${params.premium_floor_bps} bps vs fair(σ_low)/2 = ${round(fairLow / 2)} bps`,
+        },
+  );
+
+  // 3 — never exempt. The breaker must stay inside its own OTM buffer.
+  results.push({
+    gate: 3,
+    name: "max_deviation_bps < strike_bps_otm / 2",
+    passed: params.max_deviation_bps < params.strike_bps_otm / 2,
+    exempt: false,
+    detail:
+      `max_deviation ${params.max_deviation_bps} bps vs strike_bps_otm/2 = ` +
+      `${params.strike_bps_otm / 2} bps` +
+      (fastTest ? "  (NOT exempt for fast-test profiles — §1b, and this script is its only enforcer)" : ""),
+  });
+
+  // 4 — the band has to be able to span the regime at all.
+  results.push(
+    fastTest
+      ? exempted(4, "fair(σ_high)/fair(σ_low) <= start/floor")
+      : {
+          gate: 4,
+          name: "fair(σ_high)/fair(σ_low) <= start/floor",
+          passed:
+            fairLow > 0 &&
+            params.premium_floor_bps > 0 &&
+            fairHigh / fairLow <= params.premium_start_bps / params.premium_floor_bps,
+          exempt: false,
+          detail:
+            `regime ratio ${fairLow > 0 ? round(fairHigh / fairLow) : "∞"} vs band ` +
+            `${round(params.premium_start_bps / params.premium_floor_bps)}`,
+        },
+  );
+
+  // 5 — the reserve must sit below the option's own worth by the clearing gate's margin.
+  results.push(
+    fastTest
+      ? exempted(5, "1.30 × premium_floor_bps <= 0.75 × fair(σ_low)")
+      : {
+          gate: 5,
+          name: "1.30 × premium_floor_bps <= 0.75 × fair(σ_low)",
+          passed: 1.3 * params.premium_floor_bps <= 0.75 * fairLow,
+          exempt: false,
+          detail: `1.30×floor = ${round(1.3 * params.premium_floor_bps)} vs 0.75×fair(σ_low) = ${round(0.75 * fairLow)}`,
+        },
+  );
+
+  return results;
+}
+
+/**
+ * `floor / fair` across the measured σ range — D-62's margin, printed per instance.
+ *
+ * Not a gate. It is the number the Phase-2 clearing gate depends on, and §1b records that at
+ * 0.52–0.55 today a threshold of 0.5 would have been passed by an auction that never left the
+ * floor. Printing it is what stops that being discovered after the fact.
+ */
+export function floorOverFair(
+  params: CoherenceParams,
+  sigma: SigmaRange,
+): Array<{ days: number; sigma: number; fair: number; ratio: number }> {
+  return sigma.windows.map(({ days, sigma: s }) => {
+    const fair = fairValueBps(params.strike_bps_otm, params.epoch_duration, s);
+    return { days, sigma: s, fair, ratio: fair > 0 ? params.premium_floor_bps / fair : Infinity };
+  });
+}
+
+// --------------------------------------------------------------------------------------------
+// The series
+// --------------------------------------------------------------------------------------------
+
+export interface PriceSeries {
+  readonly asset: string;
+  readonly cadence: "daily";
+  readonly source: string;
+  readonly measuredAt: string;
+  readonly closes: readonly number[];
+}
+
+/**
+ * Load a committed price series and refuse anything that is not one.
+ *
+ * The series is an **input**, never a constant compiled into this file — D-53's whole finding was
+ * that a hard-coded volatility band was wrong by a factor of two and took every parameter derived
+ * from it down with it. Keeping it as a file also makes the measurement auditable: a reviewer can
+ * see which closes produced which σ.
+ */
+export function loadSeries(path: string): PriceSeries {
+  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new ParamError(`${path} is not a JSON object`);
+  }
+  const s = parsed as PriceSeries;
+  if (s.cadence !== "daily") {
+    throw new ParamError(
+      `${path} declares cadence "${String(s.cadence)}"; the annualization here assumes daily closes ` +
+        `(§1b measured from daily closes), so a different cadence is a refusal rather than a rescaling`,
+    );
+  }
+  if (!Array.isArray(s.closes) || s.closes.length < 4) {
+    throw new ParamError(`${path} carries too few closes to measure any window`);
+  }
+  return s;
+}
+
+/** The 30/60/90-day windows §1b names, from one series. */
+export function sigmaRange(series: PriceSeries, windows: readonly number[] = [30, 60, 90]): SigmaRange {
+  const measured = windows
+    .filter((days) => series.closes.length >= days + 1)
+    .map((days) => ({ days, sigma: realizedVolatility(series.closes, days) }));
+  if (measured.length === 0) {
+    throw new ParamError(
+      `the series has ${series.closes.length} closes, too few for any of the ${windows.join("/")}-day windows`,
+    );
+  }
+  const sigmas = measured.map((m) => m.sigma);
+  return { low: Math.min(...sigmas), high: Math.max(...sigmas), windows: measured };
+}
+
+// --------------------------------------------------------------------------------------------
+// CLI
+// --------------------------------------------------------------------------------------------
+
+export interface InstanceCheck {
+  readonly suffix: string;
+  readonly params: CoherenceParams;
+  readonly results: GateResult[];
+  readonly margins: ReturnType<typeof floorOverFair>;
+  readonly passed: boolean;
+}
+
+/**
+ * Check every instance and refuse the **whole set** if any one fails (D-57).
+ *
+ * A partially-deployable experiment is how instances C and D reached review while being
+ * un-deployable, so the verdict is over the set rather than per instance. That is why this returns
+ * every instance's result and a single overall boolean rather than throwing on the first failure —
+ * an operator who has to fix five parameter sets one deploy at a time will stop reading.
+ */
+export function checkSet(
+  instances: ReadonlyArray<{ suffix: string; params: CoherenceParams }>,
+  sigma: SigmaRange,
+  options: { fastTest?: boolean } = {},
+): { instances: InstanceCheck[]; passed: boolean } {
+  const checked = instances.map(({ suffix, params }) => {
+    const results = checkGates(params, sigma, options);
+    return {
+      suffix,
+      params,
+      results,
+      margins: floorOverFair(params, sigma),
+      passed: results.every((r) => r.passed),
+    };
+  });
+  return { instances: checked, passed: checked.every((i) => i.passed) };
+}
+
+function render(check: InstanceCheck, sigma: SigmaRange): string[] {
+  const lines: string[] = [];
+  lines.push(`\ninstance ${check.suffix}  —  ${check.passed ? "PASS" : "REFUSED"}`);
+  lines.push(
+    `  epoch ${check.params.epoch_duration}s  otm ${check.params.strike_bps_otm}bps  ` +
+      `band [${check.params.premium_floor_bps}, ${check.params.premium_start_bps}]  ` +
+      `deviation ${check.params.max_deviation_bps}bps`,
+  );
+  for (const r of check.results) {
+    const mark = r.exempt ? "  --  " : r.passed ? "  ok  " : " FAIL ";
+    lines.push(`  [${mark}] gate ${r.gate}  ${r.name}`);
+    lines.push(`            ${r.detail}`);
+  }
+  // D-62's margin, printed whether or not the gates passed.
+  lines.push("  floor / fair across the measured range (D-62 — the Phase-2 clearing margin):");
+  for (const m of check.margins) {
+    lines.push(
+      `    ${String(m.days).padStart(3)}d  σ ${(m.sigma * 100).toFixed(1)}%  ` +
+        `fair ${m.fair.toFixed(1)} bps  floor/fair ${m.ratio.toFixed(3)}`,
+    );
+  }
+  const _ = sigma;
+  return lines;
+}
+
+export function main(argv: readonly string[]): number {
+  const args = new Map<string, string>();
+  let fastTest = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i]!;
+    if (a === "--fast-test") fastTest = true;
+    else if (a.startsWith("--")) {
+      args.set(a.slice(2), argv[i + 1] ?? "");
+      i += 1;
+    }
+  }
+
+  const seriesPath = args.get("series");
+  const paramsPath = args.get("params");
+  if (seriesPath === undefined || paramsPath === undefined) {
+    console.error(
+      "usage: check-params.ts --series <price-series.json> --params <instances.json> [--fast-test]\n" +
+        "\n" +
+        "  --series  daily closes for the underlying. σ is MEASURED from this and never assumed\n" +
+        "            (D-53) — a default baked into the script is the defect the gate exists to stop.\n" +
+        "  --params  one instance or an array of them, each { suffix, params }.\n" +
+        "  --fast-test  exempts gates 1, 2, 4 and 5 — never gate 3 (§1b).",
+    );
+    return 2;
+  }
+
+  const series = loadSeries(seriesPath);
+  const sigma = sigmaRange(series);
+  const raw: unknown = JSON.parse(readFileSync(paramsPath, "utf8"));
+  const instances = (Array.isArray(raw) ? raw : [raw]) as Array<{
+    suffix: string;
+    params: CoherenceParams;
+  }>;
+
+  console.log(`series: ${series.asset} from ${series.source}, measured ${series.measuredAt}`);
+  console.log(
+    `measured σ: ${sigma.windows.map((w) => `${w.days}d ${(w.sigma * 100).toFixed(1)}%`).join(", ")}` +
+      `  →  range [${(sigma.low * 100).toFixed(1)}%, ${(sigma.high * 100).toFixed(1)}%]`,
+  );
+  if (fastTest) {
+    console.log(
+      "\n--fast-test: gates 1, 2, 4 and 5 exempt; gate 3 still enforced.\n" +
+        "  The deployment record is stamped ECONOMICALLY MEANINGLESS — mechanism only, never\n" +
+        "  demand evidence — and can never satisfy Phase 6b or feed the stop gate.",
+    );
+  }
+
+  const { instances: checked, passed } = checkSet(instances, sigma, { fastTest });
+  for (const c of checked) {
+    for (const line of render(c, sigma)) console.log(line);
+  }
+
+  if (!passed) {
+    const failed = checked.filter((c) => !c.passed).map((c) => c.suffix);
+    console.error(
+      `\nREFUSED. Instances ${failed.join(", ")} failed a coherence gate, so the WHOLE SET is\n` +
+        `refused (D-57). A partially-deployable experiment is how instances C and D reached review\n` +
+        `while being un-deployable.`,
+    );
+    return 1;
+  }
+  console.log(`\nall ${checked.length} instance(s) pass every applicable gate.`);
+  return 0;
+}
+
+if (process.argv[1]?.endsWith("check-params.ts")) {
+  process.exit(main(process.argv.slice(2)));
+}
