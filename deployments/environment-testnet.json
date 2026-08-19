@@ -1,7 +1,7 @@
 {
   "tool": "scripts/verify-environment.ts",
-  "generated": "2026-08-18T22:24:48.390Z",
-  "finished": "2026-08-18T22:25:05.336Z",
+  "generated": "2026-08-19T06:54:08.840Z",
+  "finished": "2026-08-19T06:54:26.676Z",
   "mode": "full",
   "network": "testnet",
   "rpc": "https://soroban-testnet.stellar.org",
@@ -13,43 +13,59 @@
     "resolution": 300,
     "decimals": 14,
     "version": 6,
-    "lastTimestamp": 1787091600
+    "lastTimestamp": 1787122200
   },
   "measurements": {
     "reachableDepthTicks": 255,
     "reachableDepthSeconds": 76500,
     "requiredDepthSeconds": 76500,
     "tickCompletenessGaps": [],
+    "unionOfSweeps": {
+      "spanSeconds": 107100,
+      "points": 358,
+      "gaps": 0,
+      "completeness": 1,
+      "runs": [
+        {
+          "at": 1787091600,
+          "ticks": 255
+        },
+        {
+          "at": 1787122200,
+          "ticks": 255
+        }
+      ]
+    },
     "sevenPointCostByAnchorAge": [
       {
         "ageSeconds": 300,
-        "totalCpu": 11857332,
-        "totalFee": 100606,
-        "maxCpu": 1702066
+        "totalCpu": 11868789,
+        "totalFee": 100614,
+        "maxCpu": 1704906
       },
       {
         "ageSeconds": 7200,
-        "totalCpu": 11914462,
-        "totalFee": 100891,
-        "maxCpu": 1702066
+        "totalCpu": 11925918,
+        "totalFee": 100899,
+        "maxCpu": 1704906
       },
       {
         "ageSeconds": 28800,
-        "totalCpu": 11914462,
-        "totalFee": 100891,
-        "maxCpu": 1702066
+        "totalCpu": 11924514,
+        "totalFee": 100898,
+        "maxCpu": 1703502
       },
       {
         "ageSeconds": 50400,
-        "totalCpu": 11914462,
-        "totalFee": 100891,
-        "maxCpu": 1702066
+        "totalCpu": 11925918,
+        "totalFee": 100899,
+        "maxCpu": 1704906
       },
       {
         "ageSeconds": 72600,
-        "totalCpu": 11914462,
-        "totalFee": 100891,
-        "maxCpu": 1702066
+        "totalCpu": 11925918,
+        "totalFee": 100899,
+        "maxCpu": 1704906
       }
     ],
     "pricesCollapseAt": 20,
@@ -60,7 +76,7 @@
       "id": "E-1",
       "what": "RPC ledgerRetentionWindow covers the UI live-window assumption",
       "status": "PASS",
-      "measured": "120960 ledgers spanning 605790 s = 168 h 16 m; assumption 604800 s = 168 h 00 m",
+      "measured": "120960 ledgers spanning 605804 s = 168 h 16 m; assumption 604800 s = 168 h 00 m",
       "note": "Events vanish past this window; anything older must come from views or the archive. DEV3's Claims page rests on it."
     },
     {
@@ -87,7 +103,7 @@
       "id": "E-5",
       "what": "the unit of resolution() and of PriceData.timestamp is SECONDS, asserted rather than assumed",
       "status": "PASS",
-      "measured": "last_timestamp = 1787091600; ledger closeTime = 1787091888; |difference| = 288 s; resolution = 300",
+      "measured": "last_timestamp = 1787122200; ledger closeTime = 1787122444; |difference| = 244 s; resolution = 300",
       "note": "A millisecond feed would put last_timestamp about 1000x above the ledger clock. This is D-49 applied to the one value every other row takes for granted."
     },
     {
@@ -108,7 +124,7 @@
       "id": "E-8",
       "what": "seven-point battery cost, and that it does NOT vary with the anchor's age",
       "status": "PASS",
-      "measured": "age 300 s = 0 h 05 m -> 11857332 CPU insn, 100606 stroops; age 7200 s = 2 h 00 m -> 11914462 CPU insn, 100891 stroops; age 28800 s = 8 h 00 m -> 11914462 CPU insn, 100891 stroops; age 50400 s = 14 h 00 m -> 11914462 CPU insn, 100891 stroops; age 72600 s = 20 h 10 m -> 11914462 CPU insn, 100891 stroops  | spread 0.48 %",
+      "measured": "age 300 s = 0 h 05 m -> 11868789 CPU insn, 100614 stroops; age 7200 s = 2 h 00 m -> 11925918 CPU insn, 100899 stroops; age 28800 s = 8 h 00 m -> 11924514 CPU insn, 100898 stroops; age 50400 s = 14 h 00 m -> 11925918 CPU insn, 100899 stroops; age 72600 s = 20 h 10 m -> 11925918 CPU insn, 100899 stroops  | spread 0.48 %",
       "note": "D-64's residual rests entirely on this constancy: budget exhaustion is then a never-worked-at-all failure rather than a latent time bomb. Phase 1 measures per-call cost and their sum as a LOWER BOUND — the authoritative aggregate is Phase 3's resource profile against the real adapter (DEV2.md §3.2)."
     },
     {
@@ -122,7 +138,7 @@
       "id": "E-10",
       "what": "feed expires() outlives epoch_duration + unresolved_after (supports_round condition 7)",
       "status": "PASS",
-      "measured": "expires = 1788706882 -> runway 1614994 s = 448 h 36 m; round_span 680400 s = 189 h 00 m",
+      "measured": "expires = 1788706882 -> runway 1584438 s = 440 h 07 m; round_span 680400 s = 189 h 00 m",
       "note": "Sponsored feeds die on a schedule (04-ORACLE §5). This is the exact span condition 7 enforces on-chain; the older \"+ oracle_dead_after\" form was weaker than the gate, so a deploy passed and the first open_epoch refused."
     },
     {
@@ -131,6 +147,13 @@
       "status": "PASS",
       "measured": "R = 255 x 300 = 76500 s = 21 h 15 m; reach_limit = 72900 s = 20 h 15 m; admissible unresolved_after = (72900, 80100]; shipped 75600 -> inside; admissible resolution for the shipped table = [283, 310]",
       "note": "With the shipped table fixed, conditions 1/3/4/6 are jointly satisfiable only inside that resolution band (D-68). A tick change outside it makes the shipped parameters unwritable through set_epoch_params until unresolved_after is lowered — a running vault keeps closing on its snapshot, but the next open_epoch fails. Recorded so the margin is visible before a deploy rather than discovered by a rejected open."
+    },
+    {
+      "id": "E-12",
+      "what": "the union of two sweeps spans more than 24 h, with the gap rate over that union",
+      "status": "PASS",
+      "measured": "union spans 107100 s = 29 h 45 m over 358 answering grid points; 0 gap(s); completeness 100.00 %",
+      "note": "One sweep can only see the reachable depth, so a single call can never cover 24 h — the oldest stretch of a 24-hour window is missing BY THE CAP, not by any gap. Two sweeps far enough apart cover it between them, and this row is the union computed from both records rather than a claim about them."
     }
   ],
   "verdict": "PASS"
