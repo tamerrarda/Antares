@@ -29,8 +29,8 @@ use soroban_sdk::{contracttype, Address, Env};
 
 use crate::types::{Config, Fill, PendingDeposit, PendingWithdraw, Round, State};
 
-/// The key space. A single typed enum is what makes key collision unrepresentable
-/// rather than merely avoided (07-SECURITY §3).
+// The key space. A single typed enum is what makes key collision unrepresentable
+// rather than merely avoided (07-SECURITY §3).
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DataKey {
@@ -44,20 +44,20 @@ pub enum DataKey {
     PendingDeposit(Address),
     PendingWithdraw(Address),
     Round(u32),
-    /// `(round, bidder)`.
+    // `(round, bidder)`.
     Fill(u32, Address),
-    /// Bidder allowlist.
+    // Bidder allowlist.
     Allowed(Address),
 }
 
-/// The value behind `DataKey::Allowance`.
-///
-/// **Not in `02-CONTRACT-SPEC.md` §2, deliberately and worth stating:** §2 freezes
-/// the types other people compile against, and this is not one of them. No view
-/// returns it, no event carries it, and SEP-41's `allowance()` returns a bare
-/// `i128`. Its two fields come from §13's semantics — an amount, and the ledger
-/// past which the authorization is void — so the shape is fixed by the spec even
-/// though the struct is ours.
+// The value behind `DataKey::Allowance`.
+//
+// **Not in `02-CONTRACT-SPEC.md` §2, deliberately and worth stating:** §2 freezes
+// the types other people compile against, and this is not one of them. No view
+// returns it, no event carries it, and SEP-41's `allowance()` returns a bare
+// `i128`. Its two fields come from §13's semantics — an amount, and the ledger
+// past which the authorization is void — so the shape is fixed by the spec even
+// though the struct is ours.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AllowanceValue {
@@ -65,11 +65,11 @@ pub struct AllowanceValue {
     pub live_until_ledger: u32,
 }
 
-/// The clamped rent values for one invocation.
-///
-/// Computed once per call and threaded through, rather than re-derived at each
-/// bump: `max_ttl()` is a host call, and one source of truth per invocation is
-/// also what stops a later edit from clamping some bumps and not others.
+// The clamped rent values for one invocation.
+//
+// Computed once per call and threaded through, rather than re-derived at each
+// bump: `max_ttl()` is a host call, and one source of truth per invocation is
+// also what stops a later edit from clamping some bumps and not others.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rent {
     pub threshold: u32,
@@ -77,8 +77,8 @@ pub struct Rent {
 }
 
 impl Rent {
-    /// §2 rules 1–2. Both arguments clamped; `threshold ≤ extend_to` holds by
-    /// construction, which is also what `extend_ttl` requires of its arguments.
+    // §2 rules 1–2. Both arguments clamped; `threshold ≤ extend_to` holds by
+    // construction, which is also what `extend_ttl` requires of its arguments.
     pub fn effective(env: &Env, config: &Config) -> Rent {
         let ceiling = env.storage().max_ttl();
         let extend_to = min_u32(config.rent_extend_to, ceiling);
@@ -126,9 +126,9 @@ pub fn set_app_version(env: &Env, version: u32) {
     env.storage().instance().set(&DataKey::AppVersion, &version);
 }
 
-/// §2 rule 1. One call covers `Config`, `State` and `AppVersion` — and the
-/// contract **code** entry too, which `instance().extend_ttl()` extends with its
-/// own independent threshold check, so the wasm needs no separate maintenance.
+// §2 rule 1. One call covers `Config`, `State` and `AppVersion` — and the
+// contract **code** entry too, which `instance().extend_ttl()` extends with its
+// own independent threshold check, so the wasm needs no separate maintenance.
 pub fn bump_instance(env: &Env, rent: Rent) {
     env.storage()
         .instance()
@@ -143,9 +143,9 @@ fn bump(env: &Env, rent: Rent, key: &DataKey) {
         .extend_ttl(key, rent.threshold, rent.extend_to);
 }
 
-/// Bump a persistent key only if it exists. `extend_ttl` on an absent key traps,
-/// and several callers legitimately touch a key that may never have been written
-/// — a first-time depositor has no `PendingWithdraw`.
+// Bump a persistent key only if it exists. `extend_ttl` on an absent key traps,
+// and several callers legitimately touch a key that may never have been written
+// — a first-time depositor has no `PendingWithdraw`.
 fn bump_if_present(env: &Env, rent: Rent, key: &DataKey) {
     if env.storage().persistent().has(key) {
         bump(env, rent, key);
@@ -161,9 +161,9 @@ pub fn get_shares(env: &Env, user: &Address) -> i128 {
         .unwrap_or(0)
 }
 
-/// §3's terminal-deletion rule: a zero balance is `remove`d rather than stored.
-/// Leaving an emptied entry behind is rent paid on nothing, and TTL a restore
-/// path would still have to service.
+// §3's terminal-deletion rule: a zero balance is `remove`d rather than stored.
+// Leaving an emptied entry behind is rent paid on nothing, and TTL a restore
+// path would still have to service.
 pub fn set_shares(env: &Env, rent: Rent, user: &Address, amount: i128) {
     let key = DataKey::Shares(user.clone());
     if amount == 0 {
@@ -176,16 +176,16 @@ pub fn set_shares(env: &Env, rent: Rent, user: &Address, amount: i128) {
 
 // -- allowance --
 
-/// Returns the stored entry without interpreting expiry. Callers that want
-/// SEP-41's "an expired allowance reads as 0 and is treated as absent" use
-/// [`get_allowance_amount`].
+// Returns the stored entry without interpreting expiry. Callers that want
+// SEP-41's "an expired allowance reads as 0 and is treated as absent" use
+// [`get_allowance_amount`].
 pub fn get_allowance(env: &Env, owner: &Address, spender: &Address) -> Option<AllowanceValue> {
     env.storage()
         .persistent()
         .get(&DataKey::Allowance(owner.clone(), spender.clone()))
 }
 
-/// §13: an expired allowance reads as 0 and is treated as absent.
+// §13: an expired allowance reads as 0 and is treated as absent.
 pub fn get_allowance_amount(env: &Env, owner: &Address, spender: &Address) -> i128 {
     match get_allowance(env, owner, spender) {
         Some(a) if a.live_until_ledger >= env.ledger().sequence() => a.amount,
@@ -193,14 +193,14 @@ pub fn get_allowance_amount(env: &Env, owner: &Address, spender: &Address) -> i1
     }
 }
 
-/// §13's allowance bump: `clamp(min(extend_to_eff, live_until − current),
-/// threshold_eff, extend_to_eff)`, so the entry never outlives the authorization
-/// it encodes.
-///
-/// The inner `min` can fall **below** the threshold, and `extend_ttl` is not
-/// valid with `extend_to < threshold`; an allowance already inside its last
-/// `threshold_eff` ledgers is therefore left alone rather than bumped, which is
-/// what §13 says and what keeps this from being a host error on a live path.
+// §13's allowance bump: `clamp(min(extend_to_eff, live_until − current),
+// threshold_eff, extend_to_eff)`, so the entry never outlives the authorization
+// it encodes.
+//
+// The inner `min` can fall **below** the threshold, and `extend_ttl` is not
+// valid with `extend_to < threshold`; an allowance already inside its last
+// `threshold_eff` ledgers is therefore left alone rather than bumped, which is
+// what §13 says and what keeps this from being a host error on a live path.
 pub fn set_allowance(
     env: &Env,
     rent: Rent,
@@ -252,7 +252,7 @@ pub fn set_pending_deposit(env: &Env, rent: Rent, user: &Address, pending: &Pend
     bump(env, rent, &key);
 }
 
-/// §3: removed after redeem or cancel.
+// §3: removed after redeem or cancel.
 pub fn remove_pending_deposit(env: &Env, user: &Address) {
     env.storage()
         .persistent()
@@ -267,7 +267,7 @@ pub fn get_pending_withdraw(env: &Env, user: &Address) -> Option<PendingWithdraw
         .get(&DataKey::PendingWithdraw(user.clone()))
 }
 
-/// §2 rule 3: writing the claim also bumps the round it will be computed from.
+// §2 rule 3: writing the claim also bumps the round it will be computed from.
 pub fn set_pending_withdraw(env: &Env, rent: Rent, user: &Address, pending: &PendingWithdraw) {
     let key = DataKey::PendingWithdraw(user.clone());
     env.storage().persistent().set(&key, pending);
@@ -275,8 +275,8 @@ pub fn set_pending_withdraw(env: &Env, rent: Rent, user: &Address, pending: &Pen
     bump_if_present(env, rent, &DataKey::Round(pending.round));
 }
 
-/// §2 rule 3 on the read path. A claim that is merely *read* still keeps its
-/// round alive, because the read is what precedes the claim.
+// §2 rule 3 on the read path. A claim that is merely *read* still keeps its
+// round alive, because the read is what precedes the claim.
 pub fn touch_pending_withdraw(env: &Env, rent: Rent, user: &Address) -> Option<PendingWithdraw> {
     let pending = get_pending_withdraw(env, user)?;
     bump(env, rent, &DataKey::PendingWithdraw(user.clone()));
@@ -284,7 +284,7 @@ pub fn touch_pending_withdraw(env: &Env, rent: Rent, user: &Address) -> Option<P
     Some(pending)
 }
 
-/// §3: removed after claim.
+// §3: removed after claim.
 pub fn remove_pending_withdraw(env: &Env, user: &Address) {
     env.storage()
         .persistent()
@@ -297,9 +297,9 @@ pub fn get_round(env: &Env, round: u32) -> Option<Round> {
     env.storage().persistent().get(&DataKey::Round(round))
 }
 
-/// `Round(r)` is **never** deleted (I7) and, once written, never rewritten. This
-/// function does not enforce single-write — the caller does, at the one place a
-/// round is finalized — but nothing here offers a delete.
+// `Round(r)` is **never** deleted (I7) and, once written, never rewritten. This
+// function does not enforce single-write — the caller does, at the one place a
+// round is finalized — but nothing here offers a delete.
 pub fn set_round(env: &Env, rent: Rent, round: u32, record: &Round) {
     let key = DataKey::Round(round);
     env.storage().persistent().set(&key, record);
@@ -318,9 +318,9 @@ pub fn get_fill(env: &Env, round: u32, bidder: &Address) -> Option<Fill> {
         .get(&DataKey::Fill(round, bidder.clone()))
 }
 
-/// §2 rule 3 again: a fill is claimed against its round's record.
-/// §3: `Fill(r,b)` is never deleted — it backs a claim that may arrive
-/// arbitrarily late.
+// §2 rule 3 again: a fill is claimed against its round's record.
+// §3: `Fill(r,b)` is never deleted — it backs a claim that may arrive
+// arbitrarily late.
 pub fn set_fill(env: &Env, rent: Rent, round: u32, bidder: &Address, fill: &Fill) {
     let key = DataKey::Fill(round, bidder.clone());
     env.storage().persistent().set(&key, fill);
@@ -344,7 +344,7 @@ pub fn is_allowed(env: &Env, bidder: &Address) -> bool {
         .unwrap_or(false)
 }
 
-/// §2 rule 4: allowlist entries bump when `bid` checks them.
+// §2 rule 4: allowlist entries bump when `bid` checks them.
 pub fn check_allowed(env: &Env, rent: Rent, bidder: &Address) -> bool {
     let key = DataKey::Allowed(bidder.clone());
     let allowed = env.storage().persistent().get(&key).unwrap_or(false);
@@ -366,15 +366,15 @@ pub fn set_allowed(env: &Env, rent: Rent, bidder: &Address, allowed: bool) {
 
 // ------------------------------------------------------------------ restore ---
 
-/// The storage half of `restore_position(user)` — `03-STORAGE-TTL.md` §4.
-///
-/// Touches and re-bumps the user's three keys and any `Round` they reference.
-/// Archived entries return through Protocol 23's auto-restore list, which
-/// simulation populates; live ones simply get fresh TTL.
-///
-/// On I8's unpausable list, which is why it takes the **clamped** rent like
-/// everything else: a raw over-ceiling bump here would brick the recovery path
-/// this exists to be.
+// The storage half of `restore_position(user)` — `03-STORAGE-TTL.md` §4.
+//
+// Touches and re-bumps the user's three keys and any `Round` they reference.
+// Archived entries return through Protocol 23's auto-restore list, which
+// simulation populates; live ones simply get fresh TTL.
+//
+// On I8's unpausable list, which is why it takes the **clamped** rent like
+// everything else: a raw over-ceiling bump here would brick the recovery path
+// this exists to be.
 pub fn restore_position_keys(env: &Env, rent: Rent, user: &Address) {
     bump_if_present(env, rent, &DataKey::Shares(user.clone()));
 

@@ -24,16 +24,16 @@ use soroban_sdk::{contractevent, Address, String};
 
 use crate::types::EpochParams;
 
-/// Emitted once, by the constructor, and **only** there.
-///
-/// It carries the full starting configuration flat, because an events-only
-/// indexer has no other way to learn it — §10 spells the fields out rather than
-/// saying "a snapshot of `Config`", since "a full snapshot" is not a schema and
-/// `#[contractevent]` needs concrete fields.
-///
-/// `pending_admin` is absent by construction (it is `None` at genesis, and
-/// `admin_transfer_started` carries it thereafter); `app_version` is present and
-/// is not a `Config` field.
+// Emitted once, by the constructor, and **only** there.
+//
+// It carries the full starting configuration flat, because an events-only
+// indexer has no other way to learn it — §10 spells the fields out rather than
+// saying "a snapshot of `Config`", since "a full snapshot" is not a schema and
+// `#[contractevent]` needs concrete fields.
+//
+// `pending_admin` is absent by construction (it is `None` at genesis, and
+// `admin_transfer_started` carries it thereafter); `app_version` is present and
+// is not a `Config` field.
 #[contractevent]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Initialized {
@@ -53,11 +53,11 @@ pub struct Initialized {
     pub app_version: u32,
 }
 
-/// `instant` distinguishes an Idle mint from a pending deposit; `shares_minted`
-/// is 0 in the pending case.
-///
-/// Ordering matters and is ABI too: an instant Idle deposit that auto-redeems an
-/// older pending emits `pending_redeemed` **first**, then this.
+// `instant` distinguishes an Idle mint from a pending deposit; `shares_minted`
+// is 0 in the pending case.
+//
+// Ordering matters and is ABI too: an instant Idle deposit that auto-redeems an
+// older pending emits `pending_redeemed` **first**, then this.
 #[contractevent]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Deposited {
@@ -89,9 +89,9 @@ pub struct PendingRedeemed {
     pub pps: i128,
 }
 
-/// An instant Idle withdrawal emits this **and** `WithdrawClaimed` in the same
-/// transaction, both with `round = State.round` — the last opened round, already
-/// finalized, and the one whose `pps` was used.
+// An instant Idle withdrawal emits this **and** `WithdrawClaimed` in the same
+// transaction, both with `round = State.round` — the last opened round, already
+// finalized, and the one whose `pps` was used.
 #[contractevent]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WithdrawRequested {
@@ -111,8 +111,8 @@ pub struct WithdrawClaimed {
     pub amount: i128,
 }
 
-/// No data fields — the address is the whole message, and it is a topic so the
-/// keeper's monthly sweep can filter its own work.
+// No data fields — the address is the whole message, and it is a topic so the
+// keeper's monthly sweep can filter its own work.
 #[contractevent]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PositionRestored {
@@ -120,14 +120,14 @@ pub struct PositionRestored {
     pub user: Address,
 }
 
-/// The lapse. **Mine rather than DEV2's**, and the rule is *which call path
-/// arrives*: `finalize_round` emits all four outcome events, but the lapse comes
-/// through `lazy_finalize` in `vault.rs` while `settled`, `epoch_voided` and
-/// `epoch_unresolved` arrive through `close_round` in `settle.rs`.
-///
-/// `wclaims` is here because **all four finalization events carry it** — the
-/// indexer half of D-32's regression, and the field most easily left out, since
-/// no on-chain assertion needs it.
+// The lapse. **Mine rather than DEV2's**, and the rule is *which call path
+// arrives*: `finalize_round` emits all four outcome events, but the lapse comes
+// through `lazy_finalize` in `vault.rs` while `settled`, `epoch_voided` and
+// `epoch_unresolved` arrive through `close_round` in `settle.rs`.
+//
+// `wclaims` is here because **all four finalization events carry it** — the
+// indexer half of D-32's regression, and the field most easily left out, since
+// no on-chain assertion needs it.
 #[contractevent]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EpochLapsed {
