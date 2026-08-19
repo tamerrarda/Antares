@@ -138,6 +138,84 @@ pub struct EpochLapsed {
     pub wclaims: i128,
 }
 
+// -------------------------------------------------------------------------------
+// DEV3's share of §10 — `bid_filled` here; `payout_claimed`, `refund_claimed` and
+// `fee_claimed` land with `claims.rs`.
+//
+// DEV-PROTOCOL §3 splits §10 **by the module that emits**, not by one owner, so
+// these four are DEV3's inside a file DEV1 created. Flagged rather than assumed:
+// `events.rs` is in nobody's column of the ownership map, and by the split's own
+// logic it is shared by construction.
+// -------------------------------------------------------------------------------
+
+// Three topics, and the third is why the Claims page works at all.
+//
+// §10's rule for choosing topics is the event name plus exactly the fields
+// someone needs to *filter* by. `bidder` is a topic because a bidder's own page
+// is built by filtering on it — without it the Claims page would have to fetch
+// every fill in every round and discard other people's, which is the difference
+// between a bounded read and scanning the chain.
+//
+// `notional` is this fill's amount, not the running total; `notional_sold_after`
+// is the total *after* it. Both are present because scenario 1 reconstructs the
+// auction from events alone: the running total lets an indexer detect a gap
+// without replaying, and the per-fill amount is what a bidder's receipt needs.
+//
+// `premium_bps` is the curve value this fill was struck at. Two bidders on a
+// descending curve pay different rates, so a refund is per-fill and exact (D-51)
+// and there is no pro-rata arithmetic anywhere — this field is what makes that
+// auditable off-chain.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BidFilled {
+    #[topic]
+    pub round: u32,
+    #[topic]
+    pub bidder: Address,
+    pub notional: i128,
+    pub premium_bps: u32,
+    pub premium: i128,
+    pub notional_sold_after: i128,
+}
+
+// The three claim events (§10). DEV3's, like `bid_filled` above.
+//
+// `payout_claimed` and `refund_claimed` carry the round and the bidder as topics for the same
+// reason `bid_filled` does: a bidder's own Claims page is built by filtering on them, and without
+// the pair the page would have to fetch every claim in every round and discard other people's.
+//
+// **`fee_claimed` carries no round, and that is normative rather than an omission** — §10 says
+// `claim_fee` "spans rounds and therefore carries no round". An indexer that invented one would
+// present the fee as a per-round balance, which is exactly the wrong mental model for the fifth
+// forgettable balance: it accrues across rounds and is claimed once.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PayoutClaimed {
+    #[topic]
+    pub round: u32,
+    #[topic]
+    pub bidder: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefundClaimed {
+    #[topic]
+    pub round: u32,
+    #[topic]
+    pub bidder: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeClaimed {
+    #[topic]
+    pub recipient: Address,
+    pub amount: i128,
+}
+
 // The whole new struct, not a diff. An events-only indexer has no prior copy to
 // apply a delta to, and §10 fixes the shape as a full `EpochParams`.
 #[contractevent]

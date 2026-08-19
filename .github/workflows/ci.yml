@@ -498,3 +498,95 @@ jobs:
   #
   # DEV1 does not write these and does not let them go unwritten.
   # ==========================================================================
+  #
+  # WRITTEN 2026-08-19 (DEV3). Two jobs, and one note on each for the reviewer:
+  #
+  #   ts             fmt → lint → typecheck → build → unit tests, in that order,
+  #                  behind `pnpm install --frozen-lockfile`. The lockfile is the
+  #                  pin on the off-chain side — D-23's off-chain row is a caret
+  #                  range and D-50's byte-identical gate is about the wasm, which
+  #                  no npm package is an input to (Tamer's ruling, 2026-08-19).
+  #                  **`--frozen-lockfile` is what makes that ruling true rather
+  #                  than nominal: a lockfile the pipeline may ignore is not a pin,
+  #                  it is a suggestion.**
+  #
+  #   static-rules-ts  runs the check's OWN rejecting harness first, then the check.
+  #                  Both live in `scripts/ci/`, so CI and a developer's terminal
+  #                  run the same bytes — DEV1 measured that a hand-copied
+  #                  paraphrase of a step lets the harness and CI disagree, and
+  #                  that their zsh/ugrep box and the runner's bash/GNU grep did.
+  #                  A shared file removes both by construction. Running the
+  #                  harness *in CI* is the other half: "verified locally" is
+  #                  weaker than it sounds, so every run re-proves the check still
+  #                  rejects. 26 cases, both directions, ~2 s.
+  #
+  # `static-rules-ts` deliberately has no `needs:`. It is a grep over tracked text
+  # and gains nothing from waiting on a Rust compile — and on a private repository
+  # billed by the minute, making a two-second job queue behind a two-minute one is
+  # the cost this workflow just finished removing.
+
+  # -------------------------------------------- 12. TypeScript checks (DEV3) ---
+  ts:
+    name: TS fmt + lint + typecheck + build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No version pinned here on purpose: `packageManager` in the root
+      # package.json is its single home (pnpm@11.1.2), and action-setup reads it.
+      # A second copy in this file is a second thing to bump.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22, per D-23's off-chain row and `engines` in the root manifest.
+          # Not a patch pin, and that is consistent rather than sloppy: D-23's
+          # exactness argument is D-50's wasm hash, and Node is not an input to
+          # it. `--experimental-strip-types` and `erasableSyntaxOnly` only get
+          # more capable across 22.x.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install — the lockfile is the pin
+        run: pnpm install --frozen-lockfile
+
+      - name: fmt (prettier --check)
+        # Markdown is excluded in `.prettierignore` and the reason is written
+        # there: docs/* and the root README take two sign-offs, and a formatter
+        # has no business reflowing a sentence three people agreed on.
+        run: pnpm fmt
+
+      - name: lint (eslint, --max-warnings 0)
+        # `-D warnings`' equivalent. Type-aware rules are on, because the ones
+        # worth having need types: an un-awaited promise in the keeper's loop is
+        # a round that silently did not close.
+        run: pnpm lint
+
+      - name: typecheck (tsc --noEmit, strict)
+        run: pnpm typecheck
+
+      - name: build (pnpm -r build)
+        # Real work rather than an echo for `packages/common`: Node does not
+        # type-strip files under `node_modules/`, and pnpm links workspace
+        # packages there — so a compiled `dist/` is the only thing keeper/,
+        # bidder/, web/ and integration/ can actually import.
+        run: pnpm build
+
+      - name: unit tests
+        run: pnpm test
+
+  # ------------------------- 13. network-agnostic, TypeScript scope (DEV3) ---
+  static-rules-ts:
+    name: network-agnostic (TypeScript scope)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Drive the check to REJECT as well as pass
+        # A gate only ever verified in the passing direction is a gate nobody has
+        # tested. This runs before the check itself so a run can never report
+        # "clean" from a check that had stopped rejecting.
+        run: bash scripts/ci/test-network-agnostic-ts.sh
+
+      - name: Run the check
+        run: bash scripts/ci/network-agnostic-ts.sh

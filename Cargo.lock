@@ -36,6 +36,7 @@ dependencies = [
  "mock-price-source",
  "price-source-api",
  "proptest",
+ "serde_json",
  "soroban-sdk",
 ]
 

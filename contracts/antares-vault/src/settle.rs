@@ -133,6 +133,118 @@ impl AntaresVault {
 }
 
 // =================================================================================================
+// The arithmetic, as a pure function of raw numbers
+// =================================================================================================
+
+/// What a terminal round computes, before any of it is written anywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RoundNumbers {
+    pub payout_total: i128,
+    pub fee: i128,
+    pub bounty: i128,
+    pub assets_r: i128,
+    pub pps: i128,
+}
+
+/// The settle and unresolved formulas, taking raw values and touching no storage.
+///
+/// **Pure on purpose.** `06-TEST-PLAN.md` §4's `fuzz_settlement_math` drives *raw tuples* into
+/// these formulas, which is only possible if they can be called without an `Env`, a `State` or a
+/// deployed contract. Factoring it out is what makes the fuzz target test the shipped arithmetic
+/// rather than a copy of it — the same argument that put the eight conditions in one place.
+///
+/// **`spot` is an `Option`, and that is what makes "two entrances, one path" structural.** `Some`
+/// is the settle branch; `None` is unresolved, where no price was ever observed and the payout is
+/// zero by definition rather than by arithmetic. Both then run *identical* code, which is the
+/// property D-64 requires and which a second function would only be able to promise.
+///
+/// Every step is checked. §8's bounds are proofs about legitimate inputs; they are not a licence to
+/// stop checking, and this function is reachable from a fuzz target precisely to hunt states
+/// outside them.
+// Eight, and a struct would not improve it: the fuzz target cannot implement `Arbitrary` for a
+// type this crate owns (orphan rule), so it would keep its own shape either way — and then there
+// would be two. The same exception `validate_params` and `__constructor` already take.
+#[allow(clippy::too_many_arguments)]
+pub fn round_numbers(
+    spot: Option<i128>,
+    strike: i128,
+    notional_sold: i128,
+    locked_at_open: i128,
+    premium_collected: i128,
+    shares_snapshot: i128,
+    fee_bps: u32,
+    bounty_bps: u32,
+) -> Result<RoundNumbers, Error> {
+    // **Total over its whole input domain, not over the domain its caller happens to produce**
+    // (added 2026-08-19 after `fuzz_settlement_math` found it on its first run). Every quantity
+    // below is non-negative in every reachable state — `notional_sold` starts at 0 and only `bid`
+    // raises it, `strike > 0` is guaranteed by `open_epoch` rejecting a non-positive price before
+    // deriving it, and `shares_snapshot > 0` by its `shares_outstanding` check. But this function
+    // already refuses to *return* a negative `assets_R` rather than trusting the arithmetic, and
+    // trusting the inputs while distrusting the outputs is the inconsistency the fuzzer walked
+    // straight into: at `notional_sold < 0` it produced a **negative payout**, which is a transfer
+    // *from* the bidder.
+    //
+    // No reachable behaviour changes — these are all impossible today. What changes is that
+    // "impossible" stops being load-bearing on the one path that must never fail.
+    if strike <= 0
+        || shares_snapshot <= 0
+        || notional_sold < 0
+        || locked_at_open < 0
+        || premium_collected < 0
+    {
+        return Err(Error::InvalidAmount);
+    }
+
+    // I3: strictly below `notional_sold` for every input, including as `spot → ∞`. The fraction
+    // `(spot − strike)/spot` is under 1 for every `strike > 0`, and the floor can only make it
+    // smaller.
+    let payout_total = match spot {
+        Some(s) if s > strike => {
+            let gap = s.checked_sub(strike).ok_or(Error::InvalidAmount)?;
+            mul_div_floor(notional_sold, gap, s)?
+        }
+        _ => 0,
+    };
+
+    // D-39: the snapshot, never the live rate. Read live, an admin could apply a fee retroactively
+    // to a round auctioned under a different one — and a large enough value drove `assets_R`
+    // negative and wedged the close on a checked subtraction.
+    let fee = mul_div_floor(premium_collected, i128::from(fee_bps), BPS)?;
+    // From the same open-time snapshot. There is deliberately no second copy of
+    // `settle_bounty_bps` in `State` (D-64): a second source of truth for one number, with nothing
+    // keeping the two equal.
+    let bounty = mul_div_floor(premium_collected, i128::from(bounty_bps), BPS)?;
+
+    // `assets_R` backs `shares_snapshot`. Asserted non-negative rather than assumed: D-39's finding
+    // was that a parameter read at the wrong time can drive it below zero, and a checked
+    // subtraction that underflows on the exit path is exactly what I8 forbids.
+    let assets_r = locked_at_open
+        .checked_add(premium_collected)
+        .and_then(|v| v.checked_sub(payout_total))
+        .and_then(|v| v.checked_sub(fee))
+        .and_then(|v| v.checked_sub(bounty))
+        .ok_or(Error::InvalidAmount)?;
+    if assets_r < 0 {
+        return Err(Error::InvalidAmount);
+    }
+
+    // §6: floors, so the error is a lower price and the beneficiary is the vault. **Never
+    // clamped** — D-66 removed the `pps ≥ 1` floor, because forcing it in the degenerate state
+    // makes `Σ claim_withdraw` exceed what was credited, and where I6 and I1 conflict solvency
+    // wins. `pps == 0` is a legitimate answer and is recorded honestly.
+    let pps = mul_div_floor(assets_r, PRECISION, shares_snapshot)?;
+
+    Ok(RoundNumbers {
+        payout_total,
+        fee,
+        bounty,
+        assets_r,
+        pps,
+    })
+}
+
+// =================================================================================================
 // Settle
 // =================================================================================================
 
@@ -144,54 +256,20 @@ fn settle(
     bounty_to: &Address,
     spot: i128,
 ) -> Result<RoundOutcome, Error> {
-    // I3: `payout_total < notional_sold` for all inputs, strictly, including as `spot → ∞`. The
-    // fraction `(spot − strike)/spot` is below 1 for every `strike > 0`, and `strike > 0` is
-    // guaranteed by `open_epoch`'s step 3 rejecting a non-positive price before the strike is
-    // derived. The floor can only make it smaller.
-    let payout_total = if spot <= state.strike {
-        0
-    } else {
-        mul_div_floor(
-            state.notional_sold,
-            spot.checked_sub(state.strike).ok_or(Error::InvalidAmount)?,
-            spot,
-        )?
-    };
-
-    // D-39: the snapshot, never the live rate. Read live, an admin could apply a fee retroactively
-    // to a round auctioned under a different one — and a large enough value drove `assets_R`
-    // negative and wedged the close on a checked subtraction.
-    let fee = mul_div_floor(
+    // Every number this branch needs, from one pure function that `unresolved` also calls and that
+    // `fuzz_settlement_math` drives with raw tuples.
+    let n = round_numbers(
+        Some(spot),
+        state.strike,
+        state.notional_sold,
+        state.locked_at_open,
         state.premium_collected,
-        i128::from(state.fee_bps_snapshot),
-        BPS,
+        state.shares_snapshot,
+        state.fee_bps_snapshot,
+        state.params.settle_bounty_bps,
     )?;
-    // From `params`, which is the open-time snapshot too — there is deliberately no second copy of
-    // `settle_bounty_bps` in `State` (D-64): a second source of truth for one number with nothing
-    // keeping the two equal.
-    let bounty = mul_div_floor(
-        state.premium_collected,
-        i128::from(state.params.settle_bounty_bps),
-        BPS,
-    )?;
-
-    // `assets_R` backs `shares_snapshot`. Asserted non-negative rather than assumed: D-39's whole
-    // finding was that a parameter read at the wrong time can drive it below zero, and a checked
-    // subtraction that underflows on the exit path is exactly what I8 forbids.
-    let assets_r = state
-        .locked_at_open
-        .checked_add(state.premium_collected)
-        .and_then(|v| v.checked_sub(payout_total))
-        .and_then(|v| v.checked_sub(fee))
-        .and_then(|v| v.checked_sub(bounty))
-        .ok_or(Error::InvalidAmount)?;
-    if assets_r < 0 {
-        return Err(Error::InvalidAmount);
-    }
-    // §6: floors, so the error is a lower price and the beneficiary is the vault. Never clamped —
-    // D-66 removed the `pps ≥ 1` floor, because forcing it in the degenerate state makes
-    // `Σ claim_withdraw` exceed what was credited, and where I6 and I1 conflict solvency wins.
-    let pps = mul_div_floor(assets_r, PRECISION, state.shares_snapshot)?;
+    let (payout_total, fee, bounty, assets_r, pps) =
+        (n.payout_total, n.fee, n.bounty, n.assets_r, n.pps);
 
     state.bidder_claimable_total = state
         .bidder_claimable_total
@@ -313,29 +391,20 @@ fn unresolved(
     // in-the-money one, so every party's best move is to resolve the round. A refund here is what
     // paid the bidder to wait, and no bounty funded from that premium could ever outbid it (D-59).
     //
-    // Identical arithmetic to `settle` with `payout_total = 0` — deliberately, because step 2 only
-    // fires where a working adapter could have answered nothing but `OutOfReach`, and any
-    // divergence would make the outcome depend on the adapter's health at call time.
-    let fee = mul_div_floor(
+    // `None`, not `Some(0)`: no price was ever observed on this path. Everything else is the
+    // identical call `settle` makes — which is what makes the two entrances agree by construction
+    // rather than by two implementations happening to match.
+    let n = round_numbers(
+        None,
+        state.strike,
+        state.notional_sold,
+        state.locked_at_open,
         state.premium_collected,
-        i128::from(state.fee_bps_snapshot),
-        BPS,
+        state.shares_snapshot,
+        state.fee_bps_snapshot,
+        state.params.settle_bounty_bps,
     )?;
-    let bounty = mul_div_floor(
-        state.premium_collected,
-        i128::from(state.params.settle_bounty_bps),
-        BPS,
-    )?;
-    let assets_r = state
-        .locked_at_open
-        .checked_add(state.premium_collected)
-        .and_then(|v| v.checked_sub(fee))
-        .and_then(|v| v.checked_sub(bounty))
-        .ok_or(Error::InvalidAmount)?;
-    if assets_r < 0 {
-        return Err(Error::InvalidAmount);
-    }
-    let pps = mul_div_floor(assets_r, PRECISION, state.shares_snapshot)?;
+    let (fee, bounty, assets_r, pps) = (n.fee, n.bounty, n.assets_r, n.pps);
 
     state.fee_claimable = state
         .fee_claimable

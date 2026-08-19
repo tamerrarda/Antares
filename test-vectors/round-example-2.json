@@ -1,0 +1,87 @@
+{
+  "bids": [
+    {
+      "at": 1800001680,
+      "bidder": "A",
+      "max_premium_bps": 10000,
+      "requested": 60000000000
+    },
+    {
+      "at": 1800002425,
+      "bidder": "B",
+      "max_premium_bps": 10000,
+      "requested": 40000000000
+    }
+  ],
+  "burns": [],
+  "expected": {
+    "assets_R": 100877800000,
+    "bounty": 2200000,
+    "fee": 0,
+    "fills": [
+      {
+        "bidder": "A",
+        "filled": 60000000000,
+        "premium": 720000000,
+        "premium_bps_at": 120
+      },
+      {
+        "bidder": "B",
+        "filled": 40000000000,
+        "premium": 160000000,
+        "premium_bps_at": 40
+      }
+    ],
+    "locked_after": 100877800000,
+    "payout_total": 0,
+    "per_bidder": [
+      {
+        "amount": 0,
+        "bidder": "A"
+      },
+      {
+        "amount": 0,
+        "bidder": "B"
+      }
+    ],
+    "pps": 10087780,
+    "rejects": [],
+    "wclaims": 0,
+    "withdraw_claims": []
+  },
+  "initial": {
+    "locked": 100000000000,
+    "pps": 10000000,
+    "shares": 100000000000
+  },
+  "name": "settled-out-of-the-money",
+  "note": "05 \u00a74's counter-case. Spot 0.42 at or below the strike, so the options expire worthless. per_bidder lists both bidders at amount 0 rather than being empty: 02-CONTRACT-SPEC \u00a712 draws exactly that distinction for BidderPosition - a zeroed struct is the answer for an address with nothing owed, and RoundNotFound is the answer for one that does not exist - so erasing the bidders here would make 'filled and owed nothing' indistinguishable from 'never filled', which vector 4 legitimately is. The contract still answers NothingToClaim to claim_payout on this round (\u00a75); per_bidder is what is owed, not which calls succeed.",
+  "open": {
+    "at": 1800000000,
+    "strike": 4400000,
+    "twap": 4000000
+  },
+  "outcome": {
+    "kind": "settled",
+    "spot": 4200000
+  },
+  "params": {
+    "auction_duration": 2700,
+    "epoch_duration": 604800,
+    "fee_bps": 0,
+    "guard_window": 3600,
+    "max_deviation_bps": 100,
+    "max_staleness": 600,
+    "min_deposit": 100000000,
+    "min_fill": 1000000000,
+    "min_idle_gap": 14400,
+    "oracle_dead_after": 43200,
+    "premium_floor_bps": 10,
+    "premium_start_bps": 300,
+    "settle_bounty_bps": 25,
+    "settle_grace": 7200,
+    "strike_bps_otm": 1000,
+    "twap_window": 900,
+    "unresolved_after": 75600
+  }
+}

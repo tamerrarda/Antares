@@ -602,7 +602,7 @@ pub fn enter(env: &Env, pause_blocks: bool) -> Result<Ctx, Error> {
     })
 }
 
-fn commit(env: &Env, ctx: &Ctx) {
+pub(crate) fn commit(env: &Env, ctx: &Ctx) {
     storage::set_state(env, &ctx.state);
     storage::bump_instance(env, ctx.rent);
 }

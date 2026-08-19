@@ -1,0 +1,29 @@
+[package]
+name = "antares-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Not a workspace member, and that is cargo-fuzz's own convention rather than a choice: the fuzz
+# crate builds under a nightly toolchain with sanitizer flags the contract crates must never see,
+# and D-23 pins the workspace to an exact stable version whose byte-identical output D-50's gate
+# rests on. Sharing a lockfile would put the sanitizer's dependency tree in front of that.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+# The real crate, linked as a library. `06-TEST-PLAN.md` §4 wants raw tuples driven into **the
+# settle formulas** — not into a copy of them — which is why `round_numbers` is a pure function
+# with no `Env` and why this can call it at all.
+antares-vault = { path = "../contracts/antares-vault" }
+
+[[bin]]
+name = "fuzz_settlement_math"
+path = "fuzz_targets/fuzz_settlement_math.rs"
+test = false
+doc = false
+bench = false
