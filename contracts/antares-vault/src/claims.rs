@@ -128,10 +128,10 @@ pub(crate) fn refund_for_fill(premium_paid: i128) -> i128 {
 
 #[contractimpl]
 impl AntaresVault {
+    // Recomputed from the round's own immutable record, so the answer is the same whenever it is
+    // asked; and it works in any phase and while the vault is paused, which is I8.
     /// Collect what a settled round owes you on a fill you made in it.
-    ///
-    /// Recomputed from the round's own record, so the answer is the same whenever you ask. Works
-    /// in any phase and while the vault is paused.
+    /// Any phase, and unpausable.
     pub fn claim_payout(env: Env, round: u32, bidder: Address) -> Result<i128, Error> {
         bidder.require_auth();
         // `false`: unpausable. I8 — pause cannot stand between anyone and money already owed.
@@ -169,9 +169,10 @@ impl AntaresVault {
         Ok(payout)
     }
 
+    // Exactly what was paid, to the stroop — no pro-rata arithmetic and no rounding. Any phase,
+    // and unpausable, like the other two.
     /// Take back the premium you paid into a round that was voided.
-    ///
-    /// Exactly what you paid, to the stroop. Works in any phase and while the vault is paused.
+    /// Exactly what you paid.
     pub fn claim_refund(env: Env, round: u32, bidder: Address) -> Result<i128, Error> {
         bidder.require_auth();
         let mut ctx = vault::enter(&env, false)?;
@@ -205,10 +206,10 @@ impl AntaresVault {
         Ok(refund)
     }
 
-    /// Collect the accrued protocol fee. Only the configured recipient may call it.
-    ///
-    /// Spans rounds rather than belonging to one. Ships at zero and stays there until a visible
-    /// admin transaction changes it.
+    // Spans rounds rather than belonging to one, which is why the event carries no round. Ships at
+    // zero and stays there until a visible admin transaction changes it (D-56).
+    /// Collect the accrued protocol fee.
+    /// Only the configured `fee_recipient` may call it.
     pub fn claim_fee(env: Env) -> Result<i128, Error> {
         let mut ctx = vault::enter(&env, false)?;
         // Auth after `enter` rather than before, unlike the two bidder paths: *who* the recipient

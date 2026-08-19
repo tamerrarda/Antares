@@ -20,13 +20,11 @@
     "To widen: add the path here in the same commit as the Rust replay that produces it."
   ],
   "sections": [
+    "claims_ref.per_bidder",
+    "claims_ref.withdraw_claims",
     "curve_ref",
-    "claims_ref.per_bidder"
+    "settle_ref"
   ],
-  "not_yet_replayed_in_rust": {
-    "settle_ref": "needs finalize_round driven from a Rust replay - DEV1/DEV2",
-    "claims_ref.withdraw_claims": "needs claim_withdraw (DEV1's) and pps from a settle replay; DEV3 computing the formula here would be a third derivation that nothing diffs"
-  },
   "known_disagreements": {
     "_read_this_before_changing_either_side": [
       "Building the generated corpus (ANTARES_VECTOR_DUMP) currently makes the diff fail on about",
@@ -59,5 +57,11 @@
       "plan/STANDUP.md. Until it is ruled, the four hand-written vectors are green and a corpus build",
       "is red for this reason and no other - verified by categorising every field-level difference."
     ]
-  }
+  },
+  "_all_three_references_are_now_diffed": [
+    "settle_ref unblocked when DEV1 lifted wclaims and locked_after out of finalize_round into",
+    "finalize_numbers, and DEV2 had already lifted the settle formulas into round_numbers. Both are",
+    "pure, so the harness calls the shipped arithmetic rather than a copy of it.",
+    "claims_ref.withdraw_claims unblocked behind it: it was only ever waiting on pps."
+  ]
 }

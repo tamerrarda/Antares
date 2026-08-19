@@ -34,7 +34,9 @@ use serde_json::{json, Map, Value};
 
 use crate::auction::{fill_amount, premium_bps, premium_for_fill};
 use crate::claims::{payout_for_fill, refund_for_fill};
+use crate::settle::round_numbers;
 use crate::types::{EpochParams, Phase, State};
+use crate::vault::finalize_numbers;
 
 fn u64_at(v: &Value, key: &str) -> u64 {
     v.get(key)
@@ -244,6 +246,97 @@ fn replay_curve(vector: &Value) -> Value {
     })
 }
 
+/// Replay the settlement section through **DEV2's `round_numbers` and DEV1's `finalize_numbers`**.
+///
+/// Both are pure and total — they were lifted out of `close_round` and `finalize_round` precisely
+/// so a harness could reach them, which is the same argument that pulled `fill_amount` out of `bid`
+/// and `payout_for_fill` out of `claim_payout`. Nothing here reimplements arithmetic.
+///
+/// **What this replay does contribute is the four-branch dispatch**, and that is worth naming
+/// rather than glossing. `round_numbers` covers the two branches that have closed forms — settle
+/// (`Some(spot)`) and unresolved (`None`, payout pinned to 0). Void and lapse have no pure function
+/// to call because `finalize_round` mutates state, so their constants come from §5's own call-site
+/// table: `pps` unchanged at `last_pps`, `assets_after = locked_at_open`, and payout, fee and
+/// bounty all zero. A void refunds the premium in full, so there is nothing to take a fee on and a
+/// bounty would have no source (D-51); a lapse has no premium at all.
+///
+/// **`finalize_numbers` runs on all four**, which is the part that matters: `wclaims` and
+/// `locked_after` are the subtraction D-32 and D-66 both turned on, and §5 is emphatic that one
+/// function serves every branch because forgetting it in one is a solvency bug rather than a style
+/// one. Diffing it on all four is what this section is for.
+///
+/// This is the one module where the Python and the Rust harness are both DEV3's. The derivations
+/// were still independent — `settle_ref.py` was written from §5–§6 before `settle.rs` existed on
+/// any ref, frozen at blob `6b31a19`, and the freeze is checkable. The wiring does not contaminate
+/// that. But the temptation is a different shape here: a disagreement would be one I could resolve
+/// from memory of my own Python. It goes to 02-CONTRACT-SPEC §5–§6 and 05 §4, or to Tamer.
+fn replay_settle(vector: &Value, curve: &Value) -> Value {
+    let params = &vector["params"];
+    let initial = &vector["initial"];
+    let kind = vector["outcome"]["kind"].as_str().unwrap_or("");
+
+    let locked_at_open = i128_at(initial, "locked");
+    let shares_snapshot = i128_at(initial, "shares");
+    let last_pps = i128_at(initial, "pps");
+    let notional_sold = i128::from(curve["notional_sold"].as_i64().expect("notional_sold"));
+    let premium_collected = i128::from(curve["premium_collected"].as_i64().expect("premium"));
+    let strike = i128_at(&vector["open"], "strike");
+    let fee_bps = u32_at(params, "fee_bps");
+    let bounty_bps = u32_at(params, "settle_bounty_bps");
+
+    let empty = vec![];
+    let burned: i128 = vector["burns"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .map(|b| i128_at(b, "shares"))
+        .sum();
+
+    let (payout_total, fee, bounty, assets_r, pps) = match kind {
+        "settled" | "unresolved" => {
+            let spot = if kind == "settled" {
+                Some(i128::from(
+                    vector["outcome"]["spot"]
+                        .as_i64()
+                        .expect("settled needs a spot"),
+                ))
+            } else {
+                None
+            };
+            let n = round_numbers(
+                spot,
+                strike,
+                notional_sold,
+                locked_at_open,
+                premium_collected,
+                shares_snapshot,
+                fee_bps,
+                bounty_bps,
+            )
+            .expect("round_numbers");
+            (n.payout_total, n.fee, n.bounty, n.assets_r, n.pps)
+        }
+        // §5's call-site table: both leave `pps` at `last_pps` and `assets_after` at
+        // `locked_at_open`, and neither takes a fee or a bounty.
+        _ => (0, 0, 0, locked_at_open, last_pps),
+    };
+
+    let (wclaims, locked_after) =
+        finalize_numbers(burned, pps, assets_r).expect("finalize_numbers");
+
+    json!({
+        // `assets_R` with a capital R, matching `settle_ref.py`'s key and §5's own notation. The
+        // Rust struct field is `assets_r` because Rust is snake_case; the wire name is the spec's.
+        "assets_R": i64::try_from(assets_r).expect("fits i64"),
+        "bounty": i64::try_from(bounty).expect("fits i64"),
+        "fee": i64::try_from(fee).expect("fits i64"),
+        "locked_after": i64::try_from(locked_after).expect("fits i64"),
+        "payout_total": i64::try_from(payout_total).expect("fits i64"),
+        "pps": i64::try_from(pps).expect("fits i64"),
+        "wclaims": i64::try_from(wclaims).expect("fits i64"),
+    })
+}
+
 /// Replay the bidder half of the claims section through `claims.rs`'s own functions.
 ///
 /// **`per_bidder` only.** `claims_ref.py` also produces `withdraw_claims`, which is
@@ -258,7 +351,7 @@ fn replay_curve(vector: &Value) -> Value {
 /// A zero amount is **listed, not omitted**: §12 distinguishes an address owed nothing (a zeroed
 /// `BidderPosition`) from one that was never there (`RoundNotFound`), and collapsing the two would
 /// make an out-of-the-money settled round indistinguishable from a lapse.
-fn replay_claims(vector: &Value, curve: &Value) -> Value {
+fn replay_claims(vector: &Value, curve: &Value, settle: &Value) -> Value {
     let outcome = vector["outcome"]["kind"].as_str().unwrap_or("");
     let strike = i128_at(&vector["open"], "strike");
     let spot = vector["outcome"]
@@ -282,9 +375,21 @@ fn replay_claims(vector: &Value, curve: &Value) -> Value {
         let amount = match outcome {
             "settled" => payout_for_fill(notional, spot, strike).expect("payout"),
             "voided" => refund_for_fill(premium_paid),
-            // A lapse has no fills by construction, and an unresolved round owes bidders nothing
-            // (D-59: premium retained, payout zero). Neither reaches a per-bidder amount.
-            _ => continue,
+            // **Unresolved and lapsed owe the bidder nothing, and "nothing" is `0` listed rather
+            // than an omission.** This skipped them until the corpus caught it, on 11 vectors where
+            // the curve section agreed — so it was a defect of mine, not a spec question.
+            //
+            // The resolution is §12's, the same one that corrected vector 2's expected block: a
+            // zeroed `BidderPosition` is the answer for an address owed nothing and `RoundNotFound`
+            // for one that was never there, so omitting here would make "filled and owed nothing"
+            // indistinguishable from "never filled". D-59 makes an unresolved round the
+            // out-of-the-money outcome — premium retained by depositors, payout zero — so a bidder
+            // in one is owed exactly nothing, which is a fact worth stating rather than a row to
+            // drop. `per_bidder` reports what is owed, not which call succeeds; the contract
+            // separately answers `WrongOutcome` on both claim paths for such a round.
+            //
+            // A lapse reaches this arm only vacuously: `notional_sold == 0` means no fills.
+            _ => 0,
         };
         per_bidder.push(json!({
             "bidder": bidder,
@@ -292,7 +397,27 @@ fn replay_claims(vector: &Value, curve: &Value) -> Value {
         }));
     }
 
-    json!({ "per_bidder": per_bidder })
+    // **`withdraw_claims` unblocks behind the settle replay**, because it was only ever waiting on
+    // `pps`. One claim per recorded burn, in vector order, matching `claims_ref`.
+    //
+    // The amount is `⌊shares × pps / PRECISION⌋` — and it is computed by calling DEV1's
+    // `finalize_numbers` with this depositor's share count rather than by writing the formula here.
+    // `wclaims` is the same expression over the round's total burn, so their function *is* the
+    // shipped arithmetic; writing `mul_div_floor(shares, pps, PRECISION)` in this file instead
+    // would be a third derivation of it, diffed by nothing. `assets_after` is passed large enough
+    // that the subtraction cannot bind, since only the first element of the pair is used.
+    let pps = i128::from(settle["pps"].as_i64().expect("pps"));
+    let mut withdraw_claims: StdVec<Value> = vec![];
+    for burn in vector["burns"].as_array().unwrap_or(&empty) {
+        let shares = i128_at(burn, "shares");
+        let (amount, _) = finalize_numbers(shares, pps, i128::MAX / 2).expect("withdraw claim");
+        withdraw_claims.push(json!({
+            "amount": i64::try_from(amount).expect("fits i64"),
+            "shares": i64::try_from(shares).expect("fits i64"),
+        }));
+    }
+
+    json!({ "per_bidder": per_bidder, "withdraw_claims": withdraw_claims })
 }
 
 fn vector_dir() -> std::path::PathBuf {
@@ -336,9 +461,14 @@ fn replay_all() -> Value {
         let vector: Value = serde_json::from_str(&fs::read_to_string(&path).expect("read"))
             .unwrap_or_else(|e| panic!("{name} is not valid JSON: {e}"));
         let curve = replay_curve(&vector);
+        let settle = replay_settle(&vector, &curve);
         let mut entry = Map::new();
-        entry.insert("claims_ref".to_string(), replay_claims(&vector, &curve));
+        entry.insert(
+            "claims_ref".to_string(),
+            replay_claims(&vector, &curve, &settle),
+        );
         entry.insert("curve_ref".to_string(), curve);
+        entry.insert("settle_ref".to_string(), settle);
         entry.insert("vector".to_string(), Value::String(name));
         out.push(Value::Object(entry));
     }
@@ -387,7 +517,7 @@ fn vector_replay() {
                 continue;
             }
             match value.as_object() {
-                Some(inner) if key.ends_with("_ref") && key == "claims_ref" => {
+                Some(inner) if key == "claims_ref" => {
                     for sub in inner.keys() {
                         emitted.push(format!("{key}.{sub}"));
                     }

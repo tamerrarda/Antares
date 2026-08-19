@@ -132,12 +132,17 @@ pub(crate) fn premium_for_fill(filled: i128, bps: u32) -> Result<i128, Error> {
 
 #[contractimpl]
 impl AntaresVault {
+    // The rest of what a caller needs, in `//` because it is free: `max_premium_bps` is the
+    // bidder's own slippage guard and the call rejects rather than fill above it; partial fills
+    // are the expected case, so the returned notional may be less than requested; and the premium
+    // is transferred from the bidder only when the fill succeeds.
+    //
+    // Trimmed to D-70's two-line budget after `static_rules.py` caught six here. The budget is a
+    // *line* count and I had been writing to a byte count — 324 bytes across this file looked
+    // cheap, and the rule is about what every consumer of the ABI has to carry, not about what it
+    // costs me.
     /// Buy part of this round's offer at the current decay price.
-    ///
-    /// `max_premium_bps` is your own slippage guard: the call rejects rather than
-    /// fill above it. Returns the notional actually filled, which may be less
-    /// than requested — partial fills are the expected case. The premium is
-    /// transferred from you when the fill succeeds.
+    /// Rejects rather than fill above `max_premium_bps`; returns the notional actually filled.
     pub fn bid(
         env: Env,
         bidder: Address,
