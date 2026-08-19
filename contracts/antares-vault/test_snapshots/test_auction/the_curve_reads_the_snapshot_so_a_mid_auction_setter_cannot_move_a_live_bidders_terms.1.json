@@ -556,6 +556,16 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "SpotOverride"
+                          }
+                        ]
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Trap"
                           }
                         ]
