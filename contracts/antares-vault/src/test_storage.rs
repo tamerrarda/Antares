@@ -77,12 +77,13 @@ fn round_record() -> Round {
     }
 }
 
-/// A registered contract, so storage calls have somewhere to live.
+/// A **constructed** vault, not a bare registration. The constructor calls
+/// `supports_round`, so there is no such thing as a vault without an oracle —
+/// which is also why these tests could not be written before DEV2's mock landed.
 fn setup() -> (Env, Address, Address) {
-    let env = Env::default();
-    let id = env.register(crate::AntaresVault, ());
-    let user = Address::generate(&env);
-    (env, id, user)
+    let d = crate::test_common::deploy();
+    let user = Address::generate(&d.env);
+    (d.env, d.vault, user)
 }
 
 // -------------------------------------------------------------- round trips ---

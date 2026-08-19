@@ -14,14 +14,22 @@
 use soroban_sdk::{contract, contractimpl};
 
 pub mod errors;
+pub mod events;
 pub mod storage;
 pub mod types;
+pub mod vault;
+
+#[cfg(test)]
+mod test_common;
 
 #[cfg(test)]
 mod test_storage;
 
 #[cfg(test)]
 mod test_types;
+
+#[cfg(test)]
+mod test_vault;
 
 pub use errors::Error;
 pub use types::{
