@@ -17,7 +17,7 @@
 use crate::errors::Error;
 use crate::test_common::{deploy, valid_params};
 use crate::types::*;
-use soroban_sdk::testutils::Events as _;
+use soroban_sdk::testutils::{Address as _, Events as _};
 
 const XLM: i128 = 1_0000000;
 
@@ -268,4 +268,110 @@ fn a_non_admin_cannot_pause() {
     let d = deploy();
     d.env.set_auths(&[]);
     d.client().set_paused(&true);
+}
+
+// ============================ the two fee setters ==============================
+//
+// Landed in Phase 2 rather than Phases 4 and 5, for the reason the roadmap gives
+// for `set_epoch_params`: a gate that needs a later phase's code is not a gate,
+// and one level down, **a test that needs a later phase's code is not a test.**
+// DEV2's D-39 case changes the fee mid-round and asserts settlement uses the
+// snapshot; without the real setter it would have to write `Config` directly and
+// would then not be testing the setter's own promise not to touch the snapshot.
+
+#[test]
+fn the_fee_is_capped_at_twenty_percent() {
+    let d = deploy();
+    assert_eq!(
+        d.client().try_set_fee_bps(&2_001),
+        Err(Ok(Error::InvalidParams))
+    );
+    assert_eq!(
+        d.client().try_set_fee_bps(&2_000),
+        Ok(Ok(())),
+        "the cap itself is admissible"
+    );
+    assert_eq!(
+        d.client().try_set_fee_bps(&0),
+        Ok(Ok(())),
+        "and it ships at zero"
+    );
+}
+
+/// D-39's own promise, asserted on the setter rather than on settlement: changing
+/// the fee mid-round must not reach the round a bidder already paid into.
+#[test]
+fn a_fee_change_does_not_reach_the_live_rounds_snapshot() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+    d.client().deposit(&a, &(100 * XLM));
+    d.open_round_manually(1, Phase::Auction, d.env.ledger().timestamp() + 1_000);
+
+    let snapshot_before = d.state().fee_bps_snapshot;
+    d.client().set_fee_bps(&500);
+
+    assert_eq!(
+        d.state().fee_bps_snapshot,
+        snapshot_before,
+        "settlement reads the snapshot, and the setter must not be able to move it"
+    );
+    let cfg = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    assert_eq!(cfg.fee_bps, 500, "the template did change");
+}
+
+#[test]
+fn the_fee_recipient_may_not_be_the_vault_itself() {
+    let d = deploy();
+    let vault = d.vault.clone();
+    assert_eq!(
+        d.client().try_set_fee_recipient(&vault),
+        Err(Ok(Error::InvalidAddress)),
+        "claim_fee would then be a transfer to self — it succeeds while moving nothing, \
+         and the counter would already be decremented"
+    );
+}
+
+/// Repointing the fee is not a payment: an accrued fee belongs to the protocol,
+/// not to whoever happened to be named when it accrued.
+#[test]
+fn repointing_the_fee_moves_no_money() {
+    let d = deploy();
+    let next = soroban_sdk::Address::generate(&d.env);
+
+    d.env.as_contract(&d.vault, || {
+        let mut st = crate::storage::get_state(&d.env).unwrap();
+        st.fee_claimable = 7 * XLM;
+        crate::storage::set_state(&d.env, &st);
+    });
+
+    d.client().set_fee_recipient(&next);
+
+    assert_eq!(
+        d.state().fee_claimable,
+        7 * XLM,
+        "the accrual is untouched by the pointer moving"
+    );
+    let cfg = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    assert_eq!(cfg.fee_recipient, next);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn a_non_admin_cannot_change_the_fee() {
+    let d = deploy();
+    d.env.set_auths(&[]);
+    d.client().set_fee_bps(&100);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn a_non_admin_cannot_repoint_the_fee() {
+    let d = deploy();
+    let next = soroban_sdk::Address::generate(&d.env);
+    d.env.set_auths(&[]);
+    d.client().set_fee_recipient(&next);
 }

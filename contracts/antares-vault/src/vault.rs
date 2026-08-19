@@ -891,9 +891,36 @@ impl AntaresVault {
             }
         }
 
+        let round = ctx.state.round;
+
+        // §16's zero-value rule, and its one exception — **evaluated before the
+        // burn, not after it.**
+        //
+        // Rejecting a dust payout stops shares being burned for nothing; but at
+        // `last_pps == 0` the *vault* is worth nothing, and the same reject would
+        // turn "your shares are worth nothing" into "you cannot remove your
+        // shares", making I8's promise false. So the reject applies only where a
+        // zero payout means the caller's stake is dust.
+        //
+        // It sat *after* the burn until a snapshot review found the burn event
+        // recorded on a call that rejected. On-chain the revert discards both the
+        // write and the event, so nothing was wrong — but a guard that runs after
+        // its own effect contradicts §11's checks-effects-interactions and is one
+        // refactor away from being real. This project's bugs live in exactly that
+        // kind of ordering.
+        let instant_amount = if ctx.state.phase == Phase::Idle {
+            let amount = mul_div_floor(shares, ctx.state.last_pps, PRECISION)?;
+            if amount == 0 && ctx.state.last_pps > 0 {
+                return Err(Error::InvalidAmount);
+            }
+            amount
+        } else {
+            0
+        };
+
         // Burn now, in both paths. The queued path prices the shares at the
-        // round's recorded pps once it finalizes; the instant path prices them
-        // at `last_pps` here.
+        // round's recorded pps once it finalizes; the instant path priced them at
+        // `last_pps` just above.
         let balance = storage::get_shares(&env, &from)
             .checked_sub(shares)
             .ok_or(Error::InsufficientShares)?;
@@ -905,26 +932,12 @@ impl AntaresVault {
             .ok_or(Error::InvalidAmount)?;
         crate::token::emit_burn(&env, &from, shares);
 
-        let round = ctx.state.round;
-        let instant_amount = if ctx.state.phase == Phase::Idle {
-            let amount = mul_div_floor(shares, ctx.state.last_pps, PRECISION)?;
-
-            // §16's zero-value rule, and its one exception. Rejecting a dust
-            // payout stops shares being burned for nothing — but at
-            // `last_pps == 0` the *vault* is worth nothing, and the same reject
-            // would turn "your shares are worth nothing" into "you cannot remove
-            // your shares", making I8's promise false. So the reject applies only
-            // where a zero payout means the caller's stake is dust.
-            if amount == 0 && ctx.state.last_pps > 0 {
-                return Err(Error::InvalidAmount);
-            }
-
+        if ctx.state.phase == Phase::Idle {
             ctx.state.locked_assets = ctx
                 .state
                 .locked_assets
-                .checked_sub(amount)
+                .checked_sub(instant_amount)
                 .ok_or(Error::InvalidAmount)?;
-            amount
         } else {
             // A second request in the same live round accumulates into the
             // existing record rather than replacing or rejecting it (§16).
@@ -948,8 +961,7 @@ impl AntaresVault {
                 .burned_this_round
                 .checked_add(shares)
                 .ok_or(Error::InvalidAmount)?;
-            0
-        };
+        }
 
         let total_out = paid
             .checked_add(instant_amount)

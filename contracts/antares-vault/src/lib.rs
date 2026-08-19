@@ -55,6 +55,9 @@ mod test_oracle;
 mod test_settle;
 
 #[cfg(test)]
+mod test_properties;
+
+#[cfg(test)]
 mod test_storage;
 
 #[cfg(test)]

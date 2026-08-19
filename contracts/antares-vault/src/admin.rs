@@ -16,10 +16,10 @@
 //! `Round`, settle at a chosen price, or block the unpausable set — is structural
 //! here rather than policy: no such code path exists in this file or any other.
 
-use soroban_sdk::{contractimpl, Env};
+use soroban_sdk::{contractimpl, Address, Env};
 
 use crate::errors::Error;
-use crate::events::{ParamsChanged, Paused, Unpaused};
+use crate::events::{FeeChanged, FeeRecipientChanged, ParamsChanged, Paused, Unpaused};
 use crate::storage;
 use crate::types::EpochParams;
 use crate::vault::{enter, validate_params};
@@ -72,4 +72,61 @@ impl AntaresVault {
         }
         Ok(())
     }
+
+    /// Set the protocol fee, in basis points of premium. Takes effect next epoch.
+    pub fn set_fee_bps(env: Env, bps: u32) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        // Capped at 20 % by validation (D-39, §16). An unbounded fee setter is an
+        // admin power over money already committed — the same shape as the
+        // uncapped bounty D-51 removed, and refused for the same reason.
+        if bps > MAX_FEE_BPS {
+            return Err(Error::InvalidParams);
+        }
+
+        // `Config` only. Settlement reads `State.fee_bps_snapshot`, taken at open,
+        // so this cannot reach a round a bidder has already paid into — which is
+        // the whole of D-39 and the thing its test asserts.
+        let old = ctx.config.fee_bps;
+        ctx.config.fee_bps = bps;
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        FeeChanged { old, new: bps }.publish(&env);
+        Ok(())
+    }
+
+    /// Point the accrued fee at a different address. Moves no money.
+    pub fn set_fee_recipient(env: Env, recipient: Address) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        // §11. The contract's own address would make `claim_fee` a transfer to
+        // self — which succeeds while moving nothing, and would strand the
+        // accrued fee with the counter already decremented.
+        if recipient == env.current_contract_address() {
+            return Err(Error::InvalidAddress);
+        }
+
+        // Deliberately does not touch `fee_claimable`: an accrued fee belongs to
+        // the protocol, not to whoever happened to be named when it accrued, and
+        // moving the pointer is not a payment.
+        let old = ctx.config.fee_recipient.clone();
+        ctx.config.fee_recipient = recipient.clone();
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        FeeRecipientChanged {
+            old,
+            new: recipient,
+        }
+        .publish(&env);
+        Ok(())
+    }
 }
+
+/// 2 000 bps — 20 % of premium (D-39, §16). Ships at 0.
+pub const MAX_FEE_BPS: u32 = 2_000;

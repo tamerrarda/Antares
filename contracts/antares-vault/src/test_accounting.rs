@@ -357,6 +357,10 @@ fn an_instant_withdrawal_that_floors_to_zero_is_rejected() {
         d.client().try_request_withdraw(&a, &1, &true),
         Err(Ok(Error::InvalidAmount))
     );
+    // The assertion this test was missing, and its absence is how a burn event
+    // came to sit in a rejected call's snapshot for two blocks. §10 says a
+    // rejection emits nothing, and only a test says it here.
+    assert_no_events(&d.env);
 }
 
 /// The exception that keeps I8's promise literally true: at `last_pps == 0` the
