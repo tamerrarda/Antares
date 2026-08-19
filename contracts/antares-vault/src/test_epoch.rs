@@ -445,7 +445,10 @@ fn a_lapse_never_wedges_the_vault_in_auction_and_the_next_round_opens_later() {
     // day. It is not reachable and must not be made so: `finalize_round` sets
     // `last_finalize_time = now`, so a lapse taken on the way in resets the idle-gap clock, and
     // `open_epoch`'s own gap check cannot pass in that same call while `min_idle_gap > 0` — which
-    // `validate_params` enforces. D-38's fix was to stop a lapse resetting the clock; D-43
+    // `validate_params` enforces through `in_duration_range`'s flat `d > 0`, not through
+    // `min_idle_gap >= epoch_duration / IDLE_GAP_FRACTION`. That distinction matters: the fraction
+    // floors to 0 on an epoch shorter than 50, so resting the argument on it would leave an edge
+    // where the deadlock returns. Resting it on `d > 0` survives a change to the constant. D-38's fix was to stop a lapse resetting the clock; D-43
     // rejected it, because a vault with no bidders (the expected case during counterparty
     // discovery) would then have had zero idle seconds and nobody could mint, redeem or exit.
     //

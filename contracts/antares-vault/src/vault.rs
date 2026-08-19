@@ -388,6 +388,34 @@ pub const APP_VERSION: u32 = 1;
 // below underflow — and capping `wclaims` instead would not have helped, because
 // `claim_withdraw` recomputes each user's amount from the round record and never
 // reads the aggregate.
+// The three `Round` fields no caller of `finalize_round` could supply through its original
+// signature, and which I7 forbids writing in a second pass.
+//
+// **Found 2026-08-19 while writing `settle.rs`, and it is a gap in 02-CONTRACT-SPEC §5 rather than
+// in this function.** §5 titles it `finalize_round(outcome, pps, assets_after)` and says it
+// "handles ... the `Round` record" — but §2 declares `settled_spot` as *"0 unless `Settled`"*,
+// `payout_total` as *"0 unless `Settled` with `spot > strike`"*, and §5's own settle and unresolved
+// paths accrue a `fee`. None of the three is derivable from `(outcome, pps, assets_after)`, and I7
+// makes the record immutable once written, so they cannot be patched in afterwards. A struct rather
+// than three more positional `i128`s because `Settlement::NONE` says at the lapse and void call
+// sites what `0, 0, 0` would only imply. It is deliberately **not** a `#[contracttype]`: it never
+// crosses the ABI, and §2's surface is frozen at IP-1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Settlement {
+    pub fee: i128,
+    pub settled_spot: i128,
+    pub payout_total: i128,
+}
+
+impl Settlement {
+    // Lapse and void: no fee accrues, no price was observed, nothing was paid out.
+    pub const NONE: Settlement = Settlement {
+        fee: 0,
+        settled_spot: 0,
+        payout_total: 0,
+    };
+}
+
 pub fn finalize_round(
     env: &Env,
     state: &mut State,
@@ -395,6 +423,7 @@ pub fn finalize_round(
     outcome: RoundOutcome,
     pps: i128,
     assets_after: i128,
+    settlement: Settlement,
 ) -> Result<i128, Error> {
     let wclaims = mul_div_floor(state.burned_this_round, pps, PRECISION)?;
 
@@ -414,9 +443,9 @@ pub fn finalize_round(
         expiry: state.expiry,
         notional_sold: state.notional_sold,
         premium: state.premium_collected,
-        fee: 0,
-        settled_spot: 0,
-        payout_total: 0,
+        fee: settlement.fee,
+        settled_spot: settlement.settled_spot,
+        payout_total: settlement.payout_total,
     };
     storage::set_round(env, rent, state.round, &record);
 
@@ -457,6 +486,7 @@ pub fn lazy_finalize(env: &Env, state: &mut State, rent: Rent) -> Result<bool, E
         RoundOutcome::Lapsed,
         state.last_pps,
         state.locked_at_open,
+        Settlement::NONE,
     )?;
     EpochLapsed {
         round: state.round,
@@ -537,7 +567,7 @@ fn commit(env: &Env, ctx: &Ctx) {
 // The SAC at `Config.asset`. Not a third-party dependency and no conflict with
 // D-24: this is the SDK's binding to platform code, the same way `Address` is.
 // What D-24 forbids is importing somebody else's vault or token implementation.
-fn asset_client<'a>(env: &'a Env, config: &Config) -> TokenClient<'a> {
+pub(crate) fn asset_client<'a>(env: &'a Env, config: &Config) -> TokenClient<'a> {
     // outbound: config.asset
     TokenClient::new(env, &config.asset)
 }

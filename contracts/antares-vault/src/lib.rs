@@ -23,6 +23,9 @@ pub mod events;
 // The vault's side of the oracle seam: the anchored guard ladder and the four-way GuardOutcome
 // (04-ORACLE §3). DEV2's file, declared here by them — the live branch ships with `open_epoch`.
 pub mod oracle;
+// `close_round`: the single terminal entry point, and the clock path that resolves a round with no
+// oracle call at all (D-61, D-64). DEV2's file.
+pub mod settle;
 pub mod storage;
 pub mod token;
 pub mod types;
@@ -43,6 +46,9 @@ mod test_epoch;
 
 #[cfg(test)]
 mod test_oracle;
+
+#[cfg(test)]
+mod test_settle;
 
 #[cfg(test)]
 mod test_storage;
