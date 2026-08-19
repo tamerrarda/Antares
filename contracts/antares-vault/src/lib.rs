@@ -13,6 +13,8 @@
 
 use soroban_sdk::{contract, contractimpl};
 
+pub mod admin;
+
 // `open_epoch`: opening a round is a guarded read plus `supports_round`, so it is the oracle seam
 // rather than the accounting (DEV-PROTOCOL §3). DEV2's file.
 pub mod epoch;
@@ -25,11 +27,16 @@ pub mod oracle;
 // oracle call at all (D-61, D-64). DEV2's file.
 pub mod settle;
 pub mod storage;
+pub mod token;
 pub mod types;
 pub mod vault;
+pub mod views;
 
 #[cfg(test)]
 mod test_accounting;
+
+#[cfg(test)]
+mod test_admin;
 
 #[cfg(test)]
 mod test_common;
@@ -47,7 +54,13 @@ mod test_settle;
 mod test_storage;
 
 #[cfg(test)]
+mod test_token;
+
+#[cfg(test)]
 mod test_types;
+
+#[cfg(test)]
+mod test_views;
 
 #[cfg(test)]
 mod test_vault;

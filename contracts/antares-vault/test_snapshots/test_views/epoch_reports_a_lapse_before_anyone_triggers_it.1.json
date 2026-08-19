@@ -93,12 +93,14 @@
       ]
     ],
     [],
+    [],
+    [],
     []
   ],
   "ledger": {
     "protocol_version": 27,
     "sequence_number": 0,
-    "timestamp": 0,
+    "timestamp": 200,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
     "min_persistent_entry_ttl": 4096,
@@ -636,7 +638,7 @@
                               "symbol": "auction_end"
                             },
                             "val": {
-                              "u64": "0"
+                              "u64": "100"
                             }
                           },
                           {
@@ -660,7 +662,7 @@
                               "symbol": "expiry"
                             },
                             "val": {
-                              "u64": "0"
+                              "u64": "1100"
                             }
                           },
                           {
@@ -700,7 +702,7 @@
                               "symbol": "last_pps"
                             },
                             "val": {
-                              "i128": "1"
+                              "i128": "10000000"
                             }
                           },
                           {
@@ -724,7 +726,7 @@
                               "symbol": "locked_at_open"
                             },
                             "val": {
-                              "i128": "0"
+                              "i128": "1000000000"
                             }
                           },
                           {
@@ -732,7 +734,7 @@
                               "symbol": "notional_offered"
                             },
                             "val": {
-                              "i128": "0"
+                              "i128": "1000000000"
                             }
                           },
                           {
@@ -911,7 +913,7 @@
                             "val": {
                               "vec": [
                                 {
-                                  "symbol": "Idle"
+                                  "symbol": "Auction"
                                 }
                               ]
                             }
@@ -929,7 +931,7 @@
                               "symbol": "round"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 1
                             }
                           },
                           {
@@ -945,7 +947,7 @@
                               "symbol": "shares_snapshot"
                             },
                             "val": {
-                              "i128": "0"
+                              "i128": "1000000000"
                             }
                           },
                           {
@@ -1219,29 +1221,5 @@
       }
     ]
   },
-  "events": [
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "burn"
-              },
-              {
-                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
-              }
-            ],
-            "data": {
-              "i128": "1"
-            }
-          }
-        }
-      },
-      "failed_call": true
-    }
-  ]
+  "events": []
 }

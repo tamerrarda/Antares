@@ -138,6 +138,86 @@ pub struct EpochLapsed {
     pub wclaims: i128,
 }
 
+// The whole new struct, not a diff. An events-only indexer has no prior copy to
+// apply a delta to, and §10 fixes the shape as a full `EpochParams`.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParamsChanged {
+    pub params: EpochParams,
+}
+
+// `by` rather than nothing: pause is the one admin power participants watch, and
+// an indexer that cannot say who used it cannot report it.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Paused {
+    pub by: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unpaused {
+    pub by: Address,
+}
+
+// SEP-41's own stream, matching the SAC's **data formats** exactly (§10, measured
+// 2026-08-19). Topics differ by one: a real SAC's `transfer` carries a fourth,
+// the classic asset's `CODE:ISSUER`, which a share token has no counterpart for.
+//
+// `topics = ["transfer"]` on both structs because the destination's shape must
+// not change the topic a subscriber filters on. One `#[contractevent]` cannot
+// produce two data formats, which is why there are two structs at all — the
+// decision §10 assigns to Phase 2 and to nobody.
+#[contractevent(topics = ["transfer"], data_format = "single-value")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Transfer {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["transfer"], data_format = "map")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransferMuxed {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+    pub to_muxed_id: u64,
+}
+
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Approve {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub spender: Address,
+    pub amount: i128,
+    pub live_until_ledger: u32,
+}
+
+#[contractevent(data_format = "single-value")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Burn {
+    #[topic]
+    pub from: Address,
+    pub amount: i128,
+}
+
+// No minter address: shares are minted by the contract itself, never by an
+// account, so the topic carries the recipient only.
+#[contractevent(data_format = "single-value")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mint {
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+}
+
 // **DEV2's**, in DEV1's file: §10's event ABI is split by the module that *emits*, and
 // `epoch_opened` is emitted by `open_epoch` in `epoch.rs` (DEV-PROTOCOL §3). Added here rather
 // than in a second events module so that §10 stays one file, and flagged in STANDUP.
