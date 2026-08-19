@@ -431,6 +431,9 @@ fn a_record_stamped_outside_its_window_is_dropped() {
     assert_eq!(f.adapter.reading(&NOW, &TW, &GW), ReadResult::Unusable);
 }
 
+/// **O-9** — a record that is non-positive, or that normalizes to zero, is dropped as a record
+/// fault before the fold ever sees it. What survives the drop is then subject to rule 2's counts,
+/// which is why dropping the only usable print reads as a sparse feed rather than as a bad price.
 #[test]
 fn a_non_positive_record_is_dropped_as_a_record_fault() {
     let f = setup();

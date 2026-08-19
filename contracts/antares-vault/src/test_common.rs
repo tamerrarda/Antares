@@ -15,7 +15,7 @@
 #![allow(clippy::inconsistent_digit_grouping)]
 
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, EnvTestConfig, Ledger},
     token::StellarAssetClient,
     Address, Env, String,
 };
@@ -84,7 +84,33 @@ pub fn deploy() -> Deployed {
 /// reports `last_timestamp() == 0` both for "no records" and for "a record stamped
 /// at 0", so a price written at time 0 reads as an absent feed.
 pub fn deploy_at(now: u64, allowlist_expires_at: u64) -> Deployed {
-    let env = Env::default();
+    deploy_into(Env::default(), now, allowlist_expires_at)
+}
+
+/// The same vault on an `Env` that writes **no** test snapshot when it drops. For the property
+/// suite, and for nothing else.
+///
+/// Soroban writes `test_snapshots/{test}.N.json` on every `Env` drop. For a deterministic test
+/// that file is a record worth keeping — the footprint and the budget of a fixed sequence, which
+/// changes only when the contract does. For a *generated* test it is the opposite: proptest builds
+/// a fresh random call sequence on every run, so the file records one arbitrary sequence and is
+/// rewritten wholesale by the next `cargo test` that touches it.
+///
+/// **`.gitignore` and this are not the same fix, and `main` chose the other one.** Ignoring the
+/// directory stops the churn reaching a diff; it leaves ~100 000 lines still being written to disk
+/// on every run. Both are kept after the merge because they solve different halves, and this is
+/// the half that stops the writing.
+pub fn deploy_no_snapshot() -> Deployed {
+    deploy_into(
+        Env::new_with_config(EnvTestConfig {
+            capture_snapshot_at_drop: false,
+        }),
+        0,
+        0,
+    )
+}
+
+fn deploy_into(env: Env, now: u64, allowlist_expires_at: u64) -> Deployed {
     env.mock_all_auths();
     if now != 0 {
         env.ledger().set_timestamp(now);

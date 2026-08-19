@@ -16,6 +16,7 @@ use crate::Error;
 use mock_price_source::{MockPriceSource, MockPriceSourceClient, Mode};
 use price_source_api::OracleReading;
 use soroban_sdk::{
+    contract, contractimpl,
     testutils::{Address as _, Ledger as _},
     Address, Env,
 };
@@ -125,6 +126,65 @@ fn a_trapping_adapter_is_transient_and_must_not_permit_the_void_path() {
     // normally once the fault goes away — which is the property the classification exists for.
     f.mock.set_trap(&false);
     assert_eq!(read(&f), GuardOutcome::Price(PX_1E7, DEC));
+}
+
+/// A source that answers `reading` with the wrong type. It exists because the conversion arm
+/// cannot otherwise be reached: through a typed `#[contracttrait]` client every honest
+/// implementation returns a `ReadResult` by construction, so the only way to hand the vault
+/// something undecodable is to put a *different contract* at the oracle address.
+///
+/// The arity and the name match the trait deliberately. A wrong name or a wrong argument count
+/// fails in the host before any conversion is attempted and lands in `Err(..)` — the trap arm,
+/// which O-3c already covers. Only a correct call whose *return value* is the wrong shape reaches
+/// `Ok(Err(conversion))`, and that is the arm O-3f is about.
+///
+/// `#[contractimpl]` exports survive linking, so this would leak into a shipped wasm if it lived
+/// anywhere but a test — `test_oracle` is `#[cfg(test)]`, which is what keeps it out.
+#[contract]
+struct UndecodableSource;
+
+#[contractimpl]
+impl UndecodableSource {
+    pub fn reading(_env: Env, _anchor: u64, _short_window: u64, _guard_window: u64) -> u32 {
+        7
+    }
+}
+
+#[test]
+fn a_return_value_that_does_not_decode_is_transient_exactly_like_a_trap() {
+    // O-3f. `Ok(Err(conversion))` and `Err(..)` are the same fact about **now** (D-64), and the
+    // ladder is written to fold them into one arm rather than to distinguish them. The risk this
+    // pins is not that the conversion arm is misclassified today — it is that it looks like a
+    // formality next to the trap arm and gets given its own, more specific, treatment later. A
+    // garbled return is not evidence about the expiry window, and nothing about it may reach the
+    // void branch.
+    let f = setup();
+    f.env.register_at(&f.oracle, UndecodableSource, ());
+
+    let outcome = read(&f);
+    assert_eq!(
+        outcome,
+        GuardOutcome::Transient,
+        "an undecodable answer is a fact about now, not about expiry"
+    );
+    assert!(
+        !matches!(outcome, GuardOutcome::DeadAtExpiry(_)),
+        "the void path must be unreachable here for the same reason it is under a trap"
+    );
+
+    // Byte-for-byte the trap's classification, which is the row's actual claim: not merely that
+    // both are non-fatal, but that the vault cannot tell them apart.
+    let g = setup();
+    g.mock.set_trap(&true);
+    assert_eq!(outcome, read(&g), "identical to a trap, not merely similar");
+
+    // The above is exactly the assertion that could pass for the wrong reason: both arms fold into
+    // `Transient`, so a test that reached the *trap* arm here would be indistinguishable from one
+    // that reached the conversion arm. Which arm fires was therefore measured rather than reasoned
+    // about — the two arms were split and made to panic distinctly, and this test stopped at
+    // `oracle.rs:101` (`Ok(Err(_))`) while `a_trapping_adapter_..` stopped at `oracle.rs:102`
+    // (`Err(_)`). If those two ever collapse onto one arm, this comment is the thing that is wrong,
+    // not the test.
 }
 
 // =================================================================================================

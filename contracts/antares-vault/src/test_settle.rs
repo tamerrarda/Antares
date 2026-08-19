@@ -226,6 +226,9 @@ fn the_grid_reaches_exactly_one_outcome_in_every_cell() {
     }
 }
 
+/// **O-3e** — the adapter never recovers; `close_round` at `expiry + unresolved_after` reaches
+/// `Unresolved` **with zero adapter invocations**. The trap stays on across the closing call,
+/// which is how "not invoked" is asserted rather than asserted about.
 #[test]
 fn a_transient_that_never_clears_still_ends_with_the_clock() {
     // The regression for permanently trapped collateral, and the one row above that needs its own
@@ -291,6 +294,7 @@ fn the_two_entrances_to_unresolved_agree_on_every_number() {
 // The settle path's numbers
 // =================================================================================================
 
+/// **O-1** — fresh feed, in bounds, `close_round` → `Settled`.
 #[test]
 fn settle_computes_the_payout_fee_bounty_and_price_the_spec_states() {
     let d = expired_round();
@@ -393,6 +397,8 @@ fn every_caller_at_every_time_settles_at_the_same_price() {
 // The void path
 // =================================================================================================
 
+/// **O-5** — dead at expiry, `now < expiry + oracle_dead_after` → `OracleNotDeadYet`. The second
+/// half of this test crosses into **O-6**'s window; O-6's own assertions are the test below.
 #[test]
 fn a_dead_feed_voids_only_after_the_grace_period() {
     // The grace period is not waiting for the feed to recover — frozen history does not recover.
@@ -407,6 +413,63 @@ fn a_dead_feed_voids_only_after_the_grace_period() {
     assert_eq!(close(&d).unwrap(), RoundOutcome::Voided);
 }
 
+/// **O-7** — the anchored window was readable all along, and the round is closed deep inside the
+/// void window. It settles.
+///
+/// The row's claim is about the *reason*, not the outcome, and that is what makes the grid cell
+/// above insufficient on its own: `price, past grace` asserts `Settled`, but it would still pass
+/// if the void bound were computed too late and the clock had simply never entered the window.
+/// So the assertion here is differential — two fixtures, one instant, one difference. The dead
+/// feed voids, which proves the clock *is* past the bound; the readable one settles anyway.
+///
+/// Stated the other way: the void path is not skipped because it was out of reach in time. It was
+/// squarely in reach. It is skipped because the read returns `Price`.
+#[test]
+fn a_readable_feed_settles_past_the_void_bound_on_the_read_not_on_the_clock() {
+    // Deep inside the window: past `oracle_dead_after`, well short of `unresolved_after`, so
+    // neither boundary is being tested by accident.
+    const LATE: u64 = DEAD_AFTER * 3;
+    // A `const` block, so an edit to either bound that inverts the window fails to *compile*
+    // rather than failing here — this test is meaningless outside it, and a meaningless test that
+    // still passes is worse than one that does not build.
+    const { assert!(LATE > DEAD_AFTER && LATE < UNRESOLVED) };
+
+    // The control. Same fixture, same instant, feed dead — this is the void the readable round has
+    // to dodge, and running it is what turns "past the bound" from a claim into a measurement.
+    let dead = expired_round();
+    dead.advance(LATE);
+    oracle(&dead).set_mode(&Mode::ForceUnusable);
+    assert_eq!(
+        close(&dead).unwrap(),
+        RoundOutcome::Voided,
+        "the clock is inside the void window — established, not assumed"
+    );
+
+    // The row itself.
+    let d = expired_round();
+    let before = d.state();
+    let spot = before.strike * 125 / 100;
+    d.advance(LATE);
+    force(&d, spot, spot, 14);
+
+    assert_eq!(close(&d).unwrap(), RoundOutcome::Settled);
+
+    let record = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_round(&d.env, before.round))
+        .unwrap();
+    assert_eq!(record.outcome, RoundOutcome::Settled);
+    // Settled *at the price it read*. `settled_spot` is written on the price path and nowhere
+    // else, so this is the field that separates "settled" from "did not happen to void".
+    assert_eq!(
+        record.settled_spot, spot,
+        "the price path ran; a void or a fallback would not have written this"
+    );
+    assert_eq!(d.state().last_settled_spot, spot);
+}
+
+/// **O-6** — dead at expiry, past the bound, still within reach → `Voided`, refunds claimable,
+/// `pps` unchanged.
 #[test]
 fn a_void_refunds_the_whole_premium_leaves_pps_untouched_and_pays_no_bounty() {
     let d = expired_round();
