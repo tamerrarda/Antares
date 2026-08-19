@@ -14,7 +14,11 @@
 use soroban_sdk::{contract, contractimpl};
 
 pub mod errors;
+pub mod storage;
 pub mod types;
+
+#[cfg(test)]
+mod test_storage;
 
 #[cfg(test)]
 mod test_types;
