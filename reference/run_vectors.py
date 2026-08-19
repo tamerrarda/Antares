@@ -51,6 +51,19 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent
 HAND_WRITTEN = REPO / "test-vectors"
 GENERATED = HAND_WRITTEN / "generated"
+COVERAGE = HAND_WRITTEN / "coverage.json"
+
+
+def diffable_sections() -> list[str]:
+    """The sections both sides can produce, from `test-vectors/coverage.json`.
+
+    Read rather than hardcoded, and read by the Rust side too — which asserts that what it emits is
+    exactly this list. So the scope of the diff is one committed fact that neither side can drift
+    from silently, and it widens by one line in the same commit as the replay that earns it.
+    """
+    import json as _json
+
+    return list(_json.loads(COVERAGE.read_text())["sections"])
 
 
 class VectorError(ValueError):
@@ -68,6 +81,11 @@ def load_vectors() -> list[tuple[str, dict]]:
         if not directory.is_dir():
             continue
         for path in sorted(directory.glob("*.json")):
+            # `coverage.json` lives here because both sides read it and this is the shared home for
+            # the vectors; it is not one. Skipped by name on both sides rather than moved, so the
+            # scope declaration sits next to what it scopes.
+            if path.name == COVERAGE.name:
+                continue
             out.append((path.name, json.loads(path.read_text())))
     if not out:
         raise VectorError(f"no vectors found under {HAND_WRITTEN}")
@@ -232,17 +250,23 @@ def main(argv: list[str] | None = None) -> int:
     vectors = load_vectors()
     results = [replay(name, vector) for name, vector in vectors]
 
-    if args.only == "curve":
-        results = [
-            {"vector": r["vector"], "curve_ref": r["curve_ref"]}
-            for r in results
-        ]
+    # `--out` emits exactly the sections the Rust side can also produce, so the two documents are
+    # comparable byte for byte. `--only` narrows further, for a targeted local run.
+    sections = diffable_sections()
+    if args.only is not None:
+        sections = [s for s in sections if s == f"{args.only}_ref"] or [f"{args.only}_ref"]
 
     if args.out is not None:
+        results = [
+            {"vector": r["vector"], **{k: r[k] for k in sections if k in r}} for r in results
+        ]
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(canonical(results))
-        scope = args.only or "all sections"
-        print(f"replayed {len(results)} vector(s), {scope} -> {args.out}")
+        print(f"replayed {len(results)} vector(s) -> {args.out}")
+        print(f"sections in this document: {', '.join(sections)}  (test-vectors/coverage.json)")
+        not_yet = json.loads(COVERAGE.read_text()).get("not_yet_replayed_in_rust", {})
+        for name, why in not_yet.items():
+            print(f"  NOT diffed: {name} — {why}")
         return 0
 
     # No `--out`: pin the three Python derivations against the specification's own worked example.

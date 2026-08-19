@@ -1,0 +1,24 @@
+{
+  "_why": [
+    "Which sections of the canonical replay document BOTH sides can produce today.",
+    "",
+    "The differential layer lands module by module: curve_ref.py mirrors auction.rs, settle_ref.py",
+    "mirrors settle.rs and finalize_round, claims_ref.py mirrors claims.rs. The Python side has all",
+    "three; the Rust side has whichever replays exist. So the diffable scope is smaller than the",
+    "Python document for as long as that is true, which 06-TEST-PLAN §5 and D-22's deadline rule",
+    "both require rather than merely tolerate.",
+    "",
+    "This file is the single home for that scope, and it is self-checking in both directions:",
+    "run_vectors.py --out emits exactly these sections, and test_vectors.rs asserts that what it",
+    "emits is exactly these sections. Adding a Rust replay without widening this list fails the",
+    "Rust test; widening the list without adding the replay fails the diff. Neither side can drift",
+    "from it silently, which is the property a hand-maintained scope would not have.",
+    "",
+    "To widen: add the section here in the same commit as the Rust replay that produces it."
+  ],
+  "sections": ["curve_ref"],
+  "not_yet_replayed_in_rust": {
+    "settle_ref": "needs finalize_round driven from a Rust replay - DEV1/DEV2",
+    "claims_ref": "needs claims.rs, which DEV3 has not written yet"
+  }
+}

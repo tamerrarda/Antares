@@ -238,6 +238,8 @@ fn replay_all() -> Value {
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        // `coverage.json` shares the directory because both sides read it; it is not a vector.
+        .filter(|p| p.file_name().is_some_and(|n| n != "coverage.json"))
         .collect();
     // Sorted, so the document does not depend on directory order — a diff that fails because of
     // filesystem iteration order fails for the wrong reason on someone else's machine.
@@ -264,9 +266,47 @@ fn replay_all() -> Value {
 /// by 06-TEST-PLAN §8's own network-agnostic check — and a variable read at test runtime cannot be
 /// selected into a `--release` wasm by any invocation, which is the stronger property on D-50's own
 /// terms.
+/// The sections `test-vectors/coverage.json` declares both sides can produce.
+fn declared_sections() -> StdVec<StdString> {
+    let path = vector_dir().join("coverage.json");
+    let manifest: Value =
+        serde_json::from_str(&fs::read_to_string(path).expect("coverage.json is readable"))
+            .expect("coverage.json is valid JSON");
+    manifest["sections"]
+        .as_array()
+        .expect("coverage.json has a sections array")
+        .iter()
+        .map(|v| v.as_str().expect("section names are strings").to_string())
+        .collect()
+}
+
 #[test]
 fn vector_replay() {
     let document = replay_all();
+
+    // **The scope of the diff is one committed fact, and this is half of what keeps it true.**
+    // What this file emits must be exactly what `coverage.json` declares, so adding a replay
+    // without widening the manifest fails here — and widening the manifest without adding the
+    // replay fails the diff itself. Neither side can drift from it silently, which a
+    // hand-maintained scope would not give.
+    let declared = declared_sections();
+    for entry in document.as_array().expect("array") {
+        let mut emitted: StdVec<StdString> = entry
+            .as_object()
+            .expect("object")
+            .keys()
+            .filter(|k| *k != "vector")
+            .cloned()
+            .collect();
+        emitted.sort();
+        let mut want = declared.clone();
+        want.sort();
+        assert_eq!(
+            emitted, want,
+            "this replay emits {emitted:?} but test-vectors/coverage.json declares {want:?} — \
+             widen the manifest in the same commit as the replay that earns it"
+        );
+    }
 
     if let Ok(path) = std::env::var("ANTARES_VECTOR_OUT") {
         let mut text = serde_json::to_string_pretty(&document).expect("serialize");
