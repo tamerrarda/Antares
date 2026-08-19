@@ -1,0 +1,64 @@
+[
+  {
+    "suffix": "-A",
+    "note": "the mainnet target. AS OF 2026-08-20 THIS SET IS REFUSED BY check-params.ts \u2014 all five fail gate 2 and only gate 2, because sigma moved from 33.7% to 51.1% on a single +10.85% day. Instance A: floor 40 bps against fair(sigma_low)/2 = 80.58. That is the state of the world, not a defect: 02-CONTRACT-SPEC \u00a71's table is illustrative and this file is the candidate set the gate judges on deploy day. Whoever deploys edits these numbers until the gate passes, at the sigma measured that day. Verified end to end on 2026-08-20: `node --experimental-strip-types scripts/check-params.ts --series deployments/xlm-price-series.json --params scripts/instances.json` reproduces sigma 51.1/53.7/100.4 and exits 1. FILE SHAPE: an array, because check-params.ts reads `Array.isArray(raw) ? raw : [raw]`. DEV3 - widening that by one line to accept {_why, instances} (the shape your own coverage.json uses) would let the reasoning sit with the data instead of in a document the code repo never sees.",
+    "params": {
+      "epoch_duration": 604800,
+      "strike_bps_otm": 300,
+      "premium_start_bps": 450,
+      "premium_floor_bps": 40,
+      "max_deviation_bps": 100,
+      "min_idle_gap": 14400
+    },
+    "deposit_cap": 1000000000000
+  },
+  {
+    "suffix": "-B",
+    "params": {
+      "epoch_duration": 604800,
+      "strike_bps_otm": 500,
+      "premium_start_bps": 360,
+      "premium_floor_bps": 20,
+      "max_deviation_bps": 100,
+      "min_idle_gap": 14400
+    },
+    "deposit_cap": 1000000000000
+  },
+  {
+    "suffix": "-C",
+    "note": "max_deviation_bps is 90, not 100: gate 3 is max_deviation_bps < strike_bps_otm / 2 and C's strike is 200. The breaker is tuned to the strike, never the reverse.",
+    "params": {
+      "epoch_duration": 259200,
+      "strike_bps_otm": 200,
+      "premium_start_bps": 280,
+      "premium_floor_bps": 25,
+      "max_deviation_bps": 90,
+      "min_idle_gap": 7200
+    },
+    "deposit_cap": 1000000000000
+  },
+  {
+    "suffix": "-D",
+    "params": {
+      "epoch_duration": 1209600,
+      "strike_bps_otm": 500,
+      "premium_start_bps": 580,
+      "premium_floor_bps": 50,
+      "max_deviation_bps": 100,
+      "min_idle_gap": 25200
+    },
+    "deposit_cap": 1000000000000
+  },
+  {
+    "suffix": "-E",
+    "params": {
+      "epoch_duration": 259200,
+      "strike_bps_otm": 300,
+      "premium_start_bps": 240,
+      "premium_floor_bps": 15,
+      "max_deviation_bps": 100,
+      "min_idle_gap": 7200
+    },
+    "deposit_cap": 1000000000000
+  }
+]
