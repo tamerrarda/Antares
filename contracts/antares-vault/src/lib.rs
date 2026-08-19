@@ -18,6 +18,7 @@ pub mod auction;
 
 // `open_epoch`: opening a round is a guarded read plus `supports_round`, so it is the oracle seam
 // rather than the accounting (DEV-PROTOCOL §3). DEV2's file.
+pub mod claims;
 pub mod epoch;
 pub mod errors;
 pub mod events;
@@ -41,6 +42,9 @@ mod test_admin;
 
 #[cfg(test)]
 mod test_auction;
+
+#[cfg(test)]
+mod test_claims;
 
 #[cfg(test)]
 mod test_common;

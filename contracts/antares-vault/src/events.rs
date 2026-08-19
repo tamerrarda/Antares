@@ -178,6 +178,44 @@ pub struct BidFilled {
     pub notional_sold_after: i128,
 }
 
+// The three claim events (§10). DEV3's, like `bid_filled` above.
+//
+// `payout_claimed` and `refund_claimed` carry the round and the bidder as topics for the same
+// reason `bid_filled` does: a bidder's own Claims page is built by filtering on them, and without
+// the pair the page would have to fetch every claim in every round and discard other people's.
+//
+// **`fee_claimed` carries no round, and that is normative rather than an omission** — §10 says
+// `claim_fee` "spans rounds and therefore carries no round". An indexer that invented one would
+// present the fee as a per-round balance, which is exactly the wrong mental model for the fifth
+// forgettable balance: it accrues across rounds and is claimed once.
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PayoutClaimed {
+    #[topic]
+    pub round: u32,
+    #[topic]
+    pub bidder: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefundClaimed {
+    #[topic]
+    pub round: u32,
+    #[topic]
+    pub bidder: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeClaimed {
+    #[topic]
+    pub recipient: Address,
+    pub amount: i128,
+}
+
 // The whole new struct, not a diff. An events-only indexer has no prior copy to
 // apply a delta to, and §10 fixes the shape as a full `EpochParams`.
 #[contractevent]
