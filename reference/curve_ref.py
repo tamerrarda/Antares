@@ -184,10 +184,15 @@ REJECTS = (
     "InvalidAmount",
     "WrongPhase",
     "PremiumAboveMax",
-    "SoldOut",
     "BelowMinFill",
     "ZeroPremium",
 )
+#: `SoldOut` is deliberately absent, ruled 2026-08-19 (02-CONTRACT-SPEC §16). The phase
+#: check preempts it: `filled == 0` needs `remaining == 0`, which is the state §5 step 6
+#: has already left `Auction` for. Listing a reject this module cannot emit would claim
+#: coverage of a guard nothing exercises — the silent-subset defect the coverage manifest
+#: exists to prevent, one level down. Error 33 itself is still in the ABI and its
+#: retirement is Tamer's call, not this module's.
 
 
 def evaluate_bid(vector: dict) -> dict:
@@ -226,12 +231,33 @@ def evaluate_bid(vector: dict) -> dict:
     if not isinstance(notional, int) or isinstance(notional, bool) or notional <= 0:
         return {"reject": "InvalidAmount"}
 
-    # 2. The window. `bid` requires `now < auction_end` strictly (§4), so a bid at
-    #    exactly `auction_end` is late — the same instant at which lazy
-    #    finalization would lapse an empty auction.
+    # 2. **The phase — which is not only the window, and that was the defect.**
+    #
+    #    §16's canonical order puts phase/time here, ahead of the curve and ahead of
+    #    the `filled` computation. An auction leaves `Auction` two ways:
+    #
+    #      * **time** — `bid` requires `now < auction_end` strictly (§4), so a bid at
+    #        exactly `auction_end` is late; the same instant at which lazy
+    #        finalization would lapse an empty auction.
+    #      * **full subscription** — §5 step 6 sets `phase = Active` *immediately* when
+    #        `notional_sold == notional_offered`, inside the bid that fills the last
+    #        sliver rather than at the next call.
+    #
+    #    This module modelled only the first, and DEV3's generated corpus found it on
+    #    its first run: past full subscription the reference kept walking its own guard
+    #    order and answered `SoldOut` on 107 vectors and `PremiumAboveMax` on one,
+    #    where the vault answers `WrongPhase`.
+    #
+    #    **The single `PremiumAboveMax` is what names the bug.** Mapping `SoldOut` to
+    #    `WrongPhase` would have turned 107 of 108 green and left the fault in place,
+    #    because the fault is not which code the fill check returns — it is that after
+    #    full subscription the phase check **preempts every later guard**, including a
+    #    slippage check two steps earlier that has nothing to do with the fill.
     _nonneg("now", now)
     _nonneg("auction_end", vector["auction_end"])
-    if now >= vector["auction_end"]:
+    offered = _nonneg("notional_offered", vector["notional_offered"])
+    sold = _nonneg("notional_sold", vector["notional_sold"])
+    if now >= vector["auction_end"] or sold >= offered:
         return {"reject": "WrongPhase"}
 
     # 3. The curve, and the bidder's own slippage guard. Checked before anything
@@ -254,7 +280,23 @@ def evaluate_bid(vector: dict) -> dict:
     # 4. Fill splitting.
     filled = fill_amount(notional, vector["notional_offered"], vector["notional_sold"])
     if filled == 0:
-        return {"reject": "SoldOut"}
+        # **Unreachable, and raising rather than returning is the point.** Step 2 now
+        # rejects `sold >= offered`, so `remaining > 0` here; `notional > 0` came from
+        # step 1; therefore `min(notional, remaining) > 0`. Nothing can produce a zero
+        # fill any more.
+        #
+        # `SoldOut` stays in `REJECTS` because §16 still lists it among the guards this
+        # layer diffs, and removing it here would be this module deciding a question
+        # that belongs to the spec. **Raised as an open point instead** (02-CONTRACT-SPEC
+        # §16): either the vault has a reachable `SoldOut` path this module cannot see
+        # from the spec, or the code is dead in both implementations. A comment claiming
+        # unreachability is the shape this project keeps finding as a bug — so this is a
+        # check that fails loudly if the claim is wrong, not a note asserting it is right.
+        raise VectorError(
+            "SoldOut is unreachable once the phase check covers full subscription "
+            "(§5 step 6, §16) — reaching it means this module's own guard order is "
+            "inconsistent, not that the vector is unusual"
+        )
 
     # 5. The dust guard, and its one exception. The final sliver may be smaller
     #    than `min_fill`, because otherwise an offer whose remainder dropped below

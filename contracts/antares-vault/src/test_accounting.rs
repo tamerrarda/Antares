@@ -732,23 +732,19 @@ fn the_subtraction_is_checked() {
     );
 }
 
-/// **The open question, recorded as behaviour so the ruling changes a test rather
-/// than surprising somebody.**
-///
-/// `settle_ref.finalize_round` raises when `locked_after < 0`. This returns it:
-/// `checked_sub` catches overflow, not negativity. Nothing reachable gets here —
-/// `settle.rs` rejects `assets_R < 0` upstream and `wclaims ≤ assets_after` holds
-/// whenever `burned ≤ shares_snapshot`, the same chain I9 rests on — so this asserts
-/// what the code does today, not what it should do. **If 02-CONTRACT-SPEC §5 rules
-/// that the guard belongs here, this test inverts to `Err(InvalidAmount)` and
-/// `finalize_numbers` gains one line.**
+/// Ruled 2026-08-19: the guard belongs here, and the precedent is `round_numbers`
+/// refusing five fields it cannot reach after a fuzz target found the gap that
+/// "other code guarantees this" leaves. Unreachable through `close_round`, which
+/// rejects `assets_R < 0` first — but this function is reachable from a replay
+/// harness that does not honour its caller's domain, and what it returns is
+/// `locked_assets`. This test is the inversion of the one that recorded the old
+/// behaviour, name included.
 #[test]
-fn a_negative_locked_after_is_returned_rather_than_refused_today() {
-    let (wclaims, locked_after) = finalize_numbers(10, PRECISION, 4).unwrap();
-    assert_eq!(wclaims, 10);
+fn a_negative_locked_after_is_refused() {
     assert_eq!(
-        locked_after, -6,
-        "unreachable from `settle.rs`, and asymmetric against the reference"
+        finalize_numbers(10, PRECISION, 4),
+        Err(Error::InvalidAmount),
+        "wclaims 10 against assets_after 4 is not a 6-unit hole in the pool"
     );
 }
 

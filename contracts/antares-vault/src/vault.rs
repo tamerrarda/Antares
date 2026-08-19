@@ -428,17 +428,23 @@ impl Settlement {
 // than a copy of it. That is the whole point of the extraction and the reason it is
 // not simply duplicated into the test.
 //
-// **An asymmetry against the reference is left standing here deliberately, and it is
-// not an oversight.** `settle_ref.finalize_round` raises when `locked_after < 0`;
-// this returns it. `checked_sub` catches overflow, not negativity, so the two differ
-// on inputs where the reference refuses. Nothing reachable reaches it — `settle.rs`
-// rejects `assets_R < 0` upstream, and `wclaims ≤ burned·pps/P ≤ S·pps/P ≤
-// assets_after` holds whenever `burned ≤ shares_snapshot`, which is the same chain I9
-// rests on. Two arguments say add the guard: `round_numbers` refuses its own bad
-// inputs because a fuzz target found a negative payout outside its caller's domain,
-// and the reference agrees. I found this by reading their Python, which is the one
-// input D-22 says not to move on — so it goes to 02-CONTRACT-SPEC §5 and to Tamer,
-// not into this function. Reversible in one line if the ruling goes the other way.
+// **It refuses a negative `locked_after`, and the precedent is `round_numbers`.**
+// `round_numbers` was made to refuse five fields it cannot reach after a fuzz target
+// walked straight into the gap that "other code guarantees this" leaves. This is the
+// same class — extracted, pure, reachable from a replay harness that does not honour
+// its caller's domain — and its output is `locked_assets`, the vault's own solvency
+// number. Three extracted functions exist and it would have been the only one
+// declining to state its domain.
+//
+// Nothing reachable gets here: `close_round` rejects `assets_R < 0` upstream, and
+// `wclaims ≤ burned·pps/P ≤ S·pps/P ≤ assets_after` holds whenever
+// `burned ≤ shares_snapshot` — the same chain I9 rests on. **"Impossible" is exactly
+// what stopped being load-bearing** on the one path that must never fail.
+//
+// `settle_ref.py` refuses it too. That was noticed *after* the guard was argued for
+// and **is not the justification** — a fix written to match a reference makes the next
+// diff worthless, and the provenance record on that file is worth nothing if either
+// side drifts toward the other. Ruled by Tamer 2026-08-19; 02-CONTRACT-SPEC §5.
 pub fn finalize_numbers(
     burned_this_round: i128,
     pps: i128,
@@ -448,6 +454,10 @@ pub fn finalize_numbers(
     let locked_after = assets_after
         .checked_sub(wclaims)
         .ok_or(Error::InvalidAmount)?;
+    // `checked_sub` catches the wrap, not the sign. Both are refused.
+    if locked_after < 0 {
+        return Err(Error::InvalidAmount);
+    }
     Ok((wclaims, locked_after))
 }
 
