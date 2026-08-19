@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Operational scripts. DEV3 owns this package; verify-environment.ts is DEV2's (DEV-PROTOCOL §3).",
+  "description": "Operational scripts. DEV3 owns this package; verify-environment.ts is DEV2's (DEV-PROTOCOL \u00a73).",
   "scripts": {
     "verify-environment": "node --experimental-strip-types verify-environment.ts",
-    "lint": "echo \"(no linter configured yet — DEV3's, 06-TEST-PLAN §8)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "echo \"(nothing to build)\"",
     "test": "echo \"(no tests yet)\""

@@ -16,3 +16,15 @@ mutants.out*/
 fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
+
+# TypeScript build output. `packages/common` compiles to `dist/` so that Node can import it from
+# `node_modules` — type-stripping does not apply under `node_modules`, so a built artifact is the
+# only thing a workspace consumer can require.
+#
+# It is ignored for a second reason that is not merely hygiene: `dist/networks.js` contains the
+# network passphrase, because `networks.ts` is the one file allowed to (06-TEST-PLAN §8). Committing
+# build output would put that literal at a path the network-agnostic check does *not* exempt, and the
+# check would be correct to reject it. The check itself reads `git ls-files`, so it never sees an
+# uncommitted `dist/` either — belt and braces, in opposite directions.
+dist/
+*.tsbuildinfo
