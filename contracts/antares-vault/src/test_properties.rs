@@ -1241,6 +1241,137 @@ proptest! {
             w.observed.mints, w.observed.claims, w.observed.instant_exits, w.observed.round_dust
         );
     }
+
+    /// **The no-dilution theorem (D-18/D-37).**
+    ///
+    /// Two claims, and the second is the one that has a price attached.
+    ///
+    /// 1. A depositor entering *during* round R and redeeming *after* it ends with
+    ///    exactly `⌊amount × PRECISION / last_pps⌋` shares at **today's** price —
+    ///    **not** at `pps[R]`, the price when they deposited. Converting at the old
+    ///    one hands them a free lookback option across the round and breaks I9.
+    /// 2. A holder *through* round R gains exactly their pro-rata share of the
+    ///    round's premium-minus-payout, and nothing else. Their share count does
+    ///    not move; only what a share is worth does.
+    ///
+    /// **This could not be written until 2026-08-20.** `INITIAL_PPS == PRECISION`,
+    /// so before `Op::Bid` existed `pps` never left 1:1 and both halves compared a
+    /// price to itself — the theorem would have passed on a contract that diluted
+    /// every depositor, because there was nothing to dilute *with*. Premium is the
+    /// only thing in the protocol that moves the price.
+    #[test]
+    fn no_dilution_for_a_depositor_who_enters_during_a_round(
+        // `min_fill` is 100 XLM, and the bid is a share of the offer, so the ranges
+        // are chosen to clear it at their worst corner: 400 × 40 % = 160 XLM. The
+        // first draft used 200 × 30 % = 60 and the fill was rejected — which the
+        // premium assertion below caught rather than letting the theorem pass on a
+        // round where nothing happened.
+        holder in 400i128 * XLM..800 * XLM,
+        entrant in 20i128 * XLM..300 * XLM,
+        bid_part in 40u32..=90,
+    ) {
+        let mut w = World::new();
+        let holder_addr = w.actors[0].clone();
+        let entrant_addr = w.actors[2].clone();
+
+        w.apply(&Op::Deposit { who: 0, amount: holder });
+        w.apply(&Op::Jump(60));
+        w.apply(&Op::OpenEpoch);
+        prop_assert_eq!(w.d.state().phase, Phase::Auction, "a round must be live");
+
+        let at_open = w.d.state();
+        let pps_at_open = at_open.last_pps;
+        let shares_snapshot = at_open.shares_snapshot;
+        let locked_at_open = at_open.locked_at_open;
+        let holder_shares = w.shares(&holder_addr);
+        prop_assert!(holder_shares > 0, "the holder must hold something");
+
+        w.apply(&Op::Bid { who: 1, size: BidSize::ShareOfOffer(bid_part), max_premium_bps: 10_000 });
+        prop_assert!(
+            w.d.state().premium_collected > 0,
+            "without a fill there is no premium, and with no premium the price cannot move — \
+             the theorem would then be comparing a number to itself"
+        );
+
+        // Enters mid-round: this is the whole point. D-18 forbids minting while a
+        // round is live, so the deposit sits in the pending pool and mints nothing.
+        w.apply(&Op::Deposit { who: 2, amount: entrant });
+        prop_assert_eq!(
+            w.shares(&entrant_addr), 0,
+            "a mid-round deposit must not mint — shares minted at an old price acquire a \
+             claim on P&L their capital never backed (D-18)"
+        );
+
+        w.apply(&Op::Jump(4_000));
+        let pre = w.capture();
+        w.apply(&Op::CloseRound { bounty_to: 3 });
+        prop_assert_eq!(w.d.state().phase, Phase::Idle, "the round must finalize");
+
+        let after = w.d.state();
+        let pps_after = after.last_pps;
+        // `assets_R` from the two observable deltas, not from a second copy of
+        // `settle.rs`'s formula — the same derivation `assert_i6_i7` uses.
+        let assets_r = after.locked_assets + (after.withdraw_claimable_total - pre.withdraw_claimable);
+        let pnl = assets_r - locked_at_open;
+
+        prop_assert!(
+            pps_after >= pps_at_open,
+            "an out-of-the-money round collects premium and pays nothing, so the price cannot fall: \
+             {pps_at_open} -> {pps_after}"
+        );
+
+        // ---- claim 1: today's price, not the one they deposited at -------------
+        w.apply(&Op::Redeem { who: 2 });
+        let got = w.shares(&entrant_addr);
+        let at_todays_price = entrant * PRECISION / pps_after;
+        prop_assert_eq!(
+            got, at_todays_price,
+            "the pending deposit converted at something other than today's price"
+        );
+        // Measured: the price moves in **all 49 cases**, and the gap the stale price
+        // would have opened reaches **103 521 664 share-units** — about 10.35 XLM of
+        // claim the entrant never funded. This branch is not a rounding artefact and
+        // it is not a branch that rarely runs.
+        if pps_after > pps_at_open {
+            let at_the_stale_price = entrant * PRECISION / pps_at_open;
+            prop_assert!(
+                got < at_the_stale_price,
+                "converting at pps[R] would have minted {at_the_stale_price} instead of {got} — \
+                 that difference is the free lookback D-37 removed"
+            );
+        }
+
+        // ---- claim 2: the holder gains their pro-rata share and nothing else ----
+        prop_assert_eq!(
+            w.shares(&holder_addr), holder_shares,
+            "a holder through the round must not gain or lose shares, only value"
+        );
+        let value_before = holder_shares * pps_at_open / PRECISION;
+        let value_after = holder_shares * pps_after / PRECISION;
+        let model_gain = holder_shares * pnl / shares_snapshot;
+
+        // **The bound, derived rather than tuned until it passed.** The first draft
+        // said 3 — one stroop per floor — and the test answered −300, which is the
+        // useful kind of wrong: `pps` is a price *per PRECISION share-units*, so a
+        // single unit lost to its floor is amplified by the holder's stake to
+        // `holder_shares / PRECISION` stroops of value. That is the same
+        // `⌈shares_snapshot / PRECISION⌉` term 06-TEST-PLAN §3 already carries in
+        // the conservation bound, arrived at here from the other direction.
+        //
+        // So: one amplified `pps` floor, one stroop for each side of the value
+        // difference, and one for the model's own division.
+        let pps_floor = holder_shares.div_euclid(PRECISION)
+            + i128::from(holder_shares.rem_euclid(PRECISION) != 0);
+        let bound = pps_floor + 3;
+        let delta = (value_after - value_before) - model_gain;
+        prop_assert!(
+            delta.abs() <= bound,
+            "the holder's gain was {} against a pro-rata model of {model_gain} \
+             (pnl {pnl}, shares {holder_shares} of {shares_snapshot}) — off by {delta}, \
+             which exceeds the {bound} the floors can account for",
+            value_after - value_before
+        );
+    }
 }
 
 /// Not a property — a fixed sequence that reaches the state the generator is

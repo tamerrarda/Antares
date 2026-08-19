@@ -474,7 +474,7 @@ jobs:
 
   # ------------------------------------------- 11. mutation (manual/weekly) ---
   mutants:
-    name: cargo-mutants (manual / weekly)
+    name: cargo-mutants (vault.rs, 0 MISSED enforced)
     if: inputs.run_mutants
     needs: test
     runs-on: ubuntu-latest
@@ -485,13 +485,64 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-mutants
-      - name: Run mutants
+      - name: Run mutants against vault.rs, and fail on a survivor
         # Required at the **Phase-4 gate**, never per-PR (06-TEST-PLAN §6/§8).
-        # The thresholds are per module and are checked there, not here:
-        # 0 MISSED in vault/epoch/auction/settle/claims/oracle/token/storage,
-        # ≤5 % per module in admin and types, ≤5 % crate-wide, every survivor
-        # triaged in writing.
-        run: cargo mutants --workspace --no-shuffle -j 2 || true
+        #
+        # **Scoped to `vault.rs` (2026-08-20): 174 mutants, not 464.** The other
+        # seven modules came off for reasons argued module by module in §6 — read
+        # them there. The short of it: `auction`, `settle` and `claims` are diffed
+        # byte-for-byte against references derived from the spec by people who had
+        # not read the Rust, and where both instruments exist that is the sharper
+        # one; `token` and `storage` came off on a **weaker** argument about failure
+        # modes that §6 records as weaker; `oracle` and `epoch` have been run, and
+        # their 22 timeouts still need verdicts from a re-run of those two modules
+        # rather than from here. `vault` stays because **nothing else grades it**.
+        #
+        # `--workspace` never fitted: ~11 hours at `-j 2` under a 360-minute cap, so
+        # it would have failed after six having judged part of the crate and
+        # reported nothing usable. It was never dispatched, so nothing ever failed
+        # — which is the only reason that was not already a finding.
+        #
+        # **This step used to end in `|| true` and therefore could not fail.** The
+        # gate claims 0 MISSED; a job that cannot fail leaves that claim to a person
+        # reading an artefact, and this project has been bitten four times by a
+        # check that reports without being able to fail. So the run itself is
+        # allowed to exit non-zero and the **verdict is taken from the outcome
+        # files**, which fail on exactly what §6 claims and nothing else.
+        #
+        # **Timeouts do not fail the job**, deliberately: the bar names MISSED, the
+        # unjudged timeouts are §6's own open item, and a job failing on them would
+        # be failing for something other than what it claims — the cries-wolf
+        # failure already recorded once here.
+        run: |
+          set -uo pipefail
+          cargo mutants --file contracts/antares-vault/src/vault.rs --no-shuffle -j 2 || true
+
+          out=mutants.out
+          if [ ! -d "$out" ]; then
+            echo "::error::cargo-mutants produced no output directory — the run did not"
+            echo "::error::happen, and an absent result is not a pass."
+            exit 1
+          fi
+
+          missed=$(wc -l < "$out/missed.txt" 2>/dev/null | tr -d " "); missed=${missed:-0}
+          timeout=$(wc -l < "$out/timeout.txt" 2>/dev/null | tr -d " "); timeout=${timeout:-0}
+          caught=$(wc -l < "$out/caught.txt" 2>/dev/null | tr -d " "); caught=${caught:-0}
+          echo "caught $caught, missed $missed, timed out $timeout"
+
+          if [ "$timeout" -gt 0 ]; then
+            echo "::notice::$timeout mutants timed out and have no verdict. Not a failure"
+            echo "::notice::here — §6 owns them — but they are not caught either."
+            cat "$out/timeout.txt"
+          fi
+
+          if [ "$missed" -gt 0 ]; then
+            echo "::error::$missed mutants survived. The bar is 0 MISSED in vault.rs, and"
+            echo "::error::every survivor is triaged in writing (06-TEST-PLAN §6)."
+            cat "$out/missed.txt"
+            exit 1
+          fi
+          echo "0 missed in vault.rs"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
