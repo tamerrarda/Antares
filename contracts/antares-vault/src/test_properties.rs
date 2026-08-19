@@ -173,6 +173,12 @@ struct Observed {
     withdraw_claimable: i128,
     bidder_claimable: i128,
     fee_claimable: i128,
+    /// How many times I9 was checked **with a real shareholder present** — Idle,
+    /// and supply above `DEAD_SHARES`. An assertion behind a phase guard is
+    /// vacuous whenever the guard never opens, so the count is asserted rather
+    /// than assumed. Measured once at 418 of 1 029 Idle checks across the suite;
+    /// what matters per case is that it is not zero.
+    i9_backed: usize,
 }
 
 struct World {
@@ -267,6 +273,53 @@ impl World {
             .bidder_claimable
             .max(st.bidder_claimable_total);
         self.observed.fee_claimable = self.observed.fee_claimable.max(st.fee_claimable);
+    }
+
+    /// **I9**: while Idle, `locked_assets × PRECISION ≥ shares_outstanding × last_pps`.
+    ///
+    /// Named in 06-TEST-PLAN, relied on by a subtraction two modules away, and
+    /// until now asserted nowhere — the review that found it was looking at
+    /// `open_epoch`'s snapshot as the input to every later `pps`, which is where
+    /// the dependency actually lives.
+    ///
+    /// What rests on it: `void` finalizes with `assets_after = locked_at_open`
+    /// and `pps = last_pps`, so `locked_assets = locked_at_open − burned × pps`.
+    /// That subtraction is checked, so if I9 were ever false the round would not
+    /// corrupt — it would become **unfinalizable**, taking I8's unpausable exit
+    /// and I10's always-reachable terminal outcome with it. A liveness cliff is
+    /// the one failure a solvency assertion cannot see, which is why I1 running
+    /// green next to it proved nothing about this.
+    ///
+    /// Idle-only by construction: mid-round `locked_assets` is frozen at
+    /// `locked_at_open` while `last_pps` still describes the previous round, so
+    /// the comparison is not meaningful until the round closes.
+    fn assert_i9(&mut self, after: &str) {
+        let st = self.d.state();
+        if st.phase != Phase::Idle {
+            return;
+        }
+        if st.shares_outstanding > DEAD_SHARES {
+            self.i9_backed_seen();
+        }
+        let backing = st
+            .locked_assets
+            .checked_mul(PRECISION)
+            .expect("I9's left side overflowed i128, which §8's bounds forbid");
+        let owed = st
+            .shares_outstanding
+            .checked_mul(st.last_pps)
+            .expect("I9's right side overflowed i128, which §8's bounds forbid");
+        assert!(
+            backing >= owed,
+            "I9 violated after {after}: locked {} × PRECISION = {backing} does not cover              {} shares at last_pps {} = {owed}. Every instant withdrawal in this state is              now underfunded, and `void` can no longer finalize.",
+            st.locked_assets,
+            st.shares_outstanding,
+            st.last_pps,
+        );
+    }
+
+    fn i9_backed_seen(&mut self) {
+        self.observed.i9_backed += 1;
     }
 
     /// **I5**: `Σ balance(user) == shares_outstanding`, over the closed set of
@@ -381,12 +434,14 @@ proptest! {
         let mut w = World::new();
         w.assert_i1("genesis");
         w.assert_i5("genesis");
+        w.assert_i9("genesis");
 
         for (i, op) in ops.iter().enumerate() {
             w.apply(op);
             let label = format!("op {i}: {op:?}");
             w.assert_i1(&label);
             w.assert_i5(&label);
+            w.assert_i9(&label);
         }
 
         // The three terms this phase can move must actually have moved, or the
@@ -419,12 +474,14 @@ proptest! {
         prop_assert_eq!(w.d.state().phase, Phase::Auction, "the forced prefix must open a round");
         w.assert_i1("forced open");
         w.assert_i5("forced open");
+        w.assert_i9("forced open");
 
         for (i, op) in ops.iter().enumerate() {
             w.apply(op);
             let label = format!("live-round op {i}: {op:?}");
             w.assert_i1(&label);
             w.assert_i5(&label);
+            w.assert_i9(&label);
         }
 
         prop_assert!(w.observed.round > 0, "no round was ever live");
@@ -442,13 +499,22 @@ proptest! {
             w.apply(&Op::Deposit { who: i % ACTORS, amount: *amt });
             w.assert_i1("deposit");
             w.assert_i5("deposit");
+            w.assert_i9("deposit");
         }
         for (i, part) in parts.iter().enumerate() {
             w.apply(&Op::RequestWithdraw { who: i % ACTORS, part: *part, require_idle: false });
             w.assert_i1("withdraw");
             w.assert_i5("withdraw");
+            w.assert_i9("withdraw");
         }
         prop_assert!(w.observed.locked > 0, "no deposit ever landed");
+        // This walk never opens a round, so every state above is Idle and the
+        // deposit above put real shares behind it — which makes zero here a
+        // broken harness, not a quiet case.
+        prop_assert!(
+            w.observed.i9_backed > 0,
+            "I9 was never checked with a shareholder present — the assertion ran vacuously"
+        );
     }
 }
 

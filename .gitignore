@@ -23,3 +23,51 @@ mutants.out*/
 fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
+
+# TypeScript build output. `packages/common` compiles to `dist/` so that Node can import it from
+# `node_modules` — type-stripping does not apply under `node_modules`, so a built artifact is the
+# only thing a workspace consumer can require.
+#
+# It is ignored for a second reason that is not merely hygiene: `dist/networks.js` contains the
+# network passphrase, because `networks.ts` is the one file allowed to (06-TEST-PLAN §8). Committing
+# build output would put that literal at a path the network-agnostic check does *not* exempt, and the
+# check would be correct to reject it. The check itself reads `git ls-files`, so it never sees an
+# uncommitted `dist/` either — belt and braces, in opposite directions.
+dist/
+*.tsbuildinfo
+
+# Python bytecode from the differential reference. Build output, like dist/ and target/.
+__pycache__/
+*.py[cod]
+
+# Property-test snapshots carry no review signal, and committing them broke the
+# gate that reviews the others.
+#
+# `proptest` seeds from entropy, so the 145 files under `test_properties/` record
+# a different generated call sequence on every run. Committed, they turned
+# `cargo test` into a 200 000-line diff and made CI's snapshot job fail
+# unconditionally — and a gate that always fires teaches everyone to skip the
+# 198 deterministic snapshots where it genuinely works.
+#
+# The seed is deliberately *not* pinned. Freezing it would make these files
+# meaningful, at the price of turning an invariant suite that hunts for inputs
+# nobody thought of into 48 fixed examples. For I1 and I5 the hunting is the
+# point. The artefact worth keeping is `proptest-regressions/` — written only
+# when a property actually fails, and committed, because that seed is the bug.
+#
+# DEV1 and DEV3 reached this rule independently on the same day and from opposite
+# ends: DEV3 measured it (two runs, one machine, no code change, 145 files with
+# different content both times) and DEV1 reasoned it from what the suite is for.
+# DEV1's text is the one kept, because the seed question is theirs and their
+# answer is better than the alternative DEV3 had offered — "pinning it would turn
+# an invariant hunt into 48 fixed examples" is the argument nobody had made.
+contracts/*/test_snapshots/test_properties/
+
+# The generated vector corpus is built on demand, never committed.
+#
+# It is proptest output, so it differs every run — the same reason
+# contracts/*/test_snapshots/test_properties/ is untracked. A corpus is regenerated, not reviewed;
+# what gets reviewed is the strategy in test_vectors.rs. Build one with:
+#
+#   ANTARES_VECTOR_DUMP=$PWD/test-vectors/generated cargo test -p antares-vault generated_vectors
+test-vectors/generated/

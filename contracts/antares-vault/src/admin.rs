@@ -19,7 +19,10 @@
 use soroban_sdk::{contractimpl, Address, Env};
 
 use crate::errors::Error;
-use crate::events::{FeeChanged, FeeRecipientChanged, ParamsChanged, Paused, Unpaused};
+use crate::events::{
+    AllowedChanged, AllowlistToggled, FeeChanged, FeeRecipientChanged, ParamsChanged, Paused,
+    Unpaused,
+};
 use crate::storage;
 use crate::types::EpochParams;
 use crate::vault::{enter, validate_params};
@@ -124,6 +127,57 @@ impl AntaresVault {
             new: recipient,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    // Inert past `allowlist_expires_at`, and by construction rather than by a
+    // check. `bid` gates on `allowlist_enabled && now < allowlist_expires_at`, so
+    // once the timestamp passes there is nothing this setter can do to close the
+    // vault again — which is what makes the permissionless path a property rather
+    // than an operational promise (D-63). §4 keeps the call *legal* past the
+    // expiry rather than rejecting it: code to refuse a call that already does
+    // nothing is the worse trade, and it would invite the reading that the gate is
+    // still live.
+    //
+    // The reasoning is a `//` and the doc line is one line, per D-70 — which I
+    // wrote and then broke here on the first function after it. The eight-line
+    // `///` this replaces cost 516 bytes of the 1 021 this setter measured.
+    /// Turn the bidder allowlist on or off. Inert once the expiry has passed.
+    pub fn set_allowlist_enabled(env: Env, enabled: bool) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        ctx.config.allowlist_enabled = enabled;
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        AllowlistToggled { enabled }.publish(&env);
+        Ok(())
+    }
+
+    // Writes `Allowed(bidder)`, which `bid` reads and bumps on check (03-STORAGE-TTL
+    // §2 rule 4). Revoking removes the entry rather than storing `false`, so a
+    // never-allowed bidder and a revoked one are the same state and cost the same
+    // rent — there is no third answer for the allowlist to disagree with itself
+    // about.
+    //
+    // No §11 address check: `bid` already refuses the contract's own address, so
+    // allowlisting it would be inert, and a second guard for an unreachable case
+    // is surface without a rejection behind it.
+    /// Add or remove one bidder from the allowlist. Inert once the expiry has passed.
+    pub fn set_allowed(env: Env, bidder: Address, allowed: bool) -> Result<(), Error> {
+        // Not `mut`: this is the one setter that writes no `Config` field. The
+        // allowlist is per-bidder persistent state, which is why revoking can
+        // remove the entry rather than having to store a negative.
+        let ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        storage::set_allowed(&env, ctx.rent, &bidder, allowed);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        AllowedChanged { bidder, allowed }.publish(&env);
         Ok(())
     }
 }

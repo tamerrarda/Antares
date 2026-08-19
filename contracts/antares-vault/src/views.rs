@@ -18,6 +18,7 @@
 
 use soroban_sdk::{contractimpl, Address, Env};
 
+use crate::auction;
 use crate::errors::Error;
 use crate::storage;
 use crate::types::{
@@ -109,13 +110,27 @@ impl AntaresVault {
             notional_offered: state.notional_offered,
             notional_sold: state.notional_sold,
             premium_collected: state.premium_collected,
-            // Phase 3. The field is wired to DEV3's decay curve when `auction.rs`
-            // merges; it is **not** reimplemented here, because a second copy of
-            // the curve would be diffed by nothing — `curve_ref.py` mirrors
-            // `auction.rs`, so a duplicate living here sits outside every layer
-            // that would catch it drifting. It is 0 outside the auction window
-            // in any case, which is what this returns until then.
-            current_premium_bps: 0,
+            // Wired to the curve, 2026-08-19 (DEV3), when `auction.rs` landed.
+            //
+            // **A call, never a copy** — the reason DEV1 left this at 0 rather
+            // than reimplementing it: a second copy of the curve would be diffed
+            // by nothing, since `curve_ref.py` mirrors `auction.rs`, so a
+            // duplicate here sits outside every layer that would catch it
+            // drifting. Note what that means for the test that pins this field:
+            // asserting `current_premium_bps == curve(now)` **cannot** tell a call
+            // from an identical copy — both agree on day one and diverge only
+            // later — and the mutation gate cannot either, because mutating a
+            // duplicate breaks this view's own test and so counts as covered.
+            // Only reading the code catches it. Hence the structural rule that
+            // goes with the equality: **`views.rs` performs no arithmetic on
+            // `premium_start_bps` or `premium_floor_bps`.** It performs none.
+            //
+            // `state` is passed with its **stored** phase, not the effective one
+            // computed above, and the two cannot disagree here: a stored
+            // `Auction` past `auction_end` is exactly the case the curve already
+            // answers 0 for on the window test, so lazy finalization does not
+            // need to be modelled twice.
+            current_premium_bps: auction::premium_bps(&state, env.ledger().timestamp()),
             locked_assets: state.locked_assets,
             shares_outstanding: state.shares_outstanding,
             last_pps: state.last_pps,
@@ -212,13 +227,13 @@ impl AntaresVault {
         }
     }
 
+    //
+    // A zeroed struct for an address that never filled — **not** an error. The
+    // Claims page scans rounds looking for money owed, so "no fill" is its
+    // ordinary answer and must be cheap and unambiguous; an error would make the
+    // common case indistinguishable from a malformed call. `RoundNotFound` is
+    // still returned for a round that never existed.
     /// What one bidder holds in one round.
-    ///
-    /// A zeroed struct for an address that never filled — **not** an error. The
-    /// Claims page scans rounds looking for money owed, so "no fill" is its
-    /// ordinary answer and must be cheap and unambiguous; an error would make the
-    /// common case indistinguishable from a malformed call. `RoundNotFound` is
-    /// still returned for a round that never existed.
     pub fn bidder_position(env: Env, round: u32, bidder: Address) -> Result<BidderPosition, Error> {
         let (_, state) = load(&env);
         if round == 0 || round > state.round {
@@ -247,10 +262,10 @@ impl AntaresVault {
         })
     }
 
+    //
+    // Not an error for the live round: a live round has no price yet, and
+    // erroring would make "not settled" indistinguishable from "does not exist".
     /// A finalized round's recorded price. A live round returns `last_pps`.
-    ///
-    /// Not an error for the live round: a live round has no price yet, and
-    /// erroring would make "not settled" indistinguishable from "does not exist".
     pub fn price_per_share(env: Env, round: u32) -> Result<i128, Error> {
         let (_, state) = load(&env);
         match storage::get_round(&env, round) {
@@ -260,21 +275,21 @@ impl AntaresVault {
         }
     }
 
+    //
+    // Deliberately excludes pending deposits (not yet shares), claimable
+    // balances (already owed to someone) and raw donations (belong to nobody).
+    // External tooling reads this as TVL, which is why it is pinned rather than
+    // convenient.
     /// Capital actually backing shares.
-    ///
-    /// Deliberately excludes pending deposits (not yet shares), claimable
-    /// balances (already owed to someone) and raw donations (belong to nobody).
-    /// External tooling reads this as TVL, which is why it is pinned rather than
-    /// convenient.
     pub fn total_assets(env: Env) -> i128 {
         let (_, state) = load(&env);
         state.locked_assets
     }
 
+    //
+    // Does **not** imply a mint is currently possible: minting happens only in
+    // the idle window (D-18), and not at all while the vault is worthless.
     /// Indicative conversion at the last settled price.
-    ///
-    /// Does **not** imply a mint is currently possible: minting happens only in
-    /// the idle window (D-18), and not at all while the vault is worthless.
     pub fn convert_to_shares(env: Env, assets: i128) -> i128 {
         let (_, state) = load(&env);
         if state.last_pps == 0 {

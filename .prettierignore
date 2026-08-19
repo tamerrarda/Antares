@@ -1,0 +1,29 @@
+# Generated or vendored
+dist/
+node_modules/
+target/
+pnpm-lock.yaml
+Cargo.lock
+plan
+contracts/
+deployments/
+
+# Markdown is deliberately NOT formatted by prettier.
+#
+# `docs/*` and the root README are **public-facing and take two sign-offs, never one**
+# (DEV-PROTOCOL §3), and reflowing them would produce a large diff in documents whose review is about
+# their claims. A formatter is a code-style gate; it has no business rewriting a sentence that three
+# people agreed on.
+*.md
+
+# scripts/verify-environment.ts is DEV2's file inside DEV3's tree (DEV-PROTOCOL §3's carve-out).
+# Reformatting it would be editing another developer's file to satisfy a gate they never agreed to,
+# so it is excluded until DEV2 says otherwise — it is one `prettier --write` away from being included
+# and that is DEV2's call, not mine.
+scripts/verify-environment.ts
+
+# The generated vector corpus. Two hundred machine-written files, rebuilt on demand and never
+# committed (see .gitignore), so there is nothing for a formatter to keep tidy — and checking them
+# would put a slow, always-changing set in front of a gate whose value is that it is fast and
+# stable. The four hand-written vectors beside them ARE checked.
+test-vectors/generated/

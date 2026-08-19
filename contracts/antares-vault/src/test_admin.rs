@@ -375,3 +375,116 @@ fn a_non_admin_cannot_repoint_the_fee() {
     d.env.set_auths(&[]);
     d.client().set_fee_recipient(&next);
 }
+
+// ============================== the allowlist ==================================
+//
+// Phase 3 rather than Phase 5, because DEV3's `bid` allowlist tests need them and
+// so does 06-TEST-PLAN's D-63 case: **re-enabling the allowlist after
+// `allowlist_expires_at` must be inert**, and that is a rule you cannot test
+// without a setter that tries.
+//
+// **D-63's rule has two halves and they are in two files.** The half here is that
+// the call stays *legal* past the expiry rather than being rejected — §4 chose
+// that deliberately, because code refusing a call that already does nothing is
+// the worse trade and would invite the reading that the gate is still live. The
+// other half is that `bid` ignores the flag past the expiry, and that lives with
+// `bid`. **DEV3: the second assertion is yours, and neither half is the rule on
+// its own** — mine could pass with a gate that never expired, and yours could
+// pass with a setter that refused.
+
+#[test]
+fn the_allowlist_toggles_and_each_direction_is_its_own_event() {
+    let d = deploy();
+
+    d.client().set_allowlist_enabled(&false);
+    let off = d.env.events().all().events().to_vec();
+    assert!(
+        !d.env
+            .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap())
+            .allowlist_enabled
+    );
+
+    d.client().set_allowlist_enabled(&true);
+    let on = d.env.events().all().events().to_vec();
+    assert_ne!(off, on, "the two directions must be distinguishable");
+}
+
+/// D-63, this side of it: past the expiry the setter is **inert, not forbidden**.
+/// The gate that can end this project cannot be frozen by inaction, and it also
+/// cannot be re-closed by an admin who changed their mind.
+#[test]
+fn re_enabling_the_allowlist_after_the_expiry_is_legal_and_changes_nothing_that_matters() {
+    let d = deploy();
+    let expiry = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap())
+        .allowlist_expires_at;
+
+    d.client().set_allowlist_enabled(&false);
+    d.advance(expiry + 1_000);
+
+    // Legal. It writes the flag and says so, and there is no error for it.
+    d.client().set_allowlist_enabled(&true);
+    let cfg = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    assert!(cfg.allowlist_enabled, "the flag is set");
+    assert!(
+        d.env.ledger().timestamp() > cfg.allowlist_expires_at,
+        "and the expiry has passed, so `bid` reads the gate as open regardless — \
+         which is DEV3's assertion to make, not one this file can reach"
+    );
+
+    // The third leg — that nothing can move the expiry back — is **not asserted
+    // here, because it is not assertable here.** It is the absence of a setter,
+    // and a test cannot observe a function that was never written. My first draft
+    // did try: a `SURFACE_HAS_EXPIRY_SETTER: bool = false` const and an assert
+    // that it was false. That is a test that cannot fail, which is this project's
+    // signature bug wearing my own initials. The real invariant is that
+    // `allowlist_expires_at` is written once, in `__constructor`, and that *is*
+    // checkable — CI's `write-once-fields` job greps for any other assignment and
+    // fails on it. If you are reading this because that job fired, D-63 is what
+    // it is defending.
+}
+
+#[test]
+fn a_bidder_is_added_and_revoking_removes_the_entry_rather_than_storing_false() {
+    let d = deploy();
+    let bidder = soroban_sdk::Address::generate(&d.env);
+
+    d.client().set_allowed(&bidder, &true);
+    assert!(d
+        .env
+        .as_contract(&d.vault, || crate::storage::is_allowed(&d.env, &bidder)));
+
+    d.client().set_allowed(&bidder, &false);
+    assert!(!d
+        .env
+        .as_contract(&d.vault, || crate::storage::is_allowed(&d.env, &bidder)));
+    assert!(
+        !d.env.as_contract(&d.vault, || d
+            .env
+            .storage()
+            .persistent()
+            .has(&crate::storage::DataKey::Allowed(bidder.clone()))),
+        "revoked and never-allowed are one state, so they cost the same rent and \
+         cannot disagree"
+    );
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn a_non_admin_cannot_toggle_the_allowlist() {
+    let d = deploy();
+    d.env.set_auths(&[]);
+    d.client().set_allowlist_enabled(&false);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn a_non_admin_cannot_allow_a_bidder() {
+    let d = deploy();
+    let bidder = soroban_sdk::Address::generate(&d.env);
+    d.env.set_auths(&[]);
+    d.client().set_allowed(&bidder, &true);
+}
