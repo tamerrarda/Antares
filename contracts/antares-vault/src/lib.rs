@@ -20,6 +20,7 @@ pub mod storage;
 pub mod token;
 pub mod types;
 pub mod vault;
+pub mod views;
 
 #[cfg(test)]
 mod test_accounting;
@@ -38,6 +39,9 @@ mod test_token;
 
 #[cfg(test)]
 mod test_types;
+
+#[cfg(test)]
+mod test_views;
 
 #[cfg(test)]
 mod test_vault;
