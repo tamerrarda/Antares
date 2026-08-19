@@ -88,6 +88,44 @@ fn settle_claim(
     Ok(())
 }
 
+// =================================================================================================
+// The two per-bidder amounts — extracted so the differential layer can reach them
+// =================================================================================================
+
+// `⌊notional × (spot − strike) / spot⌋`, or 0 at or below the strike — §5's *Bidder claims*.
+//
+// **The same formula `payout_total` uses, on this fill's notional**, which is what makes
+// `Σ per-bidder ≤ payout_total` hold: `Σ⌊xᵢ⌋ ≤ ⌊Σxᵢ⌋`, so the per-bidder floor dust stays in the
+// pool, in the vault's favour (§6, D-20). Recomputing rather than storing a per-bidder amount at
+// settlement is D-19's point — settlement is O(1) and touches no fill, so an attacker cannot make
+// it expensive by splitting across addresses.
+//
+// `checked_sub` although the branch already proves it cannot underflow: §8's bounds are proofs
+// about the *inputs*, and a checked op turns a violated proof into a revert rather than a wrapped
+// value.
+//
+// Extracted from `claim_payout` for the same reason `fill_amount` came out of `bid`: a replay
+// harness cannot call the inside of an entry point, and a term the differential layer cannot reach
+// is a term it does not cover. `claims_ref.py` decomposes it the same way.
+pub(crate) fn payout_for_fill(notional: i128, spot: i128, strike: i128) -> Result<i128, Error> {
+    if spot <= strike {
+        return Ok(0);
+    }
+    let intrinsic = spot.checked_sub(strike).ok_or(Error::InvalidAmount)?;
+    vault::mul_div_floor(notional, intrinsic, spot)
+}
+
+// The refund is the recorded premium, unchanged — **no arithmetic at all**, which is the point.
+//
+// Two bidders on a descending curve paid different rates, so any pro-rata split would silently
+// redistribute between them; and because each premium is an integer the same bid *added* to the
+// pool, the refunds sum to `premium_collected` with no residue. A function rather than a field
+// read so the reference has the same shape to diff against, and so the absence of rounding is
+// stated somewhere rather than inferred from its absence.
+pub(crate) fn refund_for_fill(premium_paid: i128) -> i128 {
+    premium_paid
+}
+
 #[contractimpl]
 impl AntaresVault {
     /// Collect what a settled round owes you on a fill you made in it.
@@ -106,19 +144,7 @@ impl AntaresVault {
         // in the pool, in the vault's favour (§6, D-20). Recomputing rather than storing a
         // per-bidder amount at settlement is D-19's whole point — settlement is O(1) and touches
         // no fill, so an attacker cannot make it expensive by splitting across addresses.
-        let payout = if record.settled_spot > record.strike {
-            // `checked_sub` although the branch already proves it cannot underflow. §8's bounds
-            // are proofs about the *inputs*, and a checked op is what turns a violated proof into
-            // a revert rather than a wrapped value — the same reason `bid`'s `remaining` is
-            // checked behind a guard that makes it safe.
-            let intrinsic = record
-                .settled_spot
-                .checked_sub(record.strike)
-                .ok_or(Error::InvalidAmount)?;
-            vault::mul_div_floor(fill.notional, intrinsic, record.settled_spot)?
-        } else {
-            0
-        };
+        let payout = payout_for_fill(fill.notional, record.settled_spot, record.strike)?;
 
         // §16: a zero-payout settled round answers `NothingToClaim` and the `Fill` stays unclaimed
         // forever, which is correct and costs the vault nothing. Note what it does *not* do — it
@@ -158,7 +184,7 @@ impl AntaresVault {
         // bid *added* to the pool, `Σ refunds == premium_collected` with no residue. That is
         // stronger than §6's aggregate-dust rule, which is about payouts: the void branch is the
         // one place `bidder_claimable_total` provably drains to exactly zero.
-        let refund = fill.premium_paid;
+        let refund = refund_for_fill(fill.premium_paid);
         if refund == 0 {
             return Err(Error::NothingToClaim);
         }

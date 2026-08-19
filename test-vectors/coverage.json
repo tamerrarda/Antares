@@ -1,24 +1,27 @@
 {
   "_why": [
-    "Which sections of the canonical replay document BOTH sides can produce today.",
+    "Which parts of the canonical replay document BOTH sides can produce today.",
     "",
     "The differential layer lands module by module: curve_ref.py mirrors auction.rs, settle_ref.py",
-    "mirrors settle.rs and finalize_round, claims_ref.py mirrors claims.rs. The Python side has all",
-    "three; the Rust side has whichever replays exist. So the diffable scope is smaller than the",
-    "Python document for as long as that is true, which 06-TEST-PLAN §5 and D-22's deadline rule",
-    "both require rather than merely tolerate.",
+    "mirrors settle.rs and finalize_round, claims_ref.py mirrors claims.rs and claim_withdraw. The",
+    "Python side has all three; the Rust side has whichever replays exist.",
     "",
-    "This file is the single home for that scope, and it is self-checking in both directions:",
-    "run_vectors.py --out emits exactly these sections, and test_vectors.rs asserts that what it",
-    "emits is exactly these sections. Adding a Rust replay without widening this list fails the",
-    "Rust test; widening the list without adding the replay fails the diff. Neither side can drift",
-    "from it silently, which is the property a hand-maintained scope would not have.",
+    "Entries are PATHS, not whole sections, and that granularity is load-bearing rather than",
+    "fussy. claims_ref returns per_bidder AND withdraw_claims: the first is claim_payout and",
+    "claim_refund, which are DEV3's and exist; the second is claim_withdraw, which is DEV1's, and",
+    "it needs pps from a settle replay that does not exist yet. Declaring the whole section would",
+    "claim coverage of a half nobody has replayed - the silent-subset defect this file exists to",
+    "prevent, one level down.",
     "",
-    "To widen: add the section here in the same commit as the Rust replay that produces it."
+    "Self-checking in both directions: run_vectors.py --out emits exactly these paths, and",
+    "test_vectors.rs asserts that what it emits is exactly these paths. Adding a Rust replay",
+    "without widening this list fails the Rust test; widening it without the replay fails the diff.",
+    "",
+    "To widen: add the path here in the same commit as the Rust replay that produces it."
   ],
-  "sections": ["curve_ref"],
+  "sections": ["curve_ref", "claims_ref.per_bidder"],
   "not_yet_replayed_in_rust": {
     "settle_ref": "needs finalize_round driven from a Rust replay - DEV1/DEV2",
-    "claims_ref": "needs claims.rs, which DEV3 has not written yet"
+    "claims_ref.withdraw_claims": "needs claim_withdraw (DEV1's) and pps from a settle replay; DEV3 computing the formula here would be a third derivation that nothing diffs"
   }
 }

@@ -28,11 +28,12 @@ extern crate std;
 
 use std::string::{String as StdString, ToString};
 use std::vec::Vec as StdVec;
-use std::{fs, vec};
+use std::{format, fs, vec};
 
 use serde_json::{json, Map, Value};
 
 use crate::auction::{fill_amount, premium_bps, premium_for_fill};
+use crate::claims::{payout_for_fill, refund_for_fill};
 use crate::types::{EpochParams, Phase, State};
 
 fn u64_at(v: &Value, key: &str) -> u64 {
@@ -224,6 +225,57 @@ fn replay_curve(vector: &Value) -> Value {
     })
 }
 
+/// Replay the bidder half of the claims section through `claims.rs`'s own functions.
+///
+/// **`per_bidder` only.** `claims_ref.py` also produces `withdraw_claims`, which is
+/// `claim_withdraw`'s arithmetic — DEV1's, and it needs `pps` from a settle replay that does not
+/// exist yet. Computing that formula here instead would be a **third** derivation of it, diffed by
+/// nothing, which is the objection that kept the curve out of `views.rs`. `coverage.json` declares
+/// the path rather than the section for exactly this reason.
+///
+/// Order follows the vector's fills, which is what `claims_ref` iterates, so the two documents are
+/// comparable element by element rather than as sets.
+///
+/// A zero amount is **listed, not omitted**: §12 distinguishes an address owed nothing (a zeroed
+/// `BidderPosition`) from one that was never there (`RoundNotFound`), and collapsing the two would
+/// make an out-of-the-money settled round indistinguishable from a lapse.
+fn replay_claims(vector: &Value, curve: &Value) -> Value {
+    let outcome = vector["outcome"]["kind"].as_str().unwrap_or("");
+    let strike = i128_at(&vector["open"], "strike");
+    let spot = vector["outcome"]
+        .get("spot")
+        .and_then(Value::as_i64)
+        .map(i128::from)
+        .unwrap_or(0);
+
+    // The previous stage's product, never the vector's `expected` block. Reading the hand-written
+    // answer here is exactly the break DEV3 raised against `claims_ref` last block, and it would be
+    // no better on this side of the diff.
+    let empty = vec![];
+    let fills = curve["fills"].as_array().unwrap_or(&empty);
+
+    let mut per_bidder: StdVec<Value> = vec![];
+    for fill in fills {
+        let bidder = fill["bidder"].as_str().expect("bidder").to_string();
+        let notional = i128::from(fill["notional"].as_i64().expect("notional"));
+        let premium_paid = i128::from(fill["premium_paid"].as_i64().expect("premium_paid"));
+
+        let amount = match outcome {
+            "settled" => payout_for_fill(notional, spot, strike).expect("payout"),
+            "voided" => refund_for_fill(premium_paid),
+            // A lapse has no fills by construction, and an unresolved round owes bidders nothing
+            // (D-59: premium retained, payout zero). Neither reaches a per-bidder amount.
+            _ => continue,
+        };
+        per_bidder.push(json!({
+            "bidder": bidder,
+            "amount": i64::try_from(amount).expect("amount fits i64"),
+        }));
+    }
+
+    json!({ "per_bidder": per_bidder })
+}
+
 fn vector_dir() -> std::path::PathBuf {
     // CARGO_MANIFEST_DIR is contracts/antares-vault.
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -251,8 +303,10 @@ fn replay_all() -> Value {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         let vector: Value = serde_json::from_str(&fs::read_to_string(&path).expect("read"))
             .unwrap_or_else(|e| panic!("{name} is not valid JSON: {e}"));
+        let curve = replay_curve(&vector);
         let mut entry = Map::new();
-        entry.insert("curve_ref".to_string(), replay_curve(&vector));
+        entry.insert("claims_ref".to_string(), replay_claims(&vector, &curve));
+        entry.insert("curve_ref".to_string(), curve);
         entry.insert("vector".to_string(), Value::String(name));
         out.push(Value::Object(entry));
     }
@@ -289,21 +343,30 @@ fn vector_replay() {
     // without widening the manifest fails here — and widening the manifest without adding the
     // replay fails the diff itself. Neither side can drift from it silently, which a
     // hand-maintained scope would not give.
-    let declared = declared_sections();
+    let mut declared = declared_sections();
+    declared.sort();
     for entry in document.as_array().expect("array") {
-        let mut emitted: StdVec<StdString> = entry
-            .as_object()
-            .expect("object")
-            .keys()
-            .filter(|k| *k != "vector")
-            .cloned()
-            .collect();
+        // Paths, not top-level keys: `claims_ref.per_bidder` is declared and
+        // `claims_ref.withdraw_claims` is not, so a section-level check would pass while half the
+        // section went unreplayed.
+        let mut emitted: StdVec<StdString> = vec![];
+        for (key, value) in entry.as_object().expect("object") {
+            if key == "vector" {
+                continue;
+            }
+            match value.as_object() {
+                Some(inner) if key.ends_with("_ref") && key == "claims_ref" => {
+                    for sub in inner.keys() {
+                        emitted.push(format!("{key}.{sub}"));
+                    }
+                }
+                _ => emitted.push(key.clone()),
+            }
+        }
         emitted.sort();
-        let mut want = declared.clone();
-        want.sort();
         assert_eq!(
-            emitted, want,
-            "this replay emits {emitted:?} but test-vectors/coverage.json declares {want:?} — \
+            emitted, declared,
+            "this replay emits {emitted:?} but test-vectors/coverage.json declares {declared:?} — \
              widen the manifest in the same commit as the replay that earns it"
         );
     }

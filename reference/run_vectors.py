@@ -179,6 +179,26 @@ def replay(name: str, vector: dict) -> dict:
     }
 
 
+def project(result: dict, paths: list[str]) -> dict:
+    """Keep exactly the declared paths, which may name a key inside a section.
+
+    Path granularity rather than whole sections, because `claims_ref` splits across two owners:
+    `per_bidder` is `claim_payout`/`claim_refund` and exists in Rust, while `withdraw_claims` is
+    `claim_withdraw` and needs a settle replay for `pps`. Emitting the whole section would claim
+    coverage of a half nobody replayed.
+    """
+    out: dict = {"vector": result["vector"]}
+    for path in paths:
+        head, _, tail = path.partition(".")
+        if head not in result:
+            continue
+        if tail:
+            out.setdefault(head, {})[tail] = result[head][tail]
+        else:
+            out[head] = result[head]
+    return out
+
+
 def canonical(document: object) -> str:
     """JSON that two implementations can emit identically without sharing a formatter."""
     return json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
@@ -257,9 +277,7 @@ def main(argv: list[str] | None = None) -> int:
         sections = [s for s in sections if s == f"{args.only}_ref"] or [f"{args.only}_ref"]
 
     if args.out is not None:
-        results = [
-            {"vector": r["vector"], **{k: r[k] for k in sections if k in r}} for r in results
-        ]
+        results = [project(r, sections) for r in results]
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(canonical(results))
         print(f"replayed {len(results)} vector(s) -> {args.out}")
