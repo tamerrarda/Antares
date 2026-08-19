@@ -102,23 +102,31 @@ jobs:
   # ------------------------------------------------- 1b. static source rules ---
 
   static-rules:
-    name: static rules (D-70, D-63)
+    name: static source rules (one script, runnable locally)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Rules a reviewer will not re-derive
-        # Both rules were already written down and both had already decayed by the
-        # time this job existed — D-70 by eight sites worth 1 453 bytes, in a
-        # contract with four figures of headroom left. The script says what each
-        # rule defends and where it stops; read it rather than this comment.
+      - name: Every source rule a grep can decide
+        # Seven rules: D-70's doc budget, D-63's write-once field, D-50's
+        # network-agnostic build, 03-STORAGE-TTL's temporary() ban, 07-SECURITY
+        # §3's outbound markers and §6's secret scan, and workflow key uniqueness.
+        # The script says what each defends and where it stops; read it rather
+        # than this comment.
         #
-        # Its own failure modes are the ones this project keeps producing, so both
-        # rules were run against a tree with a violation planted in each and were
-        # seen to exit 1 before this job was written. A check nobody has watched
-        # fail is a check nobody has tested.
+        # The greps used to be a second job here. They were correct and they were
+        # unrunnable without spending a CI run, which is the objection the IP-only
+        # CI policy could not survive — so they moved into the script instead and
+        # the job they lived in is gone. One job, one script, one command.
+        #
+        # The last rule is why the others can be trusted locally: a second job
+        # keyed `static-rules` was added beside this one, GitHub rejected the file,
+        # and `yaml.safe_load` called it valid both times because it keeps the last
+        # of a duplicate pair. Every rule here was run against a tree with a
+        # violation planted in it and seen to exit 1; that one was seen to fail on
+        # the real defect.
         run: python3 scripts/ci/static_rules.py
 
   # ------------------------------------------------------------- 2. clippy ---
@@ -212,77 +220,12 @@ jobs:
         with:
           python-version: "3.12"
       - name: Replay the shared vectors against both implementations
-        # DEV3's draft, taken with one change — and the change is the reason they
-        # were blocked, so it is stated rather than applied quietly.
-        #
-        # Their both-or-neither guard is exactly right and is kept: a job named
-        # "vector diff" that replays one side and exits 0 is the defect this
-        # layer exists to prevent, and the empty-output check is the same defect
-        # one level down — a missing document is not a match.
-        #
-        # **What changed: the two missing-side cases are not symmetric.** D-22's
-        # deadline rule is directional — a module's reference is authored *before
-        # its Rust merges*, and DEV-PROTOCOL §4 says that where the two collide
-        # "the merge waits, not the reference". So:
-        #
-        #   * Rust present, Python absent → **error**. That is the violation: the
-        #     Rust exists and its independent derivation does not, which is the
-        #     state the reading rule cannot survive.
-        #   * Python present, Rust absent → **notice**. That is the state the plan
-        #     *mandates* for a whole phase. Failing here would have made CI red
-        #     from the moment `settle_ref.py` landed until Phase 4, which is why
-        #     DEV3 was holding `run_vectors.py` — and a gate that fails on the
-        #     sequence the plan requires is the fourth instance of this project's
-        #     characteristic bug, not a safety measure.
-        #
-        # The diff itself is a Phase-4 gate either way, and byte-for-byte with no
-        # tolerance when both sides are present.
-        run: |
-          set -euo pipefail
-          py=reference/run_vectors.py
-          rs=contracts/antares-vault/src/test_vectors.rs
+        # The logic is in scripts/ci/vector_diff.sh so the section-close checklist
+        # runs exactly what CI runs. DEV3's both-or-neither guard is kept verbatim
+        # inside it; the directional asymmetry is the one change, and it is
+        # explained there rather than here.
+        run: bash scripts/ci/vector_diff.sh
 
-          if [ ! -f "$py" ] && [ ! -f "$rs" ]; then
-            echo "::notice::Neither side of the differential layer exists yet."
-            echo "::notice::settle_ref.py is authored in Phase 2; curve_ref.py and claims_ref.py in"
-            echo "::notice::Phase 3; the Rust replay and this diff are a Phase-4 gate."
-            exit 0
-          fi
-
-          if [ ! -f "$py" ]; then
-            echo "::error::The Rust replay exists and the Python reference does not."
-            echo "::error::D-22's deadline runs the other way: a reference is authored BEFORE the"
-            echo "::error::Rust it mirrors merges, and where the two collide the merge waits."
-            echo "::error::A reference written after the Rust exists is one nobody can trust."
-            exit 1
-          fi
-
-          if [ ! -f "$rs" ]; then
-            echo "::notice::Python reference present, Rust replay not written yet — which is the"
-            echo "::notice::order D-22 requires, not a gap. The diff becomes mandatory at the"
-            echo "::notice::Phase-4 gate; until then this job proves the reference at least parses."
-            python3 -c "import ast,sys; ast.parse(open('$py').read())"
-            echo "reference parses; nothing to diff against yet"
-            exit 0
-          fi
-
-          mkdir -p target/vector-diff
-          python3 "$py" --out target/vector-diff/python.json
-          ANTARES_VECTOR_OUT="$PWD/target/vector-diff/rust.json" \
-            cargo test -p antares-vault test_vectors -- --nocapture
-
-          for side in python rust; do
-            if [ ! -s "target/vector-diff/$side.json" ]; then
-              echo "::error::the $side side produced no output; a missing document is not a match"
-              exit 1
-            fi
-          done
-
-          # Byte-for-byte, no tolerance — integer math must be identical (06-TEST-PLAN §5).
-          diff -u target/vector-diff/python.json target/vector-diff/rust.json
-          echo "vector diff: byte-identical"
-
-  # -------------------------------------------------------- 5. scout-audit ---
   scout-audit:
     name: scout-audit (opt-in, non-blocking)
     if: inputs.run_scout
@@ -378,214 +321,6 @@ jobs:
           tool: cargo-audit,cargo-deny
       - run: cargo audit --deny warnings
       - run: cargo deny check
-
-  # ---------------------------------------------- 7. the greps (Rust scope) ---
-  static-rules:
-    name: network-agnostic + temporary() + outbound calls (Rust scope)
-    needs: fmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: No network flags anywhere in the contracts (D-50)
-        # 06-TEST-PLAN §8 is the single home for this check's scope and its two
-        # exempt paths; read it there rather than from this copy. A build that
-        # *can* behave differently on two networks has already lost the property
-        # the audit rests on, and this grep is D-50's only enforcer.
-        #
-        # `#[cfg(test)]` is allowed and everything else is not: a feature is
-        # selectable at build time, `#[cfg(test)]` cannot be selected into a
-        # release wasm by any invocation (06-TEST-PLAN §8, amended 2026-08-18).
-        run: |
-          set -euo pipefail
-          fail=0
-
-          echo "--- #[cfg(...)] other than #[cfg(test)] ---"
-          if hits=$(grep -rnE '#!?\[cfg(_attr)?\(' contracts/ --include='*.rs' \
-                    | grep -vE '#!?\[cfg(_attr)?\(test[,)]' || true); [ -n "$hits" ]; then
-            echo "::error::Conditional compilation other than #[cfg(test)] in contracts/:"
-            echo "$hits"; fail=1
-          else
-            echo "none"
-          fi
-
-          echo "--- [features] tables in contract manifests ---"
-          if hits=$(grep -rn '^\[features\]' contracts/ --include='Cargo.toml' || true); [ -n "$hits" ]; then
-            echo "::error::A contract manifest declares features; with no features there is nothing for #[cfg(feature=…)] to select:"
-            echo "$hits"; fail=1
-          else
-            echo "none"
-          fi
-
-          echo "--- testnet / mainnet string literals ---"
-          if hits=$(grep -rniE '"[^"]*(testnet|mainnet)[^"]*"' contracts/ --include='*.rs' || true); [ -n "$hits" ]; then
-            echo "::error::A network name appears as a string literal in contract code:"
-            echo "$hits"; fail=1
-          else
-            echo "none"
-          fi
-
-          exit $fail
-
-      - name: Nothing value-bearing in temporary storage
-        # 03-STORAGE-TTL §1 states the enforceable form: the *absence of any*
-        # `temporary()` call in the codebase. A temporary entry that expires is
-        # a user who cannot reach their funds — it is not recoverable, unlike
-        # persistent archival.
-        run: |
-          set -euo pipefail
-          # Comment lines are stripped first. 03-STORAGE-TTL §1 states the rule as
-          # the absence of any `temporary()` **call**, and a comment is not a call —
-          # the plan explains this rule in prose in several places, and a check that
-          # reddens when somebody documents it is a check that gets switched off.
-          # Found the honest way: `test_storage.rs` explains why it never reaches for
-          # temporary storage, and that sentence broke this grep. The sentence stays
-          # where it is; it is now the fixture proving the fix.
-          if hits=$(grep -rn '\.temporary()' contracts/ --include='*.rs' \
-                     | grep -vE ':[[:space:]]*(//|/\*|\*)' || true); [ -n "$hits" ]; then
-            echo "::error::temporary() storage is used in the contracts:"
-            echo "$hits"; exit 1
-          fi
-          echo "no temporary() calls"
-
-      - name: Outbound contract calls target only Config.asset or Config.oracle
-        # 07-SECURITY §3's "arbitrary contract calls" row names grep as its
-        # verifier. Both addresses are fixed at construction and have no setter,
-        # so the allowlist is a closed set of two.
-        #
-        # SCOPE — the vault's non-test code, and 07-SECURITY §3 is the single home
-        # for it (written down 2026-08-19, after this check went red on correct
-        # code). The rule is about the VAULT: it is the vault that must be unable
-        # to call an address it was not constructed with. Run over `contracts/` as
-        # a whole the check rejects two kinds of correct code —
-        #   * `reflector-adapter`'s own `ReflectorClient::new(&env, &pinned)`,
-        #     which is the adapter's entire purpose, and
-        #   * every test that registers `MockPriceSource` and builds a client for
-        #     it, which is most of the oracle seam's test inventory and all of the
-        #     vault's Phase-2 tests.
-        # It rejected 12 such sites on run 32194442229. That is the failure
-        # 06-TEST-PLAN §8 already recorded once for `#[cfg(test)]`: a gate that
-        # fails on correct code is switched off within the week, and then nothing
-        # enforces this row at all.
-        #
-        # The adapter is covered instead by its no-setter surface assertion at
-        # deploy (09-DEPLOYMENT §2 step 2) and by 04-ORACLE §1's rule that no crate
-        # in its dependency graph may contain a `#[contract]`. Vault tests live in
-        # `test_*.rs`, which is what makes the exclusion checkable rather than a
-        # guess about where a `#[cfg(test)]` block starts.
-        #
-        # The check prints every call site it found, not just the verdict: a
-        # reviewer has to be able to see what was inspected, and a silent pass
-        # over a tree with no calls in it proves nothing.
-        #
-        # AMENDED 2026-08-19 by DEV1, reviewing DEV2's scoping fix: the accept
-        # pattern was the other half of the same defect, and two shapes of the
-        # test exclusion were too. All three reproduced before being claimed —
-        #   * `let asset = config.asset.clone(); TokenClient::new(env, &asset)`
-        #     was REJECTED, and that is the ordinary way the vault's own code
-        #     will be written;
-        #   * soroban's conventional `test.rs` was NOT excluded — only
-        #     `test_*.rs` was;
-        #   * an inline `#[cfg(test)] mod tests` in a production file was not
-        #     excluded at all, and inline test modules are idiomatic Rust.
-        #
-        # A grep cannot follow data flow, and the fix is to stop implying that it
-        # does. Every outbound client construction in the vault's non-test code
-        # carries an `// outbound: config.asset` or `// outbound: config.oracle`
-        # marker, on its own line or the line above. What the check then proves is
-        # not that the target is right — no regex can — but that **no call site
-        # reached the default branch without a human naming which of the two it
-        # is**, which is the claim a reviewer can actually check. 07-SECURITY §3
-        # is the single home for the rule.
-        #
-        # The file-based test exclusion stops being an assumption in the same
-        # stroke: the second step below asserts the vault's non-test files carry
-        # no `#[cfg(test)]` block at all, so "tests live in their own file" is
-        # enforced rather than trusted.
-        run: |
-          set -euo pipefail
-
-          # Every file list goes through this, and nothing is ever passed to a
-          # command by bare word-splitting. That is not style: this step was first
-          # verified by hand in zsh against ugrep, while it runs on the runner in
-          # bash against GNU grep, and `grep $files` behaves differently in the
-          # two. A check whose result depends on which shell ran it is not a check.
-          list_sources() {
-            find contracts/antares-vault/src -name '*.rs' \
-              | grep -vE '/(test|tests|test_[a-z0-9_]+)\.rs$' \
-              | sort
-          }
-
-          if [ -z "$(list_sources)" ]; then
-            echo "::error::No non-test sources found in the vault — the scope is wrong, not the tree."
-            exit 1
-          fi
-
-          echo "--- vault non-test sources inspected ---"
-          list_sources
-
-          # 1. Tests may not hide inside production files, or the file-based
-          #    exclusion above is a guess rather than a rule. The one permitted use
-          #    of the attribute is a *declaration* — `#[cfg(test)] mod test_x;` —
-          #    which pulls the tests in from their own file and is the shape this
-          #    rule exists to require. Checked against the next non-blank line
-          #    rather than the same line, because the two are conventionally
-          #    written apart and a same-line check rejects every correct
-          #    declaration in the repository.
-          bad_cfg=0
-          while IFS= read -r f; do
-            while IFS= read -r n; do
-              next=$(awk -v start="$n" 'NR > start && NF { print; exit }' "$f")
-              if ! printf '%s' "$next" \
-                   | grep -qE '^[[:space:]]*mod[[:space:]]+[a-z0-9_]+[[:space:]]*;'; then
-                echo "::error file=$f,line=$n::#[cfg(test)] here is an inline test module."
-                echo "::error file=$f,line=$n::Vault tests live in test.rs, tests.rs or test_*.rs —"
-                echo "::error file=$f,line=$n::that separation is what makes the exclusion checkable."
-                bad_cfg=1
-              fi
-            done < <(grep -nE '#!?\[cfg\(test\)\]' "$f" | cut -d: -f1)
-          done < <(list_sources)
-          [ "$bad_cfg" -eq 0 ] || exit 1
-
-          # 2. Every outbound client construction is declared. `-H` because grep
-          #    omits the filename when handed exactly one file, and the parsing
-          #    below reads field one as the path — latent today with three
-          #    sources, live the day two modules become one.
-          sites=$(list_sources | tr '\n' '\0' \
-                    | xargs -0 grep -nHE '[A-Za-z_]*Client::new\(' || true)
-          if [ -z "$sites" ]; then
-            echo "::notice::No cross-contract client construction in the vault yet — it gains its"
-            echo "::notice::SAC and oracle clients in Phase 2. This check is mandatory from there."
-            exit 0
-          fi
-          echo "--- call sites found ---"; echo "$sites"
-
-          undeclared=0
-          while IFS= read -r site; do
-            file=${site%%:*}; rest=${site#*:}; line=${rest%%:*}
-            here=$(sed -n "${line}p" "$file")
-            above=$(sed -n "$(( line > 1 ? line - 1 : 1 ))p" "$file")
-            if ! printf '%s\n%s\n' "$above" "$here" \
-                 | grep -qE '//[[:space:]]*outbound:[[:space:]]*config\.(asset|oracle)\b'; then
-              echo "::error file=$file,line=$line::Outbound client construction with no"
-              echo "::error file=$file,line=$line::'// outbound: config.asset' or '// outbound: config.oracle' marker."
-              undeclared=1
-            fi
-          done <<< "$sites"
-          [ "$undeclared" -eq 0 ] && echo "every outbound call site is declared"
-          exit "$undeclared"
-
-      - name: No CI secret carries signing authority over the admin
-        # 07-SECURITY §6, the repository half. This is a claim about this
-        # repository, so it is checked here rather than promised in prose: the
-        # workflows may not reference a secret that looks like a signing key.
-        run: |
-          set -euo pipefail
-          if hits=$(grep -rniE 'secrets\.[A-Za-z0-9_]*(ADMIN|SECRET_KEY|SEED|SIGNER|MNEMONIC|PRIVATE)' .github/ || true); [ -n "$hits" ]; then
-            echo "::error::A workflow references a secret that may carry signing authority:"
-            echo "$hits"; exit 1
-          fi
-          echo "no signing-capable secret referenced by any workflow"
 
   # ----------------------------------------------- 8. wasm build + size ------
   wasm:
