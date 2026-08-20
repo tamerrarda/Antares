@@ -185,9 +185,9 @@ deployment has not happened.
 
 | | Address | Wasm SHA-256 |
 |---|---|---|
-| **Vault** (fast-test, `aXLM-F`) | [`CAINKG5T…F247I2`](https://stellar.expert/explorer/testnet/contract/CAINKG5TO53UJJSB4AZGBCNLCE22ZSLLVY6QXYNPAVYRE2LXFVF247I2) | `ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83` |
+| **Vault** (fast-test, `aXLM-F`) | [`CDMB6D4S…ZCVYM75`](https://stellar.expert/explorer/testnet/contract/CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75) | `ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83` |
 | **Reflector adapter** (real feed) | [`CCZQF5WU…H2FQP`](https://stellar.expert/explorer/testnet/contract/CCZQF5WUF3LCGYONRGNLADUJZGYLOEXY7JBRRGCLDTHTHSL5GJOH2FQP) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
-| **Mock price source** (what the fast-test vault reads) | [`CDOLB2NV…6GCWD`](https://stellar.expert/explorer/testnet/contract/CDOLB2NV545X3RPGETL43ULCB2IT75K2VFB7G63KAIXH4NA2BQD6GCWD) | `908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402` |
+| **Mock price source** (what the fast-test vault reads) | [`CD2CWMXS…J6BG3QUA`](https://stellar.expert/explorer/testnet/contract/CD2CWMXSEMYN7PBRWM6BGBMIIWCPGCASVILSZADZUB4CFQCMJ6BG3QUA) | `908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402` |
 | Reflector CEX & DEX feed (theirs, not ours) | [`CCYOZJCO…MJRN63`](https://stellar.expert/explorer/testnet/contract/CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63) | — |
 
 The adapter and the vault are separate deployments made on different days, and the adapter is the
@@ -196,18 +196,22 @@ profile cannot use a feed whose tick is five minutes.
 
 ### Deployment transactions
 
-Deployer `GDFPSLES…EKBQQ`, 2026-08-20.
+Deployer `GDFPSLES…EKBQQ`, 2026-08-20, ledgers 4240379–4240388. The deploy script records these as it
+submits them, in `deployments/testnet.json`, because a testnet reset erases the transactions
+themselves and a hash not written down at submission cannot be recovered afterwards at all.
 
 | | Transaction |
 |---|---|
-| Mock price source created | [`e1a5071d…d4439`](https://stellar.expert/explorer/testnet/tx/e1a5071de8192278a266b6d26bcc4a8727ba8204d1393a23a8ec8b659b1d4439) |
-| Vault created | [`f26dd3be…11e5f`](https://stellar.expert/explorer/testnet/tx/f26dd3be59f540e7a3ca175eb5c9c309d42a0a8566145d541132a341c1b11e5f) |
-| Smoke deposit (`deposit`) | [`f96bc32e…ab38b`](https://stellar.expert/explorer/testnet/tx/f96bc32e2ce4444b6b8e7e7b1d73c2e3369b70cd9ab8d7d0483b41aa921ab38b) |
-| Smoke withdrawal (`request_withdraw`) | [`ac441e71…a1825`](https://stellar.expert/explorer/testnet/tx/ac441e711256add5f51d9d3ce89a3766151b898b77991e2f2ecf3b621f8a1825) |
+| Mock price source created | [`42421aeb…6a4a7`](https://stellar.expert/explorer/testnet/tx/42421aeb3477fb59ed2fcc615430b4bff530d2bef757ca878099550c07e6a4a7) |
+| Mock primed (`set_expires`) | [`aca95394…6f30eb`](https://stellar.expert/explorer/testnet/tx/aca953941dc21d30fea985bcae0edf2d19e99defa3f18b33522e74c02c6f30eb) |
+| Mock primed (`fill`) | [`d0dbb93f…00d830`](https://stellar.expert/explorer/testnet/tx/d0dbb93f24b203bbd8a8bdb16f6298987bd95ea8e48ef1678b6a3f428900d830) |
+| Vault created | [`ca5e8e32…b2df82`](https://stellar.expert/explorer/testnet/tx/ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82) |
+| Smoke deposit (`deposit`) | [`94e3265d…32fe45`](https://stellar.expert/explorer/testnet/tx/94e3265d65a417d188c6ec86dc1e4b504946e48cbac2f3626d3784172232fe45) |
+| Smoke withdrawal (`request_withdraw`) | [`1bfb3d89…3fd6a4`](https://stellar.expert/explorer/testnet/tx/1bfb3d89c9b0bb8f5a6714e9a0711aaae5fd293557dd475068a480e84c3fd6a4) |
 
 ### Reproducing the hashes
 
-The vault was built at commit `191bd739` and the adapter at `18dcef1a` — they were deployed on
+The vault wasm was built at commit `41090520` and the adapter at `18dcef1a` — they were deployed on
 different days and each record names its own. Both used Rust 1.95.0, `soroban-sdk =27.0.6`,
 `stellar-cli 27.1.0` and target `wasm32v1-none`, all pinned in the repository rather than restated
 here. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes; their
