@@ -230,6 +230,17 @@ export const PRECISION = 10_000_000n;
 /** One XLM in stroops — the smoke deposit's size, named because step 5 names it. */
 export const ONE_XLM = 10_000_000n;
 
+/**
+ * `types.rs`: `DEAD_SHARES`. The floor under total supply, and the reason a first deposit cannot
+ * round-trip whole.
+ *
+ * D-36: `mint` credits `minted - DEAD_SHARES` whenever `shares_outstanding == 0`, minting those
+ * shares to the vault itself where nobody can withdraw them — so the supply can never be driven
+ * back to zero and re-inflated against the next depositor. The first depositor pays for that floor
+ * out of their own deposit, permanently.
+ */
+export const DEAD_SHARES = 1_000n;
+
 // =================================================================================================
 // What the constructor was called with
 // =================================================================================================
@@ -677,18 +688,37 @@ export async function verifySmokeRoundTrip(
 
   const balanceBefore = await client.read<bigint>(opts.assetId, "balance", [opts.account]);
 
+  // Which case this is, derived from the vault rather than from a flag. D-36's floor is charged to
+  // the FIRST depositor only, so a battery that assumed one case would be wrong against the other —
+  // and "is this vault fresh" is a question the vault can answer.
+  const before = await client.read<EpochView>(vault, "epoch");
+  const isFirstDeposit = before.shares_outstanding === 0n;
+  const deadShares = isFirstDeposit ? DEAD_SHARES : 0n;
+  // Everything below is a DELTA against what the vault already held. The first draft compared
+  // against zero, which is only correct on a fresh vault — and step 5 is also the battery an
+  // operator re-runs after a testnet reset or an upgrade, when it is not.
+  const assetsBefore = await client.read<bigint>(vault, "total_assets");
+  const sharesBefore = before.shares_outstanding;
+
   // ---- in ---------------------------------------------------------------------------------------
   const dep = await client.invoke<bigint>(vault, "deposit", [opts.account, amount]);
   const minted = dep.value;
   checks.push(
     check(
       "smoke.shares_minted",
-      "an Idle deposit mints at INITIAL_PPS, so shares equal assets",
-      amount,
+      isFirstDeposit
+        ? "the first deposit mints at INITIAL_PPS less D-36's dead-share floor"
+        : "an Idle deposit mints at INITIAL_PPS, so shares equal assets",
+      amount - deadShares,
       minted,
-      minted === amount,
-      `Not a general law — it holds because price per share is still ${PRECISION} at genesis, ` +
-        "which epoch.last_pps above has already been asserted.",
+      minted === amount - deadShares,
+      isFirstDeposit
+        ? `D-36: "the very first deposit pays for the dead shares out of its own amount" ` +
+            `(vault.rs). ${DEAD_SHARES} shares are minted to the vault itself, where nobody can ` +
+            `withdraw them, so total supply can never be driven back to zero and re-inflated against ` +
+            `the next depositor. Shares equalling assets holds otherwise because price per share is ` +
+            `still ${PRECISION} at genesis, which epoch.last_pps above has already asserted.`
+        : `Holds because price per share is still ${PRECISION}, which epoch.last_pps asserted.`,
     ),
   );
   const depNames = eventNames(dep.events);
@@ -702,9 +732,11 @@ export async function verifySmokeRoundTrip(
     check(
       "smoke.total_assets_after_deposit",
       "the deposit is visible in total_assets()",
-      amount,
+      assetsBefore + amount,
       afterDeposit,
-      afterDeposit === amount,
+      afterDeposit === assetsBefore + amount,
+      "The whole deposit, dead shares included — they are shares nobody can redeem, not assets " +
+        "the vault never received.",
     ),
   );
 
@@ -718,12 +750,14 @@ export async function verifySmokeRoundTrip(
   checks.push(
     check(
       "smoke.round_trip_exact",
-      "a 1-XLM deposit and an instant Idle withdraw round-trip exactly",
-      amount,
+      "the round trip loses exactly the dead-share floor and not one stroop more",
+      amount - deadShares,
       paid,
-      paid === amount,
-      "The word step 5 uses is 'exactly'. A one-stroop shortfall here is a rounding loss in the " +
-        "share arithmetic, which is a solvency bug and is invisible to every read-only check.",
+      paid === amount - deadShares,
+      "§2 step 5 said 'round-trips exactly' until a real deploy showed that is unsatisfiable on a " +
+        "fresh vault (D-36). Sharpened rather than relaxed: an exact known loss still catches the " +
+        "rounding loss this exists for — a solvency bug invisible to every read-only check — while " +
+        "being true of the contract that ships.",
     ),
   );
   const wdNames = eventNames(wd.events);
@@ -742,16 +776,24 @@ export async function verifySmokeRoundTrip(
   // ---- and the vault is as it was found ---------------------------------------------------------
   const totalAfter = await client.read<bigint>(vault, "total_assets");
   checks.push(
-    check("smoke.total_assets_restored", "total_assets() is zero again", 0n, totalAfter, totalAfter === 0n),
+    check(
+      "smoke.total_assets_restored",
+      "the vault is back to what it held, plus the dead-share floor this deposit paid for",
+      assetsBefore + deadShares,
+      totalAfter,
+      totalAfter === assetsBefore + deadShares,
+      "Zero would mean the floor D-36 installs was withdrawable, which is the whole thing it is " +
+        "there to prevent.",
+    ),
   );
   const epochAfter = await client.read<EpochView>(vault, "epoch");
   checks.push(
     check(
       "smoke.shares_outstanding_restored",
-      "no shares are left outstanding",
-      0n,
+      "the only shares this round trip left behind are the dead ones",
+      sharesBefore + deadShares,
       epochAfter.shares_outstanding,
-      epochAfter.shares_outstanding === 0n,
+      epochAfter.shares_outstanding === sharesBefore + deadShares,
     ),
   );
   checks.push(
@@ -772,12 +814,15 @@ export async function verifySmokeRoundTrip(
   checks.push(
     check(
       "smoke.no_net_gain",
-      "the round trip did not pay the account more than it deposited",
-      `<= ${balanceBefore}`,
+      "the account is down by at least the dead-share floor, so nothing was over-paid",
+      `<= ${balanceBefore - deadShares}`,
       balanceAfter,
-      balanceAfter <= balanceBefore,
-      "Fees make the exact figure unpredictable, so this bounds the side that matters: a gain " +
-        "would mean the vault paid out assets it never received.",
+      balanceAfter <= balanceBefore - deadShares,
+      "Bounded against `before - DEAD_SHARES` rather than against `before`, and the difference is " +
+        "not pedantry: the floor leaves the account exactly that much down, so a bound at `before` " +
+        `would let an over-payment of up to ${DEAD_SHARES} stroops hide inside it. Fees make the ` +
+        "exact figure unpredictable, so this bounds the side that matters — a gain would mean the " +
+        "vault paid out assets it never received.",
     ),
   );
 

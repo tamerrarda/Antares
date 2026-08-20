@@ -156,3 +156,28 @@ test("a transaction hash is recognised and its absence is reported as absence", 
   // A contract id is not a transaction hash, and base32 must not be mistaken for hex.
   assert.equal(parseTxHash(VAULT), null);
 });
+
+test("a value that looks like a flag is passed with = , or clap eats it as an option", () => {
+  // Measured 2026-08-20: `--token_suffix -F` dies with "unexpected argument '-F' found", and every
+  // fast-test and --experiment suffix is exactly that shape. Negative i128 arguments too.
+  const argv = buildDeployArgv({
+    wasmPath: "x.wasm",
+    identity: "d",
+    net: NET,
+    constructorArgs: { token_suffix: "-F", deposit_cap: 5n },
+  });
+  const tail = argv.slice(argv.indexOf("--") + 1);
+  assert.deepEqual(tail, ["--token_suffix=-F", "--deposit_cap", "5"]);
+});
+
+test("the = form is used only where the ambiguity is, so ordinary failures stay readable", () => {
+  const argv = buildInvokeArgv({
+    contractId: VAULT,
+    method: "deposit",
+    identity: "d",
+    net: NET,
+    args: { from: "GUSER", amount: -1n },
+  });
+  const tail = argv.slice(argv.indexOf("--") + 1);
+  assert.deepEqual(tail, ["deposit", "--from", "GUSER", "--amount=-1"]);
+});
