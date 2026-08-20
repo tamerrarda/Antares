@@ -18,9 +18,18 @@
  * NETWORK VALUES ARE INPUTS, NEVER LITERALS. `06-TEST-PLAN.md` §8's TypeScript scope forbids a
  * hardcoded passphrase or contract address anywhere under `scripts/`, and exempts exactly
  * `packages/common/networks.ts` and `deployments/*.json` — the exemption is the point of the rule
- * rather than a hole in it. `packages/common/networks.ts` is DEV3's and does not exist yet, so
- * every value arrives through the environment and the measured record names what it used. When
- * that module lands this file reads it instead; nothing else changes.
+ * rather than a hole in it.
+ *
+ * **`packages/common/networks.ts` has landed and this file now reads it** — the promise the previous
+ * version of this comment made, and left outstanding for as long as the module took to arrive. A
+ * promise nobody redeems is how a file drifts from what it says about itself.
+ *
+ * Redeeming it brought a property the environment version did not have. `resolveNetwork` honours
+ * `RPC_URL` and **refuses a `NETWORK_PASSPHRASE` override**, deliberately: pointing at a different
+ * RPC for the same network is ordinary operations, while a passphrase override means describing one
+ * network and talking to another. This script signs nothing, so it cannot produce a signature for
+ * the wrong chain — but it *can* measure one network and write the other's name into a committed
+ * record, and `deployments/environment-testnet.json` is a file people are meant to recompute from.
  *
  * IT SIGNS NOTHING. Every call is a read-only `simulateTransaction`, so no secret key is involved
  * and no CI secret is needed. A source account is required only because a simulation must be
@@ -37,6 +46,8 @@ import {
   scValToNative,
   xdr,
 } from '@stellar/stellar-sdk';
+
+import { resolveNetwork, resolveRpcUrl } from '@antares/common/networks';
 
 // ---------------------------------------------------------------------------------------------
 // Constants that are *the design's*, restated here only so the gate can be computed. Each names
@@ -164,10 +175,13 @@ function need(name: string): string {
 
 function readEnv(argv: readonly string[]): Env {
   const jsonIdx = argv.indexOf('--json');
+  // `networks.ts` is the single home for every network value (08-OFFCHAIN §1). `NETWORK` selects,
+  // `RPC_URL` may override the endpoint, and the passphrase is **not** overridable — see the header.
+  const net = resolveNetwork(process.env);
   return {
-    network: need('NETWORK'),
-    rpcUrl: need('RPC_URL'),
-    passphrase: need('NETWORK_PASSPHRASE'),
+    network: net.name,
+    rpcUrl: resolveRpcUrl(net, process.env),
+    passphrase: net.networkPassphrase,
     reflectorId: need('REFLECTOR_ID'),
     assetSymbol: process.env['ASSET_SYMBOL']?.trim() ?? 'XLM',
     sourceAccount: process.env['SOURCE_ACCOUNT']?.trim() || undefined,
@@ -429,14 +443,60 @@ async function main(): Promise<void> {
     }
   }
 
-  const cutoffSeconds = deepestAnswering * resolution;
+  // -- The shortfall is confirmed before it fails, and the reason is not tolerance ----------------
+  //
+  // **This measurement has a race the contract does not have.** The feed's cap is defined against
+  // `last_timestamp`: it serves `price(t)` while `floor((last_timestamp - t) / res) <= 255`. This
+  // script reads `last_timestamp` once, in E-4, and then probes for as long as the sweep takes —
+  // measured at **13.1 s** for `--full`'s 268 points at concurrency 8. If the feed ticks inside
+  // that window, every depth computed from the old `last_timestamp` is one tick deeper against the
+  // new one, and the deepest probe answers `None` **on a feed that is exactly as deep as it should
+  // be**. At a 300 s tick that is a ~4.4 % chance per run — one in 23, and the observed shortfall
+  // rate is one in eighteen pooled across two developers.
+  //
+  // `reflector-adapter` cannot hit this. It reads `live_last_timestamp()` and calls `out_of_reach`
+  // **inside one invocation**, so both sides of the comparison come from the same ledger and
+  // `last_timestamp` cannot move between them. Zero margin is exact there; it is only a race here.
+  //
+  // So a shortfall re-measures against a freshly read `last_timestamp` before it is allowed to
+  // fail. This is not a retry that hides a failure — a genuine shortfall reproduces, and the
+  // re-measurement reports both readings so the distribution accumulates with use rather than
+  // needing its own campaign.
+  let confirmedAt = lastTimestamp;
+  let confirmedDeepest = deepestAnswering;
+  let raced = false;
+  if (deepestAnswering < RECORD_CAP_TICKS) {
+    const fresh = Number((await oracle.call('last_timestamp')).value);
+    if (Number.isFinite(fresh) && fresh !== lastTimestamp) raced = true;
+    confirmedAt = fresh;
+    let lo = 0;
+    let hi = RECORD_CAP_TICKS + 12;
+    const reprobe = async (k: number): Promise<boolean> =>
+      (await oracle.priceAt(fresh - k * resolution)).answered;
+    if (!(await reprobe(lo))) {
+      confirmedDeepest = -1;
+    } else {
+      while (hi - lo > 1) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (await reprobe(mid)) lo = mid;
+        else hi = mid;
+      }
+      confirmedDeepest = lo;
+    }
+  }
+
+  const cutoffSeconds = confirmedDeepest * resolution;
   const requiredSeconds = RECORD_CAP_TICKS * resolution;
   record(
     'E-6',
     `reachable-depth cutoff, to one tick, is >= ${RECORD_CAP_TICKS} x resolution()`,
     cutoffSeconds >= requiredSeconds ? 'PASS' : 'FAIL',
-    `deepest answering tick = ${deepestAnswering} -> ${hms(cutoffSeconds)} from last_timestamp; ` +
-      `required ${RECORD_CAP_TICKS} ticks = ${hms(requiredSeconds)}`,
+    `deepest answering tick = ${confirmedDeepest} -> ${hms(cutoffSeconds)} from last_timestamp; ` +
+      `required ${RECORD_CAP_TICKS} ticks = ${hms(requiredSeconds)}` +
+      (confirmedDeepest === deepestAnswering && !raced
+        ? ''
+        : `; first reading ${deepestAnswering} at last_timestamp ${lastTimestamp}, re-measured ` +
+          `${confirmedDeepest} at ${confirmedAt}${raced ? ' — the feed ticked mid-sweep, which is this script\'s race and not the contract\'s' : ''}`),
     'A shortfall is not a documentation nit. reach_limit = R - guard_window is derived from R = CAP x res, so if the ' +
       'true cutoff sits below R the adapter reaches past its own horizon: the oldest guard sample returns None, the ' +
       'valid count falls under 04-ORACLE §2 rule 2, and a HEALTHY feed produces Unusable — which is the void path.',
@@ -582,7 +642,7 @@ async function main(): Promise<void> {
     };
     add(prior.oracle.lastTimestamp, prior.oracle.resolution, prior.measurements.reachableDepthTicks,
         prior.measurements.tickCompletenessGaps);
-    add(lastTimestamp, resolution, deepestAnswering, gaps);
+    add(confirmedAt, resolution, confirmedDeepest, gaps);
 
     const sorted = [...answering].sort((a, b) => a - b);
     const lo = sorted[0] ?? 0;
@@ -597,7 +657,7 @@ async function main(): Promise<void> {
       completeness: expected > 0 ? answering.size / expected : 0,
       runs: [
         { at: prior.oracle.lastTimestamp, ticks: prior.measurements.reachableDepthTicks },
-        { at: lastTimestamp, ticks: deepestAnswering },
+        { at: confirmedAt, ticks: confirmedDeepest },
       ],
     };
     record(

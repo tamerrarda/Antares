@@ -299,6 +299,88 @@ fn a_sparse_window_is_stale_rather_than_a_void() {
     expect(&d, Error::OracleStale);
 }
 
+/// Force a usable reading with a chosen `newest_ts` and a chosen pair of TWAPs.
+///
+/// `ForceReading` rather than `fill`, and that is the whole point of these two tests: a *stale*
+/// mock feed produces `Unusable`, and `live_reading` maps `Unusable` to `OracleStale` before the
+/// staleness line is ever evaluated. Both existing `OracleStale` tests reject through that branch.
+fn force_live(d: &Deployed, newest_ts: u64, short_twap: i128, guard_twap: i128) {
+    oracle(d).set_mode(&Mode::ForceReading(OracleReading {
+        short_twap,
+        guard_twap,
+        newest_ts,
+        feed_decimals: 14,
+    }));
+}
+
+#[test]
+fn the_staleness_guard_rejects_at_its_own_line_and_the_bound_is_strict() {
+    // **Found by mutation, 2026-08-20.** `replace > with ==` and `replace > with >=` at
+    // `oracle.rs:271` both survived the whole suite, which says nothing about that line's logic and
+    // everything about its reachability: `a_stale_feed_does_not_fix_a_strike` lets the mock's
+    // records age, so the *adapter* answers `Unusable`, and `live_reading` maps `Unusable` to
+    // `OracleStale` at step 1 — several lines above the staleness comparison. **O-2's test was
+    // green for a different reason than the one it is named for**, and the guard it is named for
+    // had no test at all.
+    //
+    // Reaching the line needs a reading that is *usable* and *old*, which only `ForceReading` can
+    // produce, because a mock stale enough to fail step 2 has already failed rule 2.
+    let max = valid_params().max_staleness;
+
+    // Exactly at the bound is fresh enough — the comparison is strict. A `>=` here would refuse a
+    // reading precisely as fresh as the parameter permits.
+    let d = ready();
+    let now = d.env.ledger().timestamp();
+    force_live(&d, now - max, PX_1E7, PX_1E7);
+    assert!(
+        d.client().open_epoch(),
+        "an age of exactly max_staleness is admissible; `>` is strict and `>=` would throw a \
+         whole second of permitted freshness away"
+    );
+
+    // One second past the bound rejects, and it is this line that does it.
+    let d = ready();
+    let now = d.env.ledger().timestamp();
+    force_live(&d, now - max - 1, PX_1E7, PX_1E7);
+    expect(&d, Error::OracleStale);
+
+    // **Two cases, not three, and the reason is worth stating.** A "far past the bound" case looks
+    // necessary to separate `>` from `==` and is not: the at-bound case above kills *both* mutants
+    // on its own, because `>=` and `==` each fire at exactly `max_staleness` where the real guard
+    // does not, and that case asserts the round opens. The one-past case then confirms the guard
+    // actually rejects rather than merely being strict about nothing. A third case was written
+    // first, underflowed the test ledger's clock, and would have added no coverage had it run.
+}
+
+#[test]
+fn the_deviation_breaker_is_strict_at_its_own_bound() {
+    // **Found by mutation, 2026-08-20.** `replace > with >=` at `oracle.rs:297` survived because
+    // the existing breaker test sits at a 100 % divergence against a 1 % allowance — far enough
+    // past the bound that the bound itself is never exercised. A breaker that fires *at* its
+    // threshold rather than past it voids rounds a correctly-configured feed produces.
+    let max = i128::from(valid_params().max_deviation_bps);
+    let guard = PX_1E7;
+
+    // `deviation = |short − guard| × BPS / guard`, so a gap of `guard × max / BPS` is exactly `max`.
+    let at_bound = guard + guard * max / 10_000;
+    let d = ready();
+    let now = d.env.ledger().timestamp();
+    force_live(&d, now, at_bound, guard);
+    assert!(
+        d.client().open_epoch(),
+        "a deviation of exactly max_deviation_bps is admissible; the breaker fires strictly past it"
+    );
+
+    // One basis point past. Integer division floors, so the smallest gap that *reports* `max + 1`
+    // is `guard × (max + 1) / BPS` — computing it rather than adding one to the gap, which floors
+    // straight back to `max` and would have made this test agree with the mutant.
+    let past_bound = guard + guard * (max + 1) / 10_000;
+    let d = ready();
+    let now = d.env.ledger().timestamp();
+    force_live(&d, now, past_bound, guard);
+    expect(&d, Error::OracleDeviation);
+}
+
 #[test]
 fn the_deviation_breaker_fires_only_here_and_a_real_move_does_not_trip_it() {
     // O-3 and O-3b. The breaker exists for feed malfunction, not for markets: a single-tick
