@@ -10,7 +10,13 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import { failedIds } from "../lib/checks.ts";
-import { checkBindings, countMethods, type BindingsCheckInput } from "../generate-bindings.ts";
+import {
+  checkBindings,
+  countMethods,
+  newestSource,
+  repoRoot,
+  type BindingsCheckInput,
+} from "../generate-bindings.ts";
 
 const SOURCE = [
   "export class Client {",
@@ -34,6 +40,8 @@ const base: BindingsCheckInput = {
   pinnedCli: "27.1.0",
   wasmSha256: "a".repeat(64),
   wasmExports: 4,
+  wasmMtimeMs: 2_000,
+  newestSource: { path: "contracts/antares-vault/src/vault.rs", mtimeMs: 1_000 },
 };
 
 test("committed bindings identical to a fresh generation pass", () => {
@@ -82,6 +90,42 @@ test("the surface is counted against the wasm's exports, not against a document'
 test("a recorded wasm that is not the one built is its own finding", () => {
   const checks = checkBindings({ ...base, wasmSha256: "b".repeat(64) });
   assert.deepEqual(failedIds(checks), ["bindings.wasm_recorded"]);
+});
+
+// --- the precondition, which is the one that decides whether the rest means anything -------------
+//
+// Every assertion above compares against a wasm READ OFF THE DISK. If that artefact predates the
+// contract, all of them can pass while describing a build nobody ships — measured on 2026-08-20,
+// when this check reported five green assertions against a `vault.rs` that had since changed.
+
+test("a wasm older than a source that can change it is refused", () => {
+  const checks = checkBindings({ ...base, wasmMtimeMs: 500 });
+  assert.deepEqual(failedIds(checks), ["bindings.wasm_fresh"]);
+});
+
+test("equal mtimes pass — a build is not stale for finishing in the same millisecond", () => {
+  assert.deepEqual(failedIds(checkBindings({ ...base, wasmMtimeMs: 1_000 })), []);
+});
+
+test("with no sources to compare against, freshness is not claimed either way", () => {
+  const checks = checkBindings({ ...base, newestSource: null, wasmMtimeMs: 0 });
+  assert.deepEqual(failedIds(checks), []);
+  const fresh = checks.find((c) => c.id === "bindings.wasm_fresh");
+  assert.match(String(fresh?.expected), /no contract sources/);
+});
+
+test("staleness is reported separately from drift, because the fixes differ", () => {
+  // Stale wasm AND a hand edit: `stellar contract build` fixes one and `bindings:write` the
+  // other, and a reader who sees only one of them applies the wrong remedy.
+  const checks = checkBindings({ ...base, wasmMtimeMs: 500, regenerated: `${SOURCE}\n` });
+  assert.deepEqual(failedIds(checks).sort(), ["bindings.no_drift", "bindings.wasm_fresh"]);
+});
+
+test("newestSource finds the contract sources it claims to, and never looks in target/", () => {
+  const newest = newestSource(repoRoot());
+  if (newest === null) throw new Error("contracts/ has sources; finding none means the walk is broken");
+  assert.doesNotMatch(newest.path, /[/\\]target[/\\]/);
+  assert.match(newest.path, /\.(rs|toml|lock)$/);
 });
 
 test("countMethods counts client methods and not the noise around them", () => {
