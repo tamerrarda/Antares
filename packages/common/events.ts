@@ -260,6 +260,37 @@ export interface SettleBounty {
   readonly amount: bigint;
 }
 
+export interface WithdrawRequested {
+  readonly name: "withdraw_requested";
+  readonly user: string;
+  readonly round: number;
+  readonly shares: bigint;
+}
+
+export interface WithdrawClaimed {
+  readonly name: "withdraw_claimed";
+  readonly user: string;
+  readonly round: number;
+  readonly shares: bigint;
+  readonly amount: bigint;
+}
+
+export interface PendingRedeemed {
+  readonly name: "pending_redeemed";
+  readonly user: string;
+  readonly round: number;
+  readonly amount: bigint;
+  readonly shares: bigint;
+  readonly pps: bigint;
+}
+
+export interface DepositCancelled {
+  readonly name: "deposit_cancelled";
+  readonly user: string;
+  readonly round: number;
+  readonly amount: bigint;
+}
+
 export type DecodedEvent =
   | EpochOpened
   | BidFilled
@@ -337,6 +368,47 @@ const DECODERS: Readonly<Record<string, Decoder>> = {
   // roster derives from the event shape rather than a name list, so depositors join
   // it the day this lands — until now it saw bidders only, and depositors are the
   // larger half.
+  // **The withdrawal half of Phase 6a's chain.** The gate runs
+  // deposit -> open -> fill -> close -> premium -> withdrawal, and until these two
+  // existed the harness could not decode the step it ends on: `fetchSince` skipped
+  // them by name and returned the names, so nothing threw and the totals came out
+  // wrong by an unknown amount. DEV3 wrote the diff to refuse outright when a
+  // state-affecting event cannot be decoded, which is why the gate was closed rather
+  // than quietly incorrect.
+  withdraw_requested: (ev) => ({
+    name: "withdraw_requested",
+    user: asAddress(topic(ev, 1, "user"), "withdraw_requested user"),
+    round: asU32(field(ev.data, "round"), "withdraw_requested round"),
+    shares: asAmount(ev.data, "shares"),
+  }),
+
+  withdraw_claimed: (ev) => ({
+    name: "withdraw_claimed",
+    user: asAddress(topic(ev, 1, "user"), "withdraw_claimed user"),
+    round: asU32(field(ev.data, "round"), "withdraw_claimed round"),
+    shares: asAmount(ev.data, "shares"),
+    amount: asAmount(ev.data, "amount"),
+  }),
+
+  // Same list, same owner. `pending_redeemed` carries the price its shares were
+  // minted at, which is the field that makes a mid-round deposit's conversion
+  // auditable from events alone rather than only reproducible.
+  pending_redeemed: (ev) => ({
+    name: "pending_redeemed",
+    user: asAddress(topic(ev, 1, "user"), "pending_redeemed user"),
+    round: asU32(field(ev.data, "round"), "pending_redeemed round"),
+    amount: asAmount(ev.data, "amount"),
+    shares: asAmount(ev.data, "shares"),
+    pps: asAmount(ev.data, "pps"),
+  }),
+
+  deposit_cancelled: (ev) => ({
+    name: "deposit_cancelled",
+    user: asAddress(topic(ev, 1, "user"), "deposit_cancelled user"),
+    round: asU32(field(ev.data, "round"), "deposit_cancelled round"),
+    amount: asAmount(ev.data, "amount"),
+  }),
+
   deposited: (ev) => ({
     name: "deposited",
     user: asAddress(topic(ev, 1, "user"), "deposited user"),

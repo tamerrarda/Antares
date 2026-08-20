@@ -75,3 +75,11 @@ test-vectors/generated/
 # A dry run of scripts/deploy.ts writes its environment battery here. It is a rehearsal,
 # not evidence: `-deploy.json` (a real deploy) is committed, `-dryrun.json` never is.
 deployments/environment-*-dryrun.json
+
+# cargo-fuzz writes minimization output to the **working directory**, not to
+# `fuzz/artifacts/`, so the entry above does not cover it — these land at the repo
+# root. A crash input is a reproduction and belongs in a test rather than in the
+# tree, and the repository goes public for D1's evidence, where somebody running
+# `git add -A` would carry them in.
+/crash-*
+/minimized-from-*

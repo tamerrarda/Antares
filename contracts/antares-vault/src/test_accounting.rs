@@ -1033,3 +1033,65 @@ fn a_claim_worth_nothing_succeeds_and_moves_no_money() {
         "one event — the claim. A transfer of zero would be a second"
     );
 }
+
+/// **I8, from the sequence a fuzz run produced — and it proves the contract right
+/// rather than wrong.**
+///
+/// `fuzz_call_sequence` reported an I8 violation on this two-call sequence:
+///
+/// ```text
+/// ops = [Deposit { who, amount }, RequestWithdraw { who, part: 23 }]
+/// pause injected at index 0, i.e. before the deposit
+/// ```
+///
+/// The withdrawal succeeded unpaused and failed paused, which looks exactly like
+/// pause standing between someone and their money. It is not. **Pause legitimately
+/// blocks `deposit`** — it is a deposit-side control — so in the paused run the
+/// depositor never acquired shares, and a request for 23 % of nothing is refused
+/// for having nothing to refuse. I8 is a claim about funds the contract *already
+/// owes*; nothing was owed.
+///
+/// The harness's cross-run comparison is what is wrong, not the vault: it asserts
+/// that any I8-set call succeeding unpaused must succeed paused, without accounting
+/// for the state a legitimately-blocked deposit never created. Reported to DEV3,
+/// whose file it is. **This test pins the behaviour the harness meant to check**:
+/// with shares actually held, pause does not stand in the way.
+#[test]
+fn pause_does_not_block_a_withdrawal_of_shares_already_held() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+    d.client().deposit(&a, &(100 * XLM));
+
+    d.client().set_paused(&true);
+
+    // Deposits are refused — that is the control working.
+    assert_eq!(
+        d.client().try_deposit(&a, &(10 * XLM)),
+        Err(Ok(Error::Paused))
+    );
+
+    // The exit is not. This is I8: the money is already owed, and no admin switch
+    // may stand between the holder and it.
+    let before = d.balance(&a);
+    let out = d.client().request_withdraw(&a, &(23 * XLM), &false);
+    assert!(out > 0, "the paused vault still paid the exit");
+    assert_eq!(d.balance(&a), before + out);
+}
+
+#[test]
+fn a_withdrawal_of_nothing_is_refused_whether_or_not_the_vault_is_paused() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+
+    // The other half of the same finding: with no shares, the refusal is identical
+    // paused and unpaused. That symmetry is what shows the fuzz report was about
+    // the missing deposit and not about the pause.
+    let unpaused = d.client().try_request_withdraw(&a, &0, &false);
+    d.client().set_paused(&true);
+    let paused = d.client().try_request_withdraw(&a, &0, &false);
+    assert_eq!(
+        unpaused, paused,
+        "pause changes nothing when nothing is owed"
+    );
+    assert!(unpaused.is_err());
+}
