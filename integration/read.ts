@@ -172,6 +172,16 @@ export function addressOf(identity: string): string {
   return out;
 }
 
+/**
+ * What every mutation in this harness bids for inclusion, in stroops.
+ *
+ * 2 XLM against a base fee of 100, so it clears any plausible surge. It is a CEILING and not a
+ * charge — Stellar takes the market rate and refunds the difference — so the only thing this buys
+ * is that a run does not lose an eleven-minute round to a fee floor that rose between simulation
+ * and apply. It did, once, at stage 6 with both bids already filled.
+ */
+export const MAX_FEE_STROOPS = 20_000_000;
+
 export interface InvokeSpec {
   readonly contractId: string;
   readonly method: string;
@@ -187,6 +197,7 @@ const argvFor = (s: InvokeSpec): string[] =>
     identity: s.identity,
     net: s.net,
     args: s.args ?? {},
+    maxFee: MAX_FEE_STROOPS,
   });
 
 export function invoke(spec: InvokeSpec): { stdout: string; stderr: string } {

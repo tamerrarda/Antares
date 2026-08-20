@@ -189,6 +189,25 @@ export interface ReconstructedState {
   readonly holdings: bigint;
   /** Credited to somebody and not yet claimed. */
   readonly liabilities: bigint;
+  /**
+   * Premium taken in by a round that has not closed yet.
+   *
+   * **Held, but belonging to nobody.** Until the round finalizes it is not decided whether the
+   * premium goes to depositors (settle, lapse, unresolved) or back to the bidders (void), so it is
+   * neither vault assets nor a credit to a named party. `total_assets()` excludes it, measured on
+   * testnet 2026-08-21: the diff was over by exactly the open round's `premium_collected`, 5 237 068
+   * stroops, and nothing else.
+   */
+  readonly unsettledPremium: bigint;
+  /**
+   * Withdrawal-queue credits from finalization that have not been claimed.
+   *
+   * Tracked separately from {@link liabilities} because a `withdraw_claimed` must discharge a credit
+   * only if one exists. An **instant Idle** withdrawal never entered the queue — nothing credited it
+   * — so discharging on every claim drove liabilities NEGATIVE by the whole withdrawn amount, which
+   * is how the deploy's own smoke round trip put this reconstruction 9 999 000 stroops out.
+   */
+  readonly wclaimsOutstanding: bigint;
   /** The `pps` carried by the most recent finalization event; `null` before the first close. */
   readonly lastPps: bigint | null;
 
@@ -258,6 +277,8 @@ const EMPTY: ReconstructedState = {
   sharesOutstanding: 0n,
   holdings: 0n,
   liabilities: 0n,
+  unsettledPremium: 0n,
+  wclaimsOutstanding: 0n,
   lastPps: null,
   assumptions: [],
   unmodelled: [],
@@ -311,14 +332,15 @@ export function reconstruct(
         break;
 
       case "bid_filled":
-        // Premium is paid in at fill time (§11), so it is a holding immediately and belongs to
-        // nobody in particular until the round closes.
+        // Premium is paid in at fill time (§11), so it is a holding immediately — and it belongs to
+        // nobody in particular until the round closes, which is why it is also carried as unsettled.
         s = {
           ...s,
           notionalSold: e.notionalSoldAfter,
           notionalSoldSummed: s.notionalSoldSummed + e.notional,
           premiumCollected: s.premiumCollected + e.premium,
           holdings: s.holdings + e.premium,
+          unsettledPremium: s.unsettledPremium + e.premium,
         };
         break;
 
@@ -364,14 +386,20 @@ export function reconstruct(
         );
         break;
 
-      case "withdraw_claimed":
+      case "withdraw_claimed": {
+        // Discharges a queue credit ONLY as far as one exists. An instant Idle withdrawal never
+        // entered the queue, so there is nothing to discharge and the assets simply leave — which
+        // the first version of this got wrong, taking liabilities negative by the whole amount.
+        const discharged = e.amount < s.wclaimsOutstanding ? e.amount : s.wclaimsOutstanding;
         s = {
           ...s,
           holdings: s.holdings - e.amount,
-          liabilities: s.liabilities - e.amount,
+          liabilities: s.liabilities - discharged,
+          wclaimsOutstanding: s.wclaimsOutstanding - discharged,
           sharesOutstanding: s.sharesOutstanding - e.shares,
         };
         break;
+      }
 
       case "pending_redeemed":
         // The capital arrived at `deposited` and was counted then; this is the mint that was
@@ -392,6 +420,9 @@ export function reconstruct(
           closedBy: "settled",
           lastPps: e.pps,
           liabilities: s.liabilities + e.payoutTotal + e.fee + e.wclaims,
+          wclaimsOutstanding: s.wclaimsOutstanding + e.wclaims,
+          // Released to depositors — it is vault assets from this instant.
+          unsettledPremium: 0n,
         };
         break;
 
@@ -400,7 +431,11 @@ export function reconstruct(
           ...s,
           closedBy: "epoch_voided",
           lastPps: e.pps,
+          // The premium does not become vault assets on this branch — it becomes a debt to the
+          // bidders. Cleared as unsettled and re-entered as a named credit, so it never double-counts.
           liabilities: s.liabilities + e.premiumRefunded + e.wclaims,
+          wclaimsOutstanding: s.wclaimsOutstanding + e.wclaims,
+          unsettledPremium: 0n,
         };
         break;
 
@@ -413,6 +448,8 @@ export function reconstruct(
           closedBy: "epoch_unresolved",
           lastPps: e.pps,
           liabilities: s.liabilities + e.fee + e.wclaims,
+          wclaimsOutstanding: s.wclaimsOutstanding + e.wclaims,
+          unsettledPremium: 0n,
         };
         break;
 

@@ -148,6 +148,7 @@ export interface Options {
   readonly notionalB: bigint;
   readonly maxPremiumBps: number;
   readonly preflight: boolean;
+  readonly diffOnly: boolean;
 }
 
 export function parseOptions(argv: readonly string[], root: string): Options {
@@ -168,6 +169,7 @@ export function parseOptions(argv: readonly string[], root: string): Options {
     notionalB: BigInt(value("notional-b", "0")),
     maxPremiumBps: Number(value("max-premium-bps", "10000")),
     preflight: argv.includes("--preflight"),
+    diffOnly: argv.includes("--diff-only"),
   };
 }
 
@@ -903,6 +905,19 @@ export const STAGES: readonly Stage[] = [
 /** Stages 0–2 only: the state a round could start from, proved before spending eleven minutes. */
 export const PREFLIGHT_STAGES: readonly Stage[] = [stage0, stage1, stage2];
 
+/**
+ * The diff alone, against whatever history the vault already has.
+ *
+ * **The claim does not need a round of its own.** Stage 7b reads the event log from the vault's
+ * creation and compares it to `epoch()`; it does not care whether this process produced that
+ * history or somebody else did — which is the point, since an outsider did not produce it either.
+ * So a vault carrying a settled round, an unresolved round and a live one is a *better* subject
+ * than a fresh single round, and it costs two minutes rather than eleven.
+ *
+ * Stage 0 comes along because the diff needs the record's ids and the creation transaction.
+ */
+export const DIFF_ONLY_STAGES: readonly Stage[] = [stage0, stage7b];
+
 // =================================================================================================
 // Runner
 // =================================================================================================
@@ -1008,7 +1023,10 @@ export async function main(argv: readonly string[]): Promise<number> {
         `  06-TEST-PLAN §7 scenario 1, against a --fast-test deployment. Identity NAMES, never\n` +
         `  secrets (07-SECURITY §6). Create bidders with \`stellar keys generate --fund <name>\`.\n\n` +
         `  --preflight  stages 0-2 only: record, identities, allowlist and the feed. Run this\n` +
-        `               first; a full round is one epoch_duration and cannot be shortened.\n`,
+        `               first; a full round is one epoch_duration and cannot be shortened.\n` +
+        `  --diff-only  stage 7b alone, against whatever history the vault already has. The\n` +
+        `               reconstruction does not need a round of its own — it never cared who\n` +
+        `               produced the events.\n`,
     );
     return 2;
   }
@@ -1048,7 +1066,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   console.log(`  bidders   ${opts.bidderA}, ${opts.bidderB}`);
   console.log(opts.preflight ? `  --preflight: stages 0-2, nothing is opened\n` : "");
 
-  const stages = opts.preflight ? PREFLIGHT_STAGES : STAGES;
+  const stages = opts.diffOnly ? DIFF_ONLY_STAGES : opts.preflight ? PREFLIGHT_STAGES : STAGES;
   let failed = false;
   for (const stage of stages) {
     console.log(`\nstage ${stage.id} — ${stage.title}`);
@@ -1067,7 +1085,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   console.log(`\ntransactions this run submitted — the evidence, and all of it public:`);
   for (const t of ctx.txs) console.log(`  ${t.label.padEnd(24)} ${t.hash}`);
 
-  if (!opts.preflight) {
+  if (!opts.preflight && !opts.diffOnly) {
     console.log(`\nnot compared, and why (epoch() fields the event log cannot supply):`);
     for (const line of omissions()) console.log(`  - ${line}`);
   }

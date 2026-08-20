@@ -122,6 +122,17 @@ export function buildInvokeArgv(opts: {
   readonly args: Readonly<Record<string, unknown>>;
   /** `true` simulates without submitting — a read that costs nothing and signs nothing. */
   readonly readOnly?: boolean;
+  /**
+   * Maximum inclusion fee, in stroops. Omitted means the CLI's own default.
+   *
+   * **A bid, not a charge.** Stellar takes the market-clearing fee and refunds the rest, so raising
+   * this costs nothing when the network is quiet and is the only thing that helps when it is not.
+   * Measured 2026-08-20: a scenario run reached stage 6 with both bids filled and then lost the
+   * round to `TxInsufficientFee` on a mock `fill` — the CLI's default was below the ledger's floor
+   * by the time the transaction applied. Simulation cannot see that coming, because the floor moves
+   * between simulation and apply, which is the same gap D-84 is about one layer down.
+   */
+  readonly maxFee?: number;
 }): string[] {
   return [
     "contract",
@@ -134,6 +145,7 @@ export function buildInvokeArgv(opts: {
     opts.net.rpcUrl,
     "--network-passphrase",
     opts.net.networkPassphrase,
+    ...(opts.maxFee === undefined ? [] : ["--fee", String(opts.maxFee)]),
     ...(opts.readOnly === true ? ["--send=no"] : ["--send=yes"]),
     "--",
     opts.method,
