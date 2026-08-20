@@ -25,6 +25,11 @@ export default tseslint.config(
       "contracts/**",
       "plan/**",
 
+      // Machine output, byte-compared against a fresh generation. Linting it would report findings
+      // against code nobody wrote and cannot fix without breaking the comparison that makes the
+      // bindings trustworthy — see scripts/generate-bindings.ts.
+      "packages/bindings/src/**",
+
       // This file. Type-aware linting of the linter's own config needs types for `@eslint/js`, which
       // ships none, so the rules report unresolved-type errors against correct code. It is not
       // unchecked: prettier formats it, and if it were broken eslint could not start at all — which
