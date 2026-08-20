@@ -169,6 +169,57 @@ Beyond that: OpenZeppelin ships Soroban vault primitives, and established yield 
 
 **Prior art is not encouraging and we are not ignoring it.** Friktion and Katana ran this structure on Solana and shut down. Their contracts worked; their counterparty base was a handful of desks, and when those desks left, premium went to zero. The failure mode of this product category is counterparty concentration, not contract risk — which is why counterparty discovery is treated here as a first-class deliverable rather than an afterthought.
 
+## Live on testnet
+
+Everything below is verifiable without asking us. Each address links to an explorer; each wasm hash
+can be reproduced by building this repository at the commit named and comparing.
+
+**What is deployed today is a *mechanism* deployment, not the Phase-1 gate.** The vault runs on a
+fast-test profile — second-scale durations against a mock price source — which
+`09-DEPLOYMENT.md` §2 stamps **economically meaningless** and D-57 bars from ever being presented as
+demand evidence. It proves the state machine, not the market. The Phase-1 gate in the roadmap below
+asks for a closed epoch at parameters where fair value falls inside the auction's band, and that
+deployment has not happened.
+
+### Contracts
+
+| | Address | Wasm SHA-256 |
+|---|---|---|
+| **Vault** (fast-test, `aXLM-F`) | [`CAINKG5T…F247I2`](https://stellar.expert/explorer/testnet/contract/CAINKG5TO53UJJSB4AZGBCNLCE22ZSLLVY6QXYNPAVYRE2LXFVF247I2) | `ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83` |
+| **Reflector adapter** (real feed) | [`CCZQF5WU…H2FQP`](https://stellar.expert/explorer/testnet/contract/CCZQF5WUF3LCGYONRGNLADUJZGYLOEXY7JBRRGCLDTHTHSL5GJOH2FQP) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
+| **Mock price source** (what the fast-test vault reads) | [`CDOLB2NV…6GCWD`](https://stellar.expert/explorer/testnet/contract/CDOLB2NV545X3RPGETL43ULCB2IT75K2VFB7G63KAIXH4NA2BQD6GCWD) | `908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402` |
+| Reflector CEX & DEX feed (theirs, not ours) | [`CCYOZJCO…MJRN63`](https://stellar.expert/explorer/testnet/contract/CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63) | — |
+
+The adapter and the vault are separate deployments made on different days, and the adapter is the
+one wired to the real feed. The fast-test vault reads the mock instead, because a second-scale
+profile cannot use a feed whose tick is five minutes.
+
+### Deployment transactions
+
+Deployer `GDFPSLES…EKBQQ`, 2026-08-20.
+
+| | Transaction |
+|---|---|
+| Mock price source created | [`e1a5071d…d4439`](https://stellar.expert/explorer/testnet/tx/e1a5071de8192278a266b6d26bcc4a8727ba8204d1393a23a8ec8b659b1d4439) |
+| Vault created | [`f26dd3be…11e5f`](https://stellar.expert/explorer/testnet/tx/f26dd3be59f540e7a3ca175eb5c9c309d42a0a8566145d541132a341c1b11e5f) |
+| Smoke deposit (`deposit`) | [`f96bc32e…ab38b`](https://stellar.expert/explorer/testnet/tx/f96bc32e2ce4444b6b8e7e7b1d73c2e3369b70cd9ab8d7d0483b41aa921ab38b) |
+| Smoke withdrawal (`request_withdraw`) | [`ac441e71…a1825`](https://stellar.expert/explorer/testnet/tx/ac441e711256add5f51d9d3ce89a3766151b898b77991e2f2ecf3b621f8a1825) |
+
+### Reproducing the hashes
+
+The vault was built at commit `191bd739` and the adapter at `18dcef1a` — they were deployed on
+different days and each record names its own. Both used Rust 1.95.0, `soroban-sdk =27.0.6`,
+`stellar-cli 27.1.0` and target `wasm32v1-none`, all pinned in the repository rather than restated
+here. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes; their
+hash matches a local `stellar contract build` at that commit. CI enforces the same property on every
+integration point by building twice in directories of different path lengths, because rustc embeds
+source paths in panic locations.
+
+The full record, including the constructor arguments, the parameters and the toolchain, is in
+[`deployments/testnet.json`](deployments/testnet.json) and
+[`deployments/adapter-testnet.json`](deployments/adapter-testnet.json). Those files are written by
+the deploy script rather than by hand.
+
 ## Roadmap
 
 | Phase | Goal | Gate to the next phase |
