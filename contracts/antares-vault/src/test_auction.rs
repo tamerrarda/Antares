@@ -700,30 +700,53 @@ fn answers_oracle_unreachable_and_never_in_the_money_when_the_check_cannot_be_ma
     );
 }
 
+/// **The zero-fill branch cannot be reached by any transaction, and this test now
+/// proves that rather than covering it.**
+///
+/// Error 33 (`SoldOut`) was retired on 2026-08-19 — the first amendment to a signed
+/// integration point — because §5 step 6 flips the phase to `Active` the instant the
+/// offer fills and §16 checks the phase before `filled` is computed. A zero fill
+/// needs `remaining == 0`, which is exactly the state the phase check has already
+/// rejected. That made it ABI an integrator must handle and can never be handed,
+/// the same shape D-60 retired 5, 23, 28, 55 and 56 for.
+///
+/// **The guard stayed.** `bid` still refuses a zero fill, folded into `WrongPhase`.
+/// The reachability argument is what retires the *code*; it is not a licence to stop
+/// checking, which is the gap `round_numbers`' fuzz target walked into on its first
+/// run. The second half below is the evidence for the retirement: reaching the
+/// branch takes `env.as_contract` writing the phase back, and no transaction can do
+/// that.
 #[test]
-fn refuses_a_bid_when_nothing_remains_of_the_offer() {
+fn nothing_remains_of_the_offer_and_no_transaction_can_reach_the_zero_fill() {
     let a = live_auction(200 * XLM, valid_params());
     a.at(0);
     let first = a.bidder(100 * XLM);
     a.bid(&first, 200 * XLM, BPS as u32).unwrap();
 
-    // The offer is gone, so the phase flipped to `Active` and a later bid gets
-    // `WrongPhase`. `SoldOut` is reachable only where the phase is still
-    // `Auction` and the remainder computes to zero, which the direct-state case
-    // below constructs.
+    // The offer is gone, so §5 step 6 already flipped the phase and the next bid
+    // meets the phase check first.
     let second = a.bidder(100 * XLM);
     assert_eq!(
         a.bid(&second, 100 * XLM, BPS as u32),
         Err(Error::WrongPhase)
     );
 
+    // **Writing the phase back is the whole point of this half.** It takes
+    // `as_contract` — a host escape no transaction has — and it is the only way to
+    // stand in front of the zero-fill guard at all. If a future change ever makes
+    // this state reachable through the public surface, the assertion above is what
+    // breaks first, and this one still refuses the bid.
     a.f.env.as_contract(&a.f.vault, || {
         let mut st = crate::storage::get_state(&a.f.env).unwrap();
         st.phase = Phase::Auction;
         crate::storage::set_state(&a.f.env, &st);
     });
-    assert_eq!(a.bid(&second, 100 * XLM, BPS as u32), Err(Error::SoldOut));
-    assert_no_events(&a.f, "a sold-out bid");
+    assert_eq!(
+        a.bid(&second, 100 * XLM, BPS as u32),
+        Err(Error::WrongPhase),
+        "the guard is kept and folded, not deleted with the code"
+    );
+    assert_no_events(&a.f, "a bid with nothing left to fill");
 }
 
 #[test]

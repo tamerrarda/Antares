@@ -8,7 +8,8 @@
     "verify-environment": "node --experimental-strip-types verify-environment.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "echo \"(nothing to build)\"",
-    "test": "echo \"(no tests yet)\""
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "check-params": "node --experimental-strip-types check-params.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.2.0"

@@ -53,7 +53,9 @@ fn error_numbers_are_exactly_the_specified_ones() {
     assert_eq!(Error::AllowlistForbidden as u32, 30);
     assert_eq!(Error::PremiumAboveMax as u32, 31);
     assert_eq!(Error::BelowMinFill as u32, 32);
-    assert_eq!(Error::SoldOut as u32, 33);
+    // 33 is retired and stays retired (DEV-PROTOCOL §5). There is no variant to
+    // assert, so the assertion is that the *next* one did not slide down to fill the
+    // gap — which is the only way a retired code silently comes back.
     assert_eq!(Error::InTheMoney as u32, 34);
     assert_eq!(Error::ZeroPremium as u32, 35);
     assert_eq!(Error::InsufficientBalance as u32, 36);
