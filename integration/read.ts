@@ -19,6 +19,7 @@
 
 import { runStellar, runStellarAsync, buildInvokeArgv, type NetworkArgs } from "@antares/common/chain";
 import { withBackoff } from "@antares/common/retry";
+import { createHash } from "node:crypto";
 
 /**
  * What a call costs, off the simulation that was going to happen anyway.
@@ -58,6 +59,8 @@ export interface SimOutcome<T> {
   readonly cost: ResourceCost | null;
 }
 
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(Buffer.from(bytes)).digest("hex");
+
 export interface Reader {
   /** Simulate, returning the refusal as a value and the resource cost alongside it. */
   simulate<T>(contractId: string, method: string, args?: readonly unknown[]): Promise<SimOutcome<T>>;
@@ -70,6 +73,14 @@ export interface Reader {
   ): Promise<{ topics: unknown[]; data: unknown; txHash: string; ledger: number }[]>;
   /** The ledger a transaction landed in — §7's "from transaction hashes" made literal. */
   ledgerOf(txHash: string): Promise<number>;
+  /**
+   * The bytes the network is actually serving for a contract, hashed.
+   *
+   * The only honest way to say an upgrade happened. `upgraded` announces a hash and the deployer
+   * accepted one; this reads back what the network will execute, which is the claim that matters
+   * and the same one D-50's gate makes about a fresh deploy.
+   */
+  servedWasmSha256(contractId: string): Promise<string>;
   getLatestLedger(): Promise<{ sequence: number; closeTime: string | number }>;
 }
 
@@ -260,6 +271,11 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
         throw new ReadError(`transaction ${txHash} is ${tx.status}, so it has no ledger to read from.`);
       }
       return tx.ledger;
+    },
+
+    async servedWasmSha256(contractId: string): Promise<string> {
+      const bytes = await transport(() => server.getContractWasmByContractId(contractId));
+      return sha256(bytes);
     },
 
     getLatestLedger: () => transport(() => server.getLatestLedger()),
