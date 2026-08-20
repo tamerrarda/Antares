@@ -62,7 +62,7 @@ import {
   runStellar,
   type NetworkArgs,
   type RunResult,
-} from "./lib/chain.ts";
+} from "@antares/common/chain";
 import { checkSourceTree, readSourceTree, type SourceTree } from "./lib/provenance.ts";
 import { checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
 import { checkAdapterSurface, exportedFunctions, sha256 } from "./lib/wasm.ts";

@@ -31,7 +31,7 @@
  * one, because D-50's gate must not rest on a default staying a no-op.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 export class ChainError extends Error {
   constructor(message: string) {
@@ -239,4 +239,44 @@ export function runStellar(argv: readonly string[], bin = "stellar"): RunResult 
     );
   }
   return { stdout, stderr };
+}
+
+/**
+ * The same call, asynchronous, so two of them can be in flight at once.
+ *
+ * **This exists for exactly one situation and it is worth naming.** `06-TEST-PLAN.md` §7 scenario 1
+ * needs two bidders to partially fill one auction, and at the fast-test profile the auction is 20
+ * seconds against a ledger that closes in about five — three to four ledgers wide. Two bids
+ * submitted one after the other spend a confirmation round trip each and can miss the window; two
+ * submitted together from **two different accounts** have independent sequence numbers and can land
+ * in the same ledger. `spawnSync` cannot express that, and a harness that fails intermittently is
+ * worse than no harness.
+ *
+ * Everything else matches {@link runStellar} deliberately, down to the error text: two ways to run
+ * the same binary that report failure differently would be a second thing to learn.
+ */
+export function runStellarAsync(argv: readonly string[], bin = "stellar"): Promise<RunResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, argv as string[], { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (d: string) => (stdout += d));
+    child.stderr.on("data", (d: string) => (stderr += d));
+    child.on("error", (e) => reject(new ChainError(`Could not run \`${bin}\`: ${e.message}`)));
+    child.on("close", (status) => {
+      if (status !== 0) {
+        reject(
+          new ChainError(
+            `\`${bin} ${argv.join(" ")}\` failed with status ${status ?? "(signalled)"}.\n` +
+              `stderr:\n${stderr.trim().slice(0, 4000)}\n` +
+              `stdout:\n${stdout.trim().slice(0, 2000)}`,
+          ),
+        );
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
 }

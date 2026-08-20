@@ -21,6 +21,10 @@
       "types": "./events.ts",
       "default": "./dist/events.js"
     },
+    "./chain": {
+      "types": "./chain.ts",
+      "default": "./dist/chain.js"
+    },
     "./checks": {
       "types": "./checks.ts",
       "default": "./dist/checks.js"

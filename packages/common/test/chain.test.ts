@@ -19,8 +19,10 @@ import {
   parseContractId,
   parseTxHash,
   parseTxHashes,
+  runStellar,
+  runStellarAsync,
   skippedUpload,
-} from "../lib/chain.ts";
+} from "../chain.ts";
 
 // The fixtures are BUILT rather than written out, and that is the network-agnostic rule working
 // rather than an inconvenience. 06-TEST-PLAN §8's check greps every tracked file under scripts/ for
@@ -219,4 +221,69 @@ test("the = form is used only where the ambiguity is, so ordinary failures stay 
   });
   const tail = argv.slice(argv.indexOf("--") + 1);
   assert.deepEqual(tail, ["deposit", "--from", "GUSER", "--amount=-1"]);
+});
+
+// --- the two runners ------------------------------------------------------------------------------
+//
+// Driven against `process.execPath` rather than `stellar`: the behaviour under test is this module's
+// process handling, and pinning it to a binary that must be installed would make the suite fail for
+// a reason that has nothing to do with the code.
+
+test("runStellar returns BOTH streams on success", () => {
+  // The bug this asserts against shipped once: execFileSync returns only stdout, so every
+  // `Signing transaction: <hash>` the CLI prints on stderr was discarded on the success path while
+  // the header claimed both were returned.
+  const r = runStellar(["-e", "process.stdout.write('OUT'); process.stderr.write('ERR')"], process.execPath);
+  assert.equal(r.stdout, "OUT");
+  assert.equal(r.stderr, "ERR");
+});
+
+test("a non-zero exit carries both streams into the error, not just a status", () => {
+  assert.throws(
+    () => runStellar(["-e", "process.stderr.write('why it failed'); process.exit(3)"], process.execPath),
+    (err: unknown) => {
+      assert.ok(err instanceof ChainError);
+      assert.match(err.message, /status 3/);
+      assert.match(err.message, /why it failed/);
+      return true;
+    },
+  );
+});
+
+test("a binary that is not there is a distinguishable failure", () => {
+  assert.throws(() => runStellar(["--version"], "definitely-not-a-real-binary"), ChainError);
+});
+
+test("runStellarAsync reports failure in the same words as its synchronous sibling", async () => {
+  await assert.rejects(
+    () => runStellarAsync(["-e", "process.stderr.write('why it failed'); process.exit(3)"], process.execPath),
+    (err: unknown) => {
+      assert.ok(err instanceof ChainError);
+      assert.match(err.message, /status 3/);
+      assert.match(err.message, /why it failed/);
+      return true;
+    },
+  );
+  await assert.rejects(() => runStellarAsync(["--version"], "definitely-not-a-real-binary"), ChainError);
+});
+
+test("two runStellarAsync calls actually overlap — which is the only reason it exists", async () => {
+  // Asserted as an OVERLAP rather than as a wall-clock bound. "Both finished in under X ms" is a
+  // timing test and fails on a loaded machine for no reason; "the second had started before the
+  // first finished" is the property itself, and it is true or false regardless of load.
+  const script = "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 250)";
+  const span = (out: string): [number, number] => {
+    const [a, b] = out.trim().split("\n").map(Number);
+    return [a!, b!];
+  };
+  const [first, second] = await Promise.all([
+    runStellarAsync(["-e", script], process.execPath),
+    runStellarAsync(["-e", script], process.execPath),
+  ]);
+  const [aStart, aEnd] = span(first.stdout);
+  const [bStart, bEnd] = span(second.stdout);
+  assert.ok(
+    bStart < aEnd && aStart < bEnd,
+    `intervals did not overlap: [${aStart},${aEnd}] [${bStart},${bEnd}]`,
+  );
 });
