@@ -178,9 +178,32 @@ test("every gate runs before anything is deployed, and 3b precedes step 4", () =
 
 test("the sequence covers every step 09-DEPLOYMENT §2 numbers", () => {
   const ids = new Set(STAGES.map((s) => s.id));
-  for (const step of ["0", "0a", "0b", "1", "2", "3", "3b", "4", "5", "6"]) {
+  for (const step of ["0", "0a", "0b", "1", "2", "3", "3b", "3c", "4", "5", "6"]) {
     assert.ok(ids.has(step), `§2 step ${step} has no stage`);
   }
+});
+
+test("the feed is primed and its conditions checked before the vault names it", () => {
+  const ids = STAGES.map((s) => s.id);
+  // 2b primes the mock; without it `expires()` is None, which IS an unfunded feed. 3c then asks
+  // the deployed source's own eight conditions — the constructor skips condition 7 (round_span = 0),
+  // so a vault can deploy cleanly and refuse every open_epoch unless something checks it here.
+  assert.ok(ids.indexOf("2") < ids.indexOf("2b"), "the mock must exist before it is primed");
+  assert.ok(ids.indexOf("2b") < ids.indexOf("3c"), "condition 7 cannot pass on an unprimed feed");
+  assert.ok(
+    ids.indexOf("3c") < ids.indexOf("4"),
+    "a vault must not be built on a profile its source refuses",
+  );
+});
+
+test("--fast-test points the params at the fast-test profile rather than at nothing", () => {
+  assert.match(parseOptions(["--fast-test", "--identity", "d"]).paramsPath, /instances-fast-test\.json$/);
+  assert.match(parseOptions(["--identity", "d"]).paramsPath, /instances\.json$/);
+  // An explicit --params still wins, so a one-off profile needs no code change.
+  assert.match(
+    parseOptions(["--fast-test", "--identity", "d", "--params", "/tmp/other.json"]).paramsPath,
+    /other\.json$/,
+  );
 });
 
 // =================================================================================================

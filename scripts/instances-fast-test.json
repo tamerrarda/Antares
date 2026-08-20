@@ -1,0 +1,32 @@
+{
+  "_why": "THE FAST-TEST PROFILE (02-CONTRACT-SPEC §1, assigned to DEV3 by DEV3.md §6.1). It exists for one reason: instance A is a SEVEN-DAY epoch, so without a second-scale profile nobody can run a full deposit -> auction -> fill -> settle cycle in under a week — and that cycle IS D2, 'one full option cycle on-chain', evidenced by transaction hashes. This profile turns a week into about eleven minutes.\n\nIT IS ECONOMICALLY MEANINGLESS AND THAT IS PERMANENT. It is exempt from 02-CONTRACT-SPEC §1b's coherence gates 1, 2, 4 and 5 — the premium band here is a mechanism, not a price — so deploy.ts stamps its deployment record economicallyMeaningless and a round run on it can NEVER be presented as demand evidence or feed Phase 6b (D-57). It is NOT exempt from gate 3: max_deviation_bps < strike_bps_otm / 2 is duration-independent, check-params.ts is its only enforcer anywhere, and a profile shipping a breaker wider than its own OTM buffer would be testing a mechanism nobody would ship. Here that is 100 < 150.\n\nTHE ORACLE SIDE IS THE HARD HALF, and it is sized against resolution() = 1, which is what mock-price-source reports out of its constructor. At res = 1 the feed's reachable depth is R = 255 x 1 = 255 SECONDS, so every oracle window has to fit inside four minutes — which is why guard_window is 160 and not something small. Condition 3 forces unresolved_after ABOVE reach_limit = R - guard_window, and condition 4 caps oracle_dead_after + guard_window + settle_grace BELOW R, so the two squeeze from opposite sides and a large guard_window is what buys a small unresolved_after. Chosen with deliberate margin rather than on the boundary: condition 4 clears by 15 s (240 vs 255), condition 3 by 15 s (110 vs 95), condition 6 by 15 s (110 vs 125) and condition 5 by 15 s (45 vs 30). A gate sitting exactly on its own requirement refuses a healthy run the first time anything jitters.\n\nVERIFIED AGAINST THE CONTRACT, NOT AGAINST ARITHMETIC IN A COMMENT. `scripts/check-oracle-profile.ts` asks a live mock-price-source whether it honours this set on both paths — validate_params' (round_span = 0) and open_epoch's (round_span = epoch_duration + unresolved_after = 710, condition 7 enforced through the mock's expires()) — and perturbs each perturbable condition to prove it is live. Conditions 0 and 5 are handled honestly rather than faked: 0 is a property of the source and is observed, 5 is proved redundant in price-source-api itself and no perturbation isolates it.\n\nCONDITION 7 IS AN OPERATIONAL PRECONDITION, NOT A NUMBER IN THIS FILE. The mock ships with expires() = null, which IS an unfunded feed, and open_epoch refuses it. Whoever deploys must prime the mock with expires() > now + 710 and fill records covering the guard window; deploy.ts does this at step 2b for --fast-test.\n\nTHE CYCLE, in seconds: open -> 20 s auction -> expiry at 600 s -> settle, then a 30 s idle gap before the next open. auction_duration is 20 rather than the 25 the epoch admits (epoch_duration / 24) because a Stellar ledger closes in about five seconds and an auction that is exactly at its cap is three or four ledgers wide with nothing to spare.",
+  "shared": {
+    "twap_window": 4,
+    "guard_window": 160,
+    "max_staleness": 60,
+    "oracle_dead_after": 50,
+    "settle_grace": 30,
+    "unresolved_after": 110,
+    "min_fill": 10000000,
+    "min_deposit": 10000000,
+    "settle_bounty_bps": 25,
+    "auction_duration": 20,
+    "deposit_cap": 1000000000000,
+    "rent_threshold": 120960,
+    "rent_extend_to": 518400
+  },
+  "instances": [
+    {
+      "suffix": "-F",
+      "note": "The one fast-test instance. gate 3: max_deviation_bps 100 < strike_bps_otm/2 = 150. The premium band 450 -> 40 is instance A's shape so the curve under test is the one that ships, but its VALUES are meaningless here: gates 1, 2, 4 and 5 are exempt and sigma is not consulted. min_idle_gap 30 clears the floor of epoch_duration/50 = 12 with room for a human to withdraw between rounds, which is what the gap is for.",
+      "params": {
+        "epoch_duration": 600,
+        "strike_bps_otm": 300,
+        "premium_start_bps": 450,
+        "premium_floor_bps": 40,
+        "max_deviation_bps": 100,
+        "min_idle_gap": 30
+      }
+    }
+  ]
+}
