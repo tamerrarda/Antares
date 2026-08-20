@@ -7,6 +7,7 @@
  */
 
 export * from "./networks.ts";
+export * from "./oracle.ts";
 export * from "./deployments.ts";
 export * from "./events.ts";
 export * from "./checks.ts";

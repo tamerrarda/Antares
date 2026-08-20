@@ -48,6 +48,7 @@ import {
 } from '@stellar/stellar-sdk';
 
 import { resolveNetwork, resolveRpcUrl } from '@antares/common/networks';
+import { RECORD_CAP_TICKS, reachSeconds } from '@antares/common/oracle';
 
 // ---------------------------------------------------------------------------------------------
 // Constants that are *the design's*, restated here only so the gate can be computed. Each names
@@ -68,7 +69,7 @@ import { resolveNetwork, resolveRpcUrl } from '@antares/common/networks';
  * `Unusable`, which is the void path. The sequence that produced this line is the one D-49 asks
  * for: measure, file the finding (D-69), fix the documents, then change the code.
  */
-const RECORD_CAP_TICKS = 255;
+// Imported rather than restated — see packages/common/oracle.ts for the measurement and D-69.
 
 /** The UI's live-window assumption, in seconds (`06-TEST-PLAN.md` §7b, DEV3's Claims page). */
 const UI_LIVE_WINDOW_SECONDS = 7 * 24 * 3600;
@@ -486,7 +487,7 @@ async function main(): Promise<void> {
   }
 
   const cutoffSeconds = confirmedDeepest * resolution;
-  const requiredSeconds = RECORD_CAP_TICKS * resolution;
+  const requiredSeconds = reachSeconds(resolution);
   record(
     'E-6',
     `reachable-depth cutoff, to one tick, is >= ${RECORD_CAP_TICKS} x resolution()`,
@@ -590,7 +591,7 @@ async function main(): Promise<void> {
   );
 
   // -- E-11  What the live resolution() implies for the shipped table --------------------------------
-  const R = RECORD_CAP_TICKS * resolution;
+  const R = reachSeconds(resolution);
   const reachLimit = R - SHIPPED.guard_window;
   const uaLow = reachLimit; // condition 3 is STRICT: unresolved_after > reach_limit
   const uaHigh = reachLimit + SHIPPED.settle_grace; // condition 6 is a ceiling, inclusive

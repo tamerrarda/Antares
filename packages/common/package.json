@@ -13,6 +13,10 @@
       "types": "./networks.ts",
       "default": "./dist/networks.js"
     },
+    "./oracle": {
+      "types": "./oracle.ts",
+      "default": "./dist/oracle.js"
+    },
     "./deployments": {
       "types": "./deployments.ts",
       "default": "./dist/deployments.js"
