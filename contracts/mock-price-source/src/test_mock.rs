@@ -336,3 +336,93 @@ fn the_batch_call_stops_answering_at_its_settable_collapse_point() {
     assert_eq!(f.mock.prices(&20).map(|v| v.len()), Some(20));
     assert_eq!(f.mock.prices(&21), None);
 }
+
+// -------------------------------------------------------------------------------------------------
+// The record map is bounded — 6a's harness depends on it
+// -------------------------------------------------------------------------------------------------
+
+/// **The failure this bound exists for, reproduced as a cost rather than described.**
+///
+/// `fill` reads the whole map, adds `count` entries and writes the whole map back, and before the
+/// ring the only removal was `clear_price`, one tick at a time. A harness priming ~240 ticks per
+/// scenario therefore made every later `fill` more expensive than the last — DEV3 hit
+/// `ResourceLimitExceeded` on the fourth run against testnet. The vault takes its oracle in the
+/// constructor and has **no setter**, so a saturated mock meant a fresh *vault deploy* every few
+/// runs, which is what would have broken 6b's two-attempt budget at `2 × epoch_duration` apiece.
+#[test]
+fn priming_repeatedly_does_not_grow_the_record_map() {
+    let f = setup();
+    let res = u64::from(f.mock.resolution());
+
+    // Ten scenarios, each priming 240 ticks and advancing a day — the harness's shape.
+    for scenario in 0..10u64 {
+        let end = NOW + scenario * 86_400;
+        f.mock.fill(&end, &240, &PX);
+    }
+
+    let newest = NOW + 9 * 86_400;
+    let newest = newest - newest % res;
+
+    // The last scenario's own window is intact — 240 ticks ending at `newest`, all inside the cap.
+    assert!(f.mock.price(&newest).is_some(), "the newest tick is served");
+    assert!(
+        f.mock.price(&(newest - 239 * res)).is_some(),
+        "the oldest tick of the last fill is still inside RECORD_CAP_TICKS and must survive"
+    );
+
+    // And every scenario before the last is gone: nine days back is far past the ~21 h cap.
+    assert_eq!(
+        f.mock.price(&NOW),
+        None,
+        "ten scenarios in, the first one's records are not still here"
+    );
+    assert_eq!(
+        f.mock.price(&(NOW + 8 * 86_400)),
+        None,
+        "even the previous scenario is outside the window — the map holds one cap's worth, not ten"
+    );
+
+    // The exact boundary is `the_bound_is_the_same_constant_out_of_reach_derives_from` below. It is
+    // a separate test because this fixture cannot pin it: 240 ticks is 20 h against a 24 h stride,
+    // so the tick exactly `RECORD_CAP_TICKS` back falls in the 4 h a scenario never filled. The
+    // first draft asserted on it and failed — the fixture was wrong, not the ring, and the two are
+    // worth keeping apart so a future failure says which.
+}
+
+#[test]
+fn the_bound_is_the_same_constant_out_of_reach_derives_from() {
+    // If these two ever disagree the mock stops modelling the feed: records inside `reach_limit`
+    // would vanish, and an anchored read that `out_of_reach` admits would find nothing and answer
+    // `Unusable` — the void branch, on a healthy feed. That is D-59's failure exactly, so the tie
+    // is asserted rather than left to two constants that happen to match today.
+    let f = setup();
+    let res = u64::from(f.mock.resolution());
+    let span = price_source_api::RECORD_CAP_TICKS * res;
+
+    f.mock.fill(&NOW, &1, &PX);
+    f.mock.fill(&(NOW + span), &1, &PX);
+
+    assert!(
+        f.mock.price(&NOW).is_some(),
+        "exactly RECORD_CAP_TICKS back is retained"
+    );
+    f.mock.fill(&(NOW + span + res), &1, &PX);
+    assert_eq!(f.mock.price(&NOW), None, "one tick further and it is not");
+}
+
+#[test]
+fn a_write_older_than_the_cap_is_not_retained() {
+    // Behaviour, not a limitation: the real feed will not accept history it no longer serves
+    // either, and a test that wrote one and then read it back would be asserting against a feed
+    // that cannot exist.
+    let f = setup();
+    let res = u64::from(f.mock.resolution());
+    f.mock.fill(&NOW, &4, &PX);
+    let ancient = NOW - 300 * res;
+    f.mock.set_price(&ancient, &PX);
+    assert_eq!(f.mock.price(&ancient), None);
+    assert!(
+        f.mock.price(&NOW).is_some(),
+        "the healthy window is untouched"
+    );
+}

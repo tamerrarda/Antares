@@ -136,6 +136,7 @@ impl MockPriceSource {
         Self::auth(&env);
         let mut records = Self::records(&env);
         records.set(at, (price, reported_ts));
+        Self::prune(&env, &mut records);
         env.storage().instance().set(&Key::Records, &records);
     }
 
@@ -171,6 +172,7 @@ impl MockPriceSource {
             };
             records.set(t, (price, t));
         }
+        Self::prune(&env, &mut records);
         env.storage().instance().set(&Key::Records, &records);
     }
 
@@ -293,6 +295,48 @@ impl MockPriceSource {
             .get(&Key::Admin)
             .unwrap_or_else(|| panic_with_error!(env, MockError::NotInitialized));
         admin.require_auth();
+    }
+
+    /// Drop every record the feed would no longer be serving.
+    ///
+    /// **Reflector retains `RECORD_CAP_TICKS` ticks and this now does too** — measured at 255
+    /// (D-69), which is the same constant `out_of_reach` derives `reach_limit` from. Before this,
+    /// the map grew without bound: `fill` reads the whole map, adds `count` entries and writes the
+    /// whole map back, and the only removal was `clear_price` one tick at a time. A harness that
+    /// primes ~240 ticks per scenario therefore made every later `fill` more expensive than the
+    /// last, and DEV3 hit `ResourceLimitExceeded` on the fourth run against testnet. Since the
+    /// vault takes its oracle in the constructor and has no setter, a saturated mock meant a fresh
+    /// **vault deploy** every few harness runs.
+    ///
+    /// **Chosen over a bulk `clear_records()` because it needs nobody to remember it.** A bulk
+    /// clear is simpler and works exactly as long as every harness calls it; this project's own
+    /// repeated finding is that a rule depending on someone remembering has a half-life of about
+    /// three working blocks. The ring also makes the mock *more accurate* rather than merely
+    /// cheaper — the real feed has no infinite history either, and D-69 is the name of that fact.
+    ///
+    /// **Safe against the `Unusable` / `OutOfReach` split**, which is the thing worth checking
+    /// before bounding a mock feed: this contract calls `api::out_of_reach` *before* it samples, so
+    /// a record older than the cap is never queried. Dropping it cannot turn an `OutOfReach` into
+    /// the void branch, which is the confusion D-59 exists to prevent.
+    ///
+    /// A write far enough in the past is therefore *not retained*, exactly as it would not be by
+    /// the real feed. That is behaviour, not a limitation.
+    fn prune(env: &Env, records: &mut Map<u64, (i128, u64)>) {
+        let res = u64::from(Self::resolution(env.clone()));
+        let Some(newest) = records.keys().last() else {
+            return;
+        };
+        let Some(span) = api::RECORD_CAP_TICKS.checked_mul(res) else {
+            return;
+        };
+        let Some(floor) = newest.checked_sub(span) else {
+            return;
+        };
+        for k in records.keys() {
+            if k < floor {
+                records.remove(k);
+            }
+        }
     }
 
     fn records(env: &Env) -> Map<u64, (i128, u64)> {
