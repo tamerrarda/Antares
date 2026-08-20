@@ -394,6 +394,48 @@ def python_is_stdlib_only():
     return out, []
 
 
+def typescript_declarations_are_unique():
+    """No top-level identifier declared twice in one TypeScript file.
+
+    Git merged two `asBool` implementations into `packages/common/events.ts` — DEV1
+    and DEV2 wrote the same helper in different places, so neither side touched the
+    other's lines and **the merge was clean.** The file then declared the identifier
+    twice and nothing marked it. **A clean merge is not evidence of no collision**,
+    and the only thing that would have caught it is a typecheck, which does not run
+    on a branch push under the integration-point CI policy.
+
+    Overload signatures are not duplicates: those end in `;` and carry no body, and
+    flagging them would redden correct code — the failure mode this repository has
+    already recorded once and will not repeat. Only implementations count, so a
+    declaration is one whose line ends in `{` or `=`.
+    """
+    out = []
+    decl = re.compile(
+        r"^(?:export\s+)?(?:default\s+)?"
+        r"(function|class|const|let)\s+([A-Za-z_$][\w$]*)\b(.*)$"
+    )
+    for f in sorted(ROOT.glob("packages/**/*.ts")) + sorted(ROOT.glob("scripts/**/*.ts")):
+        if "node_modules" in f.parts:
+            continue
+        seen = {}
+        for i, ln in enumerate(f.read_text().split("\n"), 1):
+            m = decl.match(ln)
+            if not m:
+                continue
+            kind, name, rest = m.groups()
+            if kind == "function" and rest.rstrip().endswith(";"):
+                continue  # an overload signature, not an implementation
+            if name in seen:
+                out.append(
+                    f"{rel(f)}:{i}  `{name}` is declared again (first at line {seen[name]}) "
+                    f"— two people can add the same helper in different places and git "
+                    f"will merge both without a conflict"
+                )
+            else:
+                seen[name] = i
+    return out, []
+
+
 RULES = (
     ("D-70 ABI doc budget", abi_doc_budget),
     ("D-63 write-once fields", write_once_fields),
@@ -403,6 +445,7 @@ RULES = (
     ("07-SECURITY §6 no signing-capable secret", no_signing_secrets),
     ("workflow keys unique", workflow_keys_unique),
     ("python is standard-library only", python_is_stdlib_only),
+    ("typescript declarations are unique", typescript_declarations_are_unique),
 )
 
 
