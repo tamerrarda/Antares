@@ -11,7 +11,13 @@
 //! breaking change from here on: announce it, get both acknowledgements, then
 //! land it (`DEV-PROTOCOL.md` §5).
 
-use soroban_sdk::{contract, contractimpl};
+use soroban_sdk::{contract, contractimpl, contractmeta};
+
+// The binary's own version, readable from the deployed wasm without a call. D-50's
+// gate compares hashes; this is what tells a human *which* build a hash is, and it
+// is the only version that lives in the code rather than in storage — `AppVersion`
+// is the schema and only `migrate` moves it.
+contractmeta!(key = "binver", val = "1.0.0");
 
 pub mod admin;
 pub mod auction;

@@ -20,7 +20,7 @@
 //! so `DepositCancelled` is `"deposit_cancelled"`. That is checked by test, not
 //! by eye: the name is ABI and a rename is a breaking change.
 
-use soroban_sdk::{contractevent, Address, String};
+use soroban_sdk::{contractevent, Address, BytesN, String};
 
 use crate::types::{EpochParams, VoidReason};
 
@@ -442,4 +442,58 @@ pub struct AllowedChanged {
     #[topic]
     pub bidder: Address,
     pub allowed: bool,
+}
+
+// `{old, new}`, the shape §10 gives the three value setters that share a row.
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CapChanged {
+    pub old: i128,
+    pub new: i128,
+}
+
+// Four fields, not `{old, new}`: it carries two parameters and the pair is the
+// unit — a reader who sees only one of them cannot tell whether the window grew
+// or the trigger moved (§10).
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RentParamsChanged {
+    pub old_threshold: u32,
+    pub new_threshold: u32,
+    pub old_extend_to: u32,
+    pub new_extend_to: u32,
+}
+
+// Both parties, because the interesting question a watcher asks is *who is being
+// handed the role* and *by whom* — and after the transfer completes the first of
+// those is no longer readable from state.
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdminTransferStarted {
+    pub current: Address,
+    pub pending: Address,
+}
+
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdminChanged {
+    pub old: Address,
+    pub new: Address,
+}
+
+// `app_version` is the value *before* any migrate (§10). Code and schema are
+// separate versions and this event reports the code change, so pairing it with the
+// schema version it replaced is what lets a reader order the two.
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Upgraded {
+    pub wasm_hash: BytesN<32>,
+    pub app_version: u32,
+}
+
+#[contractevent(data_format = "vec")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Migrated {
+    pub from_version: u32,
+    pub to_version: u32,
 }

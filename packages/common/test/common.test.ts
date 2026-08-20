@@ -505,3 +505,60 @@ test("level filtering drops below-threshold lines, and REJECT: an unknown level"
   assert.equal(lines.length, 2);
   assert.throws(() => new Logger({ level: "trace" as never }), RangeError);
 });
+
+// ---------------------------------------------------------------- deposited ----
+//
+// DEV1's, registered 2026-08-20. The sweep's roster derives from the event shape,
+// so depositors join it the day the decoder lands — and depositors are the larger
+// half of the users this protocol has.
+
+const DEPOSITED: RawEvent = {
+  topics: ["deposited", "GDEPOSITOR"],
+  data: {
+    round: 7,
+    amount: 100_0000000n,
+    shares_minted: 99_9999000n,
+    instant: true,
+  },
+  txHash: "txd",
+  ledger: 43,
+};
+
+test("deposited decodes both the instant and the pending shape", () => {
+  const now = decodeEvent(DEPOSITED);
+  assert.deepEqual(now, {
+    name: "deposited",
+    user: "GDEPOSITOR",
+    round: 7,
+    amount: 100_0000000n,
+    sharesMinted: 99_9999000n,
+    instant: true,
+  });
+
+  // The mid-round case: D-18 mints nothing while a round is live, so the pending
+  // deposit reports `shares_minted: 0` and `instant: false`. A consumer that reads
+  // this as a mint reports share balances that do not exist yet.
+  const pending = decodeEvent({
+    ...DEPOSITED,
+    data: { ...(DEPOSITED.data as Record<string, unknown>), shares_minted: 0n, instant: false },
+  });
+  assert.equal((pending as { instant: boolean }).instant, false);
+  assert.equal((pending as { sharesMinted: bigint }).sharesMinted, 0n);
+});
+
+test("REJECT: `instant` is decoded strictly, because a coerced boolean is a wrong answer", () => {
+  // Not pedantry. `undefined` coerced to `false` turns "the depositor holds shares
+  // now" into "they hold a pending claim", and both are plausible readings of a
+  // real deposit — so the mistake would not look like one downstream.
+  const base = DEPOSITED.data as Record<string, unknown>;
+  const { instant: _dropped, ...withoutInstant } = base;
+  assert.throws(() => decodeEvent({ ...DEPOSITED, data: withoutInstant }), EventDecodeError);
+  assert.throws(() => decodeEvent({ ...DEPOSITED, data: { ...base, instant: 1 } }), EventDecodeError);
+  assert.throws(() => decodeEvent({ ...DEPOSITED, data: { ...base, instant: "true" } }), EventDecodeError);
+});
+
+test("deposited is round-scoped, so the sweep's roster picks it up", () => {
+  const ev = decodeEvent(DEPOSITED);
+  assert.ok(hasRound(ev), "a deposit names the round it landed in (§10)");
+  assert.ok(decodableEventNames().includes("deposited"));
+});

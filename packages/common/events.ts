@@ -83,6 +83,18 @@ function asU32(value: unknown, what: string): number {
   throw new EventDecodeError(`${what} is not a u32 (got ${typeof value})`);
 }
 
+function asBool(value: unknown, what: string): boolean {
+  // Strict rather than truthy. `scValToNative` gives a real boolean for an
+  // `ScvBool`, so anything else here means the payload is not the shape §10
+  // declares — and a coerced `undefined` would silently read as `false`, which for
+  // `instant` is the difference between "the depositor holds shares now" and "they
+  // hold a pending claim". That is not a field to be relaxed about.
+  if (typeof value !== "boolean") {
+    throw new EventDecodeError(`${what}: expected a boolean, got ${typeof value}`);
+  }
+  return value;
+}
+
 function asAddress(value: unknown, what: string): string {
   if (typeof value !== "string" || value === "") {
     throw new EventDecodeError(`${what} is not an address string`);
@@ -150,7 +162,31 @@ export interface FeeClaimed {
   readonly amount: bigint;
 }
 
-export type DecodedEvent = EpochOpened | BidFilled | PayoutClaimed | RefundClaimed | FeeClaimed;
+export interface Deposited {
+  readonly name: "deposited";
+  readonly user: string;
+  readonly round: number;
+  readonly amount: bigint;
+  readonly sharesMinted: bigint;
+  /**
+   * `true` when the deposit minted immediately (the vault was Idle), `false` when
+   * it went to the pending pool to be redeemed at a later price.
+   *
+   * D-18 is why the flag exists rather than being inferable: shares minted while a
+   * round is live would acquire a claim on P&L their capital never backed, so a
+   * mid-round deposit mints nothing until Idle. A consumer that treats every
+   * `deposited` as a mint reports share balances that do not exist yet.
+   */
+  readonly instant: boolean;
+}
+
+export type DecodedEvent =
+  | EpochOpened
+  | BidFilled
+  | PayoutClaimed
+  | RefundClaimed
+  | FeeClaimed
+  | Deposited;
 
 /** Every event with a `round` — everything except `fee_claimed`. */
 export type RoundScopedEvent = Exclude<DecodedEvent, FeeClaimed>;
@@ -203,6 +239,19 @@ const DECODERS: Readonly<Record<string, Decoder>> = {
     name: "fee_claimed",
     recipient: asAddress(topic(ev, 1, "recipient"), "fee_claimed recipient"),
     amount: asAmount(ev.data, "amount"),
+  }),
+
+  // DEV1's, registered 2026-08-20 under this file's own carve-out. The sweep's
+  // roster derives from the event shape rather than a name list, so depositors join
+  // it the day this lands — until now it saw bidders only, and depositors are the
+  // larger half.
+  deposited: (ev) => ({
+    name: "deposited",
+    user: asAddress(topic(ev, 1, "user"), "deposited user"),
+    round: asU32(field(ev.data, "round"), "deposited round"),
+    amount: asAmount(ev.data, "amount"),
+    sharesMinted: asAmount(ev.data, "shares_minted"),
+    instant: asBool(field(ev.data, "instant"), "deposited instant"),
   }),
 };
 
