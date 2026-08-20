@@ -22,6 +22,14 @@ import {
 const DAY = 86_400;
 const NOW = 1_787_000_000;
 
+/**
+ * 02-CONTRACT-SPEC §1, default **and** shipped. Named rather than inlined because the first version
+ * of this file used 73 200 — admissible, inside condition 3's window, and **not shipped** — while
+ * the test that consumed it was called "matching the shipped instances". The arithmetic was right
+ * and the input was never checked, which is the same shape as the provisional-close finding.
+ */
+const SHIPPED_UNRESOLVED_AFTER = 75_600;
+
 const view = (over: Partial<EpochView> = {}): EpochView => ({
   round: 3,
   phase: "Active",
@@ -29,7 +37,7 @@ const view = (over: Partial<EpochView> = {}): EpochView => ({
   expiry: NOW,
   nextOpenAt: NOW,
   epochDuration: 7 * DAY,
-  unresolvedAfter: 73_200,
+  unresolvedAfter: SHIPPED_UNRESOLVED_AFTER,
   ...over,
 });
 
@@ -128,16 +136,30 @@ test("the still-Active alert fires an hour past expiry, not at the reachable bou
   assert.ok(EXPIRY_ALERT_AFTER < 20.25 * 3600, "the alert must precede the reachable bound");
 });
 
-test("the runway threshold is one round's span plus an epoch, matching the shipped instances", () => {
-  // A: 7-day epoch. D: 14-day. Both with `unresolved_after` inside condition 3's window.
-  const a = runwayThreshold({ epochDuration: 7 * DAY, unresolvedAfter: 73_200 });
-  const d = runwayThreshold({ epochDuration: 14 * DAY, unresolvedAfter: 73_200 });
-  assert.ok(Math.abs(a / DAY - 14.85) < 0.01, `instance A should be ~14.85 days, got ${a / DAY}`);
-  assert.ok(Math.abs(d / DAY - 28.85) < 0.01, `instance D should be ~28.85 days, got ${d / DAY}`);
+test("the runway threshold is one round's span plus an epoch, at the shipped values", () => {
+  // A: 7-day epoch. D: 14-day. `unresolved_after` is the shipped 75 600, which sits inside the
+  // admissible band (72 900, 80 100] that conditions 3 and 6 define at a 3 600 s guard window and a
+  // 7 200 s settle_grace.
+  const a = runwayThreshold({ epochDuration: 7 * DAY, unresolvedAfter: SHIPPED_UNRESOLVED_AFTER });
+  const d = runwayThreshold({ epochDuration: 14 * DAY, unresolvedAfter: SHIPPED_UNRESOLVED_AFTER });
+  assert.equal(a / DAY, 14.875, "instance A, at the shipped unresolved_after");
+  assert.equal(d / DAY, 28.875, "instance D, at the shipped unresolved_after");
 
   // And the reason it is not a fixed week: at a 7-day epoch a "< 7 days" rule fires *after*
   // condition 7 has begun refusing to open rounds, i.e. after the event it exists to prevent.
   assert.ok(a > 7 * DAY, "a fixed 7-day threshold is inside one round's span and therefore too late");
+});
+
+test("the threshold follows unresolved_after rather than carrying a copy of it", () => {
+  // Another admissible value from the same band. The figure moves with it, which is what makes the
+  // shipped numbers above a *measurement* of the shipped set rather than two constants that happen
+  // to be written down next to a formula.
+  const other = runwayThreshold({ epochDuration: 7 * DAY, unresolvedAfter: 73_200 });
+  assert.ok(Math.abs(other / DAY - 14.8472) < 0.0001);
+  assert.notEqual(
+    other,
+    runwayThreshold({ epochDuration: 7 * DAY, unresolvedAfter: SHIPPED_UNRESOLVED_AFTER }),
+  );
 });
 
 test("a low runway alerts, and an ample one does not", () => {

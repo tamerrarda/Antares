@@ -117,7 +117,14 @@ export const EXPIRY_ALERT_AFTER = 3_600;
  *
  * A fixed "< 7 days" threshold is the wrong side of the event: at a 7-day epoch it fires *after*
  * condition 7 has already begun refusing to open rounds (D-68), i.e. after the thing it exists to
- * prevent. Shipped values put this at ~14.85 days on instance A and ~28.85 on D.
+ * prevent.
+ *
+ * At the shipped `unresolved_after` of **75 600 s** (02-CONTRACT-SPEC §1, default and shipped
+ * alike) that is **14.875 days on instance A and 28.875 on D**. An earlier version of this comment
+ * said 14.85 and 28.85 and attributed them to shipped values; they came from the 73 200 the test
+ * used, which the test itself described as *inside condition 3's window* rather than as shipped.
+ * The function was right and only the attribution was wrong — which is the same shape as the
+ * provisional-close finding: the arithmetic was checked and the input was not.
  */
 export function runwayThreshold(view: Pick<EpochView, "epochDuration" | "unresolvedAfter">): number {
   return 2 * view.epochDuration + view.unresolvedAfter;
