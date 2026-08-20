@@ -102,6 +102,24 @@ function asAddress(value: unknown, what: string): string {
   return value;
 }
 
+/**
+ * A Soroban unit-variant enum, as `scValToNative` renders it.
+ *
+ * `VoidReason` has no payload, so it arrives as a bare string — but a *payloaded* variant would
+ * arrive as `["Tag", …]`, and a decoder that assumed one shape would silently produce `undefined`
+ * for the other. Both are handled and anything else throws, because a reason that decodes to
+ * nothing is worse than one that fails to decode: `epoch_voided` is how an indexer learns **why**
+ * a round was annulled, and D-60 exists because those two reasons are not interchangeable.
+ */
+function asVariant(value: unknown, what: string, allowed: readonly string[]): string {
+  const tag: unknown =
+    typeof value === "string" ? value : Array.isArray(value) ? (value as unknown[])[0] : undefined;
+  if (typeof tag !== "string" || !allowed.includes(tag)) {
+    throw new EventDecodeError(`${what} is not one of ${allowed.join(" | ")} (got ${JSON.stringify(value)})`);
+  }
+  return tag;
+}
+
 function topic(ev: RawEvent, index: number, what: string): unknown {
   if (index >= ev.topics.length) {
     throw new EventDecodeError(
@@ -179,6 +197,68 @@ export interface Deposited {
    */
   readonly instant: boolean;
 }
+/**
+ * The three terminal outcomes, and the two payments that ride with them.
+ *
+ * Registered by DEV2 under this file's own rule — *"DEV1's and DEV2's remaining events are theirs to
+ * register, in this file"*. These five are what the keeper's evidence record is made of: without
+ * them a closed epoch can be seen to have happened and not seen to have happened *a particular way*,
+ * and the whole point of `evidence/<date>-<network>.json` is that a reset destroys the chain state
+ * while the record survives.
+ */
+export interface Settled {
+  readonly name: "settled";
+  readonly round: number;
+  /** The median TWAP over the windows ending at **expiry** — not the price when close was called. */
+  readonly spot: bigint;
+  readonly strike: bigint;
+  readonly notionalSold: bigint;
+  readonly payoutTotal: bigint;
+  readonly premium: bigint;
+  readonly fee: bigint;
+  readonly pps: bigint;
+  readonly wclaims: bigint;
+}
+
+export interface EpochVoided {
+  readonly name: "epoch_voided";
+  readonly round: number;
+  /** `FeedUnusable` or `InvalidPrice`. D-60 exists because the two are not interchangeable. */
+  readonly reason: "FeedUnusable" | "InvalidPrice";
+  /** The whole premium: each fill gets its own back exactly, with no pro-rata arithmetic. */
+  readonly premiumRefunded: bigint;
+  readonly pps: bigint;
+  readonly wclaims: bigint;
+}
+
+export interface EpochUnresolved {
+  readonly name: "epoch_unresolved";
+  readonly round: number;
+  readonly premiumRetained: bigint;
+  readonly fee: bigint;
+  readonly pps: bigint;
+  readonly wclaims: bigint;
+  /**
+   * Which of D-64's two entrances resolved the round: `false` when the clock alone did it with no
+   * oracle call, `true` when the adapter answered `OutOfReach`. Diagnostic — it enters no
+   * computation, and it is the only place the difference between "the feed aged out" and "the
+   * adapter is broken" is recorded.
+   */
+  readonly oracleAnswered: boolean;
+}
+
+export interface FeeAccrued {
+  readonly name: "fee_accrued";
+  readonly round: number;
+  readonly amount: bigint;
+}
+
+export interface SettleBounty {
+  readonly name: "settle_bounty";
+  readonly round: number;
+  readonly to: string;
+  readonly amount: bigint;
+}
 
 export type DecodedEvent =
   | EpochOpened
@@ -186,13 +266,25 @@ export type DecodedEvent =
   | PayoutClaimed
   | RefundClaimed
   | FeeClaimed
-  | Deposited;
+  | Deposited
+  | Settled
+  | EpochVoided
+  | EpochUnresolved
+  | FeeAccrued
+  | SettleBounty;
 
 /** Every event with a `round` — everything except `fee_claimed`. */
 export type RoundScopedEvent = Exclude<DecodedEvent, FeeClaimed>;
 
 export function hasRound(ev: DecodedEvent): ev is RoundScopedEvent {
   return ev.name !== "fee_claimed";
+}
+
+/** The three terminal outcomes — exactly one of these exists per closed round (I10). */
+export type TerminalEvent = Settled | EpochVoided | EpochUnresolved;
+
+export function isTerminal(ev: DecodedEvent): ev is TerminalEvent {
+  return ev.name === "settled" || ev.name === "epoch_voided" || ev.name === "epoch_unresolved";
 }
 
 type Decoder = (ev: RawEvent) => DecodedEvent;
@@ -252,6 +344,55 @@ const DECODERS: Readonly<Record<string, Decoder>> = {
     amount: asAmount(ev.data, "amount"),
     sharesMinted: asAmount(ev.data, "shares_minted"),
     instant: asBool(field(ev.data, "instant"), "deposited instant"),
+  }),
+  // -- DEV2's, registered here under this file's own rule ---------------------------------------
+
+  settled: (ev) => ({
+    name: "settled",
+    round: asU32(topic(ev, 1, "round"), "settled round"),
+    spot: asAmount(ev.data, "spot"),
+    strike: asAmount(ev.data, "strike"),
+    notionalSold: asAmount(ev.data, "notional_sold"),
+    payoutTotal: asAmount(ev.data, "payout_total"),
+    premium: asAmount(ev.data, "premium"),
+    fee: asAmount(ev.data, "fee"),
+    pps: asAmount(ev.data, "pps"),
+    wclaims: asAmount(ev.data, "wclaims"),
+  }),
+
+  epoch_voided: (ev) => ({
+    name: "epoch_voided",
+    round: asU32(topic(ev, 1, "round"), "epoch_voided round"),
+    reason: asVariant(field(ev.data, "reason"), "epoch_voided reason", [
+      "FeedUnusable",
+      "InvalidPrice",
+    ]) as EpochVoided["reason"],
+    premiumRefunded: asAmount(ev.data, "premium_refunded"),
+    pps: asAmount(ev.data, "pps"),
+    wclaims: asAmount(ev.data, "wclaims"),
+  }),
+
+  epoch_unresolved: (ev) => ({
+    name: "epoch_unresolved",
+    round: asU32(topic(ev, 1, "round"), "epoch_unresolved round"),
+    premiumRetained: asAmount(ev.data, "premium_retained"),
+    fee: asAmount(ev.data, "fee"),
+    pps: asAmount(ev.data, "pps"),
+    wclaims: asAmount(ev.data, "wclaims"),
+    oracleAnswered: asBool(field(ev.data, "oracle_answered"), "oracle_answered"),
+  }),
+
+  fee_accrued: (ev) => ({
+    name: "fee_accrued",
+    round: asU32(topic(ev, 1, "round"), "fee_accrued round"),
+    amount: asAmount(ev.data, "amount"),
+  }),
+
+  settle_bounty: (ev) => ({
+    name: "settle_bounty",
+    round: asU32(topic(ev, 1, "round"), "settle_bounty round"),
+    to: asAddress(field(ev.data, "to"), "settle_bounty to"),
+    amount: asAmount(ev.data, "amount"),
   }),
 };
 
