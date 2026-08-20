@@ -19,6 +19,7 @@ import {
   epochParamsJson,
   namedArgsFor,
   parseOptions,
+  recordTx,
   runStages,
   type Ctx,
   type Stage,
@@ -50,6 +51,7 @@ const ctx = (over: Partial<Ctx["opts"]> = {}): Ctx => ({
   wasm: {},
   instances: [],
   deployed: [],
+  transactions: [],
 });
 
 const stage = (id: string, checks: Check[], mutates = false, skip?: string): Stage => ({
@@ -293,4 +295,86 @@ test("the constructor's params argument carries all sixteen fields in the contra
 test("the genesis allowlist window is inside the constructor's thirty-day cap (D-63)", () => {
   assert.ok(ALLOWLIST_WINDOW_SECONDS > 0);
   assert.ok(ALLOWLIST_WINDOW_SECONDS <= 2_592_000, "the constructor would reject it");
+});
+
+// =================================================================================================
+// The transaction ledger — D2's evidence, and it is perishable
+// =================================================================================================
+
+const H1 = "e4266667e3e0887b117a30c31a310b81d7eda990249f9528f4fb6bfee1b271ee";
+const H2 = "5836a47a207f55feb0a717983fe1988e18856905ca0e8dc8845cc50fe366216e";
+const res = (stderr: string) => ({ stdout: "", stderr });
+
+test("an upload and a create are both recorded, labelled in submission order", () => {
+  const c = ctx();
+  recordTx(
+    c,
+    res(`Signing transaction: ${H1}\nSigning transaction: ${H2}`),
+    "upload:vault",
+    "create:vault-A",
+  );
+  assert.deepEqual(
+    c.transactions.map((t) => [t.label, t.hash]),
+    [
+      ["upload:vault", H1],
+      ["create:vault-A", H2],
+    ],
+  );
+  assert.equal(c.transactions[0]!.explorer, `https://x/tx/${H1}`);
+});
+
+test("when the wasm was already installed, the single hash is the CREATE, not the upload", () => {
+  // Labels align from the END. Aligning from the start would label the create as an upload on
+  // every deploy after the first — which in an --experiment run is four instances out of five,
+  // and the record would then name no transaction that created them.
+  const c = ctx();
+  recordTx(
+    c,
+    res(`Skipping install because wasm already installed\nSigning transaction: ${H1}`),
+    "upload:vault",
+    "create:vault-B",
+  );
+  assert.deepEqual(
+    c.transactions.map((t) => t.label),
+    ["create:vault-B"],
+  );
+  assert.equal(c.transactions[0]!.hash, H1);
+});
+
+test("a call that submitted nothing records nothing", () => {
+  const c = ctx();
+  recordTx(c, res("Simulating transaction…\n1\n"), "read:resolution");
+  assert.deepEqual(c.transactions, []);
+});
+
+test("hashes accumulate across a whole run rather than replacing each other", () => {
+  const c = ctx();
+  recordTx(c, res(`Signing transaction: ${H1}`), "prime:set_expires");
+  recordTx(c, res(`Signing transaction: ${H2}`), "prime:fill");
+  assert.deepEqual(
+    c.transactions.map((t) => t.label),
+    ["prime:set_expires", "prime:fill"],
+  );
+});
+
+test("the parser holds against real CLI output, not just against hand-written fixtures", () => {
+  // Verbatim from a `stellar contract deploy` on testnet, 2026-08-20. The wasm hash on the third
+  // line is 64 hex characters and is NOT a transaction.
+  const real = [
+    "\u2139\uFE0F  Uploading contract WASM…",
+    "\u2139\uFE0F  Skipping install because wasm already installed",
+    "\u2139\uFE0F  Deploying contract using wasm hash 908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402",
+    "\u2139\uFE0F  Simulating transaction…",
+    `\u2139\uFE0F  Signing transaction: ${H1}`,
+    "\uD83C\uDF0E Sending transaction…",
+    "\u2705 Transaction submitted successfully!",
+    `\uD83D\uDD17 https://stellar.expert/explorer/testnet/tx/${H1}`,
+    "\u2705 Deployed!",
+  ].join("\n");
+  const c = ctx();
+  recordTx(c, res(real), "upload:mock", "create:oracle");
+  assert.deepEqual(
+    c.transactions.map((t) => [t.label, t.hash]),
+    [["create:oracle", H1]],
+  );
 });

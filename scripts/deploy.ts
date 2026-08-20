@@ -37,7 +37,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveNetwork, resolveRpcUrl, explorerContractUrl, type NetworkConfig } from "@antares/common";
+import {
+  explorerContractUrl,
+  explorerTxUrl,
+  resolveNetwork,
+  resolveRpcUrl,
+  type NetworkConfig,
+} from "@antares/common";
 
 import {
   EPOCH_PARAM_FIELDS,
@@ -52,8 +58,10 @@ import {
   buildDeployArgv,
   buildInvokeArgv,
   parseContractId,
+  parseTxHashes,
   runStellar,
   type NetworkArgs,
+  type RunResult,
 } from "./lib/chain.ts";
 import { checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
 import { checkAdapterSurface, exportedFunctions, sha256 } from "./lib/wasm.ts";
@@ -109,6 +117,16 @@ export interface Ctx {
   /** The ledger before the first deploy, so a later event query can find this run's transactions. */
   startLedger?: number;
   deployed: { suffix: string; vaultId: string; txHash?: string }[];
+  /**
+   * Every transaction this deploy submitted, labelled and in order.
+   *
+   * **This is D2's evidence and it is perishable.** `09-DEPLOYMENT.md` §3 says a testnet reset
+   * erases the transactions themselves, so a hash not written down here cannot be recovered later
+   * by any amount of archaeology — and walking the deployer account's history to reconstruct them
+   * only works while the account is young and the ledger still holds them. Recording at the moment
+   * of submission is the only point at which this is free.
+   */
+  transactions: { label: string; hash: string; explorer: string }[];
 }
 
 export interface Stage {
@@ -160,6 +178,29 @@ export async function runStages(
     }
   }
   return { checks: all, stopped: null };
+}
+
+/**
+ * Record every transaction a CLI invocation submitted, labelled.
+ *
+ * `labels` names them in submission order. A `contract deploy` submits **two** against a wasm the
+ * network has not seen — the upload, then the create — and only the create against one already
+ * installed; the CLI says which case it was, so the labels are aligned from the END rather than the
+ * start. Aligning from the start would mis-label every subsequent deploy in an `--experiment` run,
+ * where only the first uploads.
+ */
+export function recordTx(ctx: Ctx, result: RunResult, ...labels: string[]): string[] {
+  const combined = `${result.stdout}\n${result.stderr}`;
+  const hashes = parseTxHashes(combined);
+  const aligned = labels.slice(labels.length - hashes.length);
+  hashes.forEach((hash, i) => {
+    ctx.transactions.push({
+      label: aligned[i] ?? `tx${ctx.transactions.length + 1}`,
+      hash,
+      explorer: explorerTxUrl(ctx.net, hash),
+    });
+  });
+  return hashes;
 }
 
 // =================================================================================================
@@ -410,6 +451,7 @@ const step2: Stage = {
       }),
     );
     ctx.adapterId = parseContractId(`${out.stdout}\n${out.stderr}`);
+    recordTx(ctx, out, `upload:${which}`, "create:oracle");
 
     // D-50 end to end, and 04-ORACLE §1's claim, both read back off the network. Until this call
     // the surface assertion was about a file in our tree; after it, it is about the contract users
@@ -472,23 +514,31 @@ const step2b: Stage = {
     // Generous rather than exact: condition 7 wants the feed to outlive the round, and a testnet
     // profile that expires mid-experiment fails in a way that looks like a bug in the vault.
     const expiresAt = now + MOCK_FEED_LIFETIME_SECONDS;
-    runStellar(
-      buildInvokeArgv({
-        contractId: ctx.adapterId!,
-        method: "set_expires",
-        identity: ctx.opts.identity,
-        net: ctx.netArgs,
-        args: { at: expiresAt },
-      }),
+    recordTx(
+      ctx,
+      runStellar(
+        buildInvokeArgv({
+          contractId: ctx.adapterId!,
+          method: "set_expires",
+          identity: ctx.opts.identity,
+          net: ctx.netArgs,
+          args: { at: expiresAt },
+        }),
+      ),
+      "prime:set_expires",
     );
-    runStellar(
-      buildInvokeArgv({
-        contractId: ctx.adapterId!,
-        method: "fill",
-        identity: ctx.opts.identity,
-        net: ctx.netArgs,
-        args: { end: now, count: MOCK_FEED_RECORDS, price: MOCK_FEED_PRICE },
-      }),
+    recordTx(
+      ctx,
+      runStellar(
+        buildInvokeArgv({
+          contractId: ctx.adapterId!,
+          method: "fill",
+          identity: ctx.opts.identity,
+          net: ctx.netArgs,
+          args: { end: now, count: MOCK_FEED_RECORDS, price: MOCK_FEED_PRICE },
+        }),
+      ),
+      "prime:fill",
     );
     return Promise.resolve([
       mkCheck(
@@ -711,7 +761,8 @@ const step4: Stage = {
         }),
       );
       const vaultId = parseContractId(`${out.stdout}\n${out.stderr}`);
-      ctx.deployed.push({ suffix: inst.suffix, vaultId });
+      const hashes = recordTx(ctx, out, "upload:antares_vault", `create:vault${inst.suffix}`);
+      ctx.deployed.push({ suffix: inst.suffix, vaultId, txHash: hashes[hashes.length - 1] });
 
       const served = await fetchContractWasm(ctx, vaultId);
       checks.push(
@@ -847,11 +898,18 @@ const step6: Stage = {
       oracleWasmHash: ctx.wasm[ctx.opts.fastTest ? "mock_price_source" : "reflector_adapter"]?.sha256,
       reflectorId: ctx.opts.fastTest ? undefined : ctx.opts.reflectorId,
       vaultWasmHash: ctx.wasm["antares_vault"]?.sha256,
+      // The perishable half of the record. 09-DEPLOYMENT §3: a testnet reset erases the
+      // transactions themselves, so a hash not written down here cannot be recovered afterwards by
+      // any amount of archaeology — and reconstructing them from the deployer account's history
+      // only works while that account is young. D2 is evidenced by these.
+      transactions: ctx.transactions,
       instances: ctx.deployed.map((d) => {
         const inst = ctx.instances.find((i) => i.suffix === d.suffix)!;
         return {
           tokenSuffix: d.suffix,
           vaultId: d.vaultId,
+          /** The transaction that created this instance — the one a reader follows first. */
+          createTx: d.txHash,
           vaultWasmHash: ctx.wasm["antares_vault"]!.sha256,
           params: epochParamsJson(inst),
           depositCap: inst.depositCap,
@@ -876,6 +934,25 @@ const step6: Stage = {
         ctx.deployed.length > 0,
         "09-DEPLOYMENT §1: reproducibility over memory. Commit this file — nothing else in the " +
           "repository is allowed to carry a contract id (06-TEST-PLAN §8).",
+      ),
+      // A check, not a hope. Without it a parser regression turns the evidence half of the record
+      // into an empty array and the run still says DEPLOYED — and the omission only surfaces when
+      // somebody needs the hashes, by which time a reset may have taken them.
+      mkCheck(
+        "record.transactions",
+        "the transactions this deploy submitted are recorded, because a reset erases them",
+        "at least one per contract created",
+        ctx.transactions.map((t) => t.label),
+        ctx.transactions.length >= ctx.deployed.length + 1,
+        "09-DEPLOYMENT §3: a testnet reset erases the transactions, so a hash missing here cannot " +
+          "be recovered later — not tediously, but at all. D2 is evidenced by these.",
+      ),
+      mkCheck(
+        "record.create_tx",
+        "every instance names the transaction that created it",
+        "one hash each",
+        ctx.deployed.map((d) => d.txHash ?? "(missing)"),
+        ctx.deployed.every((d) => typeof d.txHash === "string" && d.txHash.length === 64),
       ),
     ]);
   },
@@ -972,7 +1049,7 @@ async function makeChainClient(ctx: Ctx): Promise<ChainClient> {
 
     async invoke<T>(contractId: string, method: string, args: readonly unknown[]) {
       const before = (await server.getLatestLedger()).sequence;
-      runStellar(
+      const submitted = runStellar(
         buildInvokeArgv({
           contractId,
           method,
@@ -981,6 +1058,10 @@ async function makeChainClient(ctx: Ctx): Promise<ChainClient> {
           args: namedArgsFor(method, args),
         }),
       );
+      // Recorded here rather than only in step 6, because these two calls ARE the smoke test and
+      // their hashes are what makes "a deposit and a withdraw round-tripped" checkable by someone
+      // who was not watching.
+      recordTx(ctx, submitted, `smoke:${method}`);
       const { events, txHash } = await eventsSince(contractId, before);
       if (txHash === null) {
         throw new DeployRefused(
@@ -1180,6 +1261,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     wasm: {},
     instances: [],
     deployed: [],
+    transactions: [],
   };
 
   // The identity's address, resolved from its NAME. This is the only thing about the signer this
