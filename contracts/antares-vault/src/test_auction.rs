@@ -850,3 +850,81 @@ fn a_bid_requires_the_bidders_authorization() {
     let r = a.f.client().try_bid(&b, &(100 * XLM), &(BPS as u32));
     assert!(r.is_err(), "an unauthorized bid must not succeed");
 }
+
+// -------------------------------------------------------------------------------
+// D-84 — what the bidder authorizes, and what the bidder pays
+//
+// `bid` escrows a ceiling and refunds the difference, because the charge is a
+// function of `now` and an authorization entry is signed against exact arguments
+// one or two ledgers earlier. These tests assert the observable half of that: the
+// account is out exactly the premium, the escrow is bounded by the curve's opening
+// rate rather than by whatever the bidder passed, and a bidder funded for only the
+// charge is refused. The failure D-84 describes cannot be reproduced in-process —
+// `mock_all_auths` re-derives auth at apply time, which is precisely what a real
+// wallet cannot do — so it was found on testnet and is pinned here by its fix.
+// -------------------------------------------------------------------------------
+
+#[test]
+fn a_decayed_fill_charges_the_premium_and_refunds_the_rest_of_the_escrow() {
+    let p = valid_params();
+    let a = live_auction(1_000 * XLM, p.clone());
+    // Halfway down the curve, so the escrow and the charge are genuinely different
+    // numbers. At offset 0 they coincide and the refund leg would never run.
+    a.at(p.auction_duration / 2);
+    let b = a.bidder(100 * XLM);
+    let before = a.f.balance(&b);
+
+    let filled = a.bid(&b, 400 * XLM, BPS as u32).unwrap();
+    let st = a.state();
+
+    let escrow = filled * i128::from(p.premium_start_bps) / BPS;
+    assert!(
+        st.premium_collected < escrow,
+        "the test is vacuous unless the curve has actually decayed: collected {} vs escrow {}",
+        st.premium_collected,
+        escrow
+    );
+    // The whole assertion, and it needs no second copy of the decay formula: the
+    // account is out exactly what the vault says it took in.
+    assert_eq!(
+        a.f.balance(&b),
+        before - st.premium_collected,
+        "the escrow above the charge came back"
+    );
+}
+
+#[test]
+fn the_escrow_is_bounded_by_the_curve_and_not_by_what_the_bidder_passed() {
+    let p = valid_params();
+    let a = live_auction(1_000 * XLM, p.clone());
+    a.at(0);
+    // `BPS` is the idiom for "no slippage limit". Unclamped it would demand the
+    // bidder escrow the entire notional; the curve descends from
+    // `premium_start_bps`, so that is the most the auction can ever charge.
+    let funded = 400 * XLM * i128::from(p.premium_start_bps) / BPS;
+    let b = a.bidder(funded);
+    assert_eq!(a.bid(&b, 400 * XLM, BPS as u32).unwrap(), 400 * XLM);
+    assert_eq!(a.f.balance(&b), 0, "at offset 0 the charge IS the ceiling");
+}
+
+#[test]
+fn a_bidder_funded_for_the_charge_but_not_the_ceiling_is_refused() {
+    // The cost D-84 imposes, asserted rather than left to be discovered: the
+    // account must HOLD the ceiling for the duration of the call even though it
+    // only pays the charge. 02-CONTRACT-SPEC §5 says so in the same words.
+    let p = valid_params();
+    let a = live_auction(1_000 * XLM, p.clone());
+    a.at(p.auction_duration / 2);
+
+    let ceiling = 400 * XLM * i128::from(p.premium_start_bps) / BPS;
+    let b = a.bidder(ceiling - 1);
+    assert!(
+        a.bid(&b, 400 * XLM, BPS as u32).is_err(),
+        "one stroop short of the ceiling is short, even though the charge is lower"
+    );
+
+    // Non-vacuity: the same bid at the same instant succeeds with one more stroop,
+    // so the refusal above is about the balance and not about anything else.
+    let rich = a.bidder(ceiling);
+    assert_eq!(a.bid(&rich, 400 * XLM, BPS as u32).unwrap(), 400 * XLM);
+}

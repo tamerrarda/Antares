@@ -64,9 +64,22 @@ import type { DecodedEvent } from "@antares/common/events";
  * events-only indexer's share total is short by exactly this much, permanently, from a vault's
  * first deposit onward.
  *
- * It is applied here because the constant is public (D-36, 02-CONTRACT-SPEC), so an outsider
- * reading the specification can apply it too. But applying a documented constant is a strictly
- * weaker claim than reading a number off the chain, and {@link ReconstructedState.assumptions}
+ * **Narrowed 2026-08-20 by dev1@29a33d9, and the narrowing is the interesting part.** The dead
+ * shares now emit their own SEP-41 `mint` to the vault address, so they ARE observable — in the
+ * **token** stream. `deposited.shares_minted` still carries `credited`, deliberately: §10's shapes
+ * are frozen, an added field breaks every decoder while an added event is what consumers already
+ * dispatch on by name.
+ *
+ * The consequence is worth stating precisely rather than calling the matter closed. §10 says *"an
+ * indexer must count one or the other, not both — the SEP-41 stream is the token view, the vault
+ * stream is the protocol view."* After the fix those two are no longer interchangeable **for share
+ * supply**: the token view sums to the real total with no constant, and the protocol view — the one
+ * this module counts, because every other quantity it needs lives there — is still short by exactly
+ * this floor. A residual, not a defect: the fix chose the stream that could carry it without
+ * breaking the frozen shapes, which was the right trade.
+ *
+ * So the constant is still applied here, and still declared. Applying a documented number is a
+ * strictly weaker claim than reading one off the chain, and {@link ReconstructedState.assumptions}
  * says so on every run rather than letting a green diff imply otherwise.
  */
 export const DEAD_SHARES = 1_000n;
@@ -114,20 +127,14 @@ export const SEP41_MIRROR: readonly string[] = ["mint", "burn", "transfer", "app
  * emitting module, so each entry names whose it is to register rather than being fixed here.
  */
 export const STATE_AFFECTING_UNDECODED: Readonly<Record<string, string>> = {
-  withdraw_requested:
-    "DEV1's (vault.rs). `{round, shares}` — whether the shares leave `shares_outstanding` at " +
-    "request or at claim is not decidable from §10, and for an instant Idle withdrawal both fire " +
-    "in one transaction, so scenario 1's last step cannot be reconstructed without it.",
-  withdraw_claimed:
-    "DEV1's (vault.rs). `{round, shares, amount}` — the assets actually leaving the vault and the " +
-    "shares actually burnt. Without it the withdrawal is invisible to an events-only reader while " +
-    "being the step 6a's gate ends on.",
-  pending_redeemed: "DEV1's (vault.rs). `{round, amount, shares, pps}` — mints shares at a later price.",
-  deposit_cancelled: "DEV1's (vault.rs). `{round, amount}` — returns capital the vault was holding.",
   epoch_lapsed:
     "DEV2's (epoch). `{notional_offered, pps, wclaims}` — a finalization event carrying `pps` and " +
-    "a withdrawal-queue credit, so a lapsed round silently drifts an indexer that cannot read it.",
+    "a withdrawal-queue credit, so a lapsed round silently drifts an indexer that cannot read it. " +
+    "Scenario 2's path; scenario 1 never produces one.",
 };
+
+// `withdraw_requested`, `withdraw_claimed`, `pending_redeemed` and `deposit_cancelled` were on this
+// list until 2026-08-20 and are decoded now (dev1@29a33d9), which is why the fold below models them.
 
 /** Split a run's skipped names into what §10 says is harmless and what makes a total wrong. */
 export function classifySkipped(skipped: readonly string[]): {
@@ -324,10 +331,12 @@ export function reconstruct(
         if (firstMint) {
           note(
             `D-36's ${DEAD_SHARES} dead shares, added at the first mint`,
-            "No event carries them. Measured on testnet 2026-08-20: `deposited.shares_minted` and " +
-              "the SEP-41 `mint` both reported the CREDITED amount, and `epoch().shares_outstanding` " +
-              "was higher by exactly this floor. The constant is public, so an outsider can apply " +
-              "it — but this line is specification, not observation, and the difference matters " +
+            "Not carried by the PROTOCOL stream this module counts. Since dev1@29a33d9 they are " +
+              "carried by the TOKEN stream — a second SEP-41 `mint` to the vault address — so an " +
+              "indexer counting mint/burn needs no constant at all, while one counting " +
+              "deposited/withdraw_claimed is short by exactly this floor. §10 says to count one " +
+              "stream or the other; for share supply they stopped being interchangeable on that " +
+              "commit. This line is specification, not observation, and the difference matters " +
               "when the whole point of the run is what an outsider can verify.",
           );
         }
@@ -338,6 +347,42 @@ export function reconstruct(
         };
         break;
       }
+
+      case "withdraw_requested":
+        // Deliberately moves nothing. `withdraw_claimed` carries the same `shares` AND the assets,
+        // and for an instant Idle withdrawal §10 emits both in one transaction — so subtracting at
+        // both would double-count. Which of the two actually burns is recorded as an assumption
+        // rather than decided here; see below.
+        note(
+          "shares leave the supply at withdraw_claimed rather than at withdraw_requested",
+          "§10 gives both events the same `shares`, and an instant Idle withdrawal emits them in " +
+            "ONE transaction, so scenario 1 cannot tell the two attributions apart — every total " +
+            "comes out identical either way. A QUEUED withdrawal separates them by a whole round " +
+            "and would decide it; until one is observed this is a choice, not a measurement. It is " +
+            "attributed to the claim because that is the event carrying `amount`, and the SEP-41 " +
+            "`burn` rides with it.",
+        );
+        break;
+
+      case "withdraw_claimed":
+        s = {
+          ...s,
+          holdings: s.holdings - e.amount,
+          liabilities: s.liabilities - e.amount,
+          sharesOutstanding: s.sharesOutstanding - e.shares,
+        };
+        break;
+
+      case "pending_redeemed":
+        // The capital arrived at `deposited` and was counted then; this is the mint that was
+        // deferred to a later price (D-18), so only the share side moves.
+        s = { ...s, sharesOutstanding: s.sharesOutstanding + e.shares };
+        break;
+
+      case "deposit_cancelled":
+        // Capital the vault was holding, returned. It never minted, so no share leg.
+        s = { ...s, holdings: s.holdings - e.amount };
+        break;
 
       case "settled":
         // `payout_total` is credited to the fills, not paid; `fee` accrues (D-39). Both become

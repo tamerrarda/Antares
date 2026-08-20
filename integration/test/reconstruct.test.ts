@@ -211,13 +211,70 @@ test("phase follows the ledger clock across a transition nothing emits", () => {
 
 // --- the gap that decides whether any of it means anything -----------------------------------------
 
-test("§10's SEP-41 mirror is skippable by the spec; the vault stream is not", () => {
-  const { benign, blocking } = classifySkipped(["mint", "burn", "transfer", "withdraw_claimed"]);
+test("§10's SEP-41 mirror is skippable by the spec; a finalization event is not", () => {
+  // `epoch_lapsed` is the last one left: dev1@29a33d9 registered the four vault-side decoders that
+  // used to sit beside it, which is why this test names a different event than it did yesterday.
+  const { benign, blocking } = classifySkipped(["mint", "burn", "transfer", "epoch_lapsed"]);
   assert.deepEqual([...benign], ["mint", "burn", "transfer"]);
   assert.deepEqual(
     blocking.map((b) => b.name),
-    ["withdraw_claimed"],
+    ["epoch_lapsed"],
   );
+});
+
+test("the withdrawal half is decodable now, so it no longer blocks a diff", () => {
+  const { benign, blocking } = classifySkipped([
+    "withdraw_requested",
+    "withdraw_claimed",
+    "pending_redeemed",
+    "deposit_cancelled",
+  ]);
+  assert.equal(blocking.length, 0);
+  assert.equal(benign.length, 4);
+});
+
+test("a withdrawal takes assets and shares out, and takes them out once", () => {
+  const deposited = reconstruct([deposit(10_000_000n, 9_999_000n)]);
+  const withdrawn = reconstruct(
+    [
+      at({ name: "withdraw_requested", user: ALICE, round: 0, shares: 9_999_000n }),
+      at({ name: "withdraw_claimed", user: ALICE, round: 0, shares: 9_999_000n, amount: 9_999_000n }),
+    ],
+    [],
+    deposited,
+  );
+  // Both events carry the same `shares` and §10 emits both in one transaction for an instant Idle
+  // withdrawal, so counting both would halve the supply twice over.
+  assert.equal(withdrawn.sharesOutstanding, DEAD_SHARES);
+  assert.equal(withdrawn.holdings, 1_000n);
+  assert.ok(
+    withdrawn.assumptions.some((a) => /withdraw_claimed rather than at withdraw_requested/.test(a.what)),
+  );
+});
+
+test("a cancelled pending deposit returns capital and mints nothing", () => {
+  const s = reconstruct([
+    at({ name: "deposited", user: BOB, round: 1, amount: 7_000_000n, sharesMinted: 0n, instant: false }),
+    at({ name: "deposit_cancelled", user: BOB, round: 1, amount: 7_000_000n }),
+  ]);
+  assert.equal(s.holdings, 0n);
+  assert.equal(s.sharesOutstanding, 0n);
+});
+
+test("a pending deposit redeemed later mints without moving capital again", () => {
+  const s = reconstruct([
+    at({ name: "deposited", user: BOB, round: 1, amount: 7_000_000n, sharesMinted: 0n, instant: false }),
+    at({
+      name: "pending_redeemed",
+      user: BOB,
+      round: 2,
+      amount: 7_000_000n,
+      shares: 6_930_000n,
+      pps: 10_100_000n,
+    }),
+  ]);
+  assert.equal(s.holdings, 7_000_000n, "the capital arrived at deposited and is not counted twice");
+  assert.equal(s.sharesOutstanding, 6_930_000n);
 });
 
 test("an unrecognised name is reported rather than assumed harmless", () => {
@@ -227,11 +284,11 @@ test("an unrecognised name is reported rather than assumed harmless", () => {
 });
 
 test("a missing state-affecting decoder refuses the whole diff instead of reporting totals", () => {
-  const s = reconstruct([deposit(10_000_000n, 9_999_000n), opened()], ["withdraw_claimed"]);
-  const checks = diffAgainstEpoch(s, CHAIN, ["withdraw_claimed"]);
+  const s = reconstruct([deposit(10_000_000n, 9_999_000n), opened()], ["epoch_lapsed"]);
+  const checks = diffAgainstEpoch(s, CHAIN, ["epoch_lapsed"]);
   assert.equal(checks.length, 1, "nothing is compared once a total has no defined meaning");
   assert.deepEqual(failedIds(checks), ["events.decoders_complete"]);
-  assert.match(String(checks[0]!.note), /withdraw_claimed/);
+  assert.match(String(checks[0]!.note), /epoch_lapsed/);
 });
 
 // --- the diff ---------------------------------------------------------------------------------------

@@ -287,6 +287,38 @@ impl AntaresVault {
             return Err(Error::ZeroPremium);
         }
 
+        // D-84. **What the bidder is charged and what the bidder AUTHORIZES are
+        // two different amounts, and they have to be.** `premium` is a function of
+        // `now`; Soroban matches an auth entry against the exact arguments of the
+        // sub-invocation, and the entry a client signs is the one *simulation*
+        // produced, one or two ledgers earlier. Pulling `premium` therefore asks
+        // the bidder to have pre-authorized a number nobody knew when they signed:
+        // the SAC refuses the transfer and the host escalates that to a VM trap, so
+        // the bidder gets no error code at all. Measured on testnet 2026-08-20,
+        // transaction `ec90a382…`.
+        //
+        // `max_premium_bps` is the bidder's own argument, identical at simulation
+        // and at apply, so it satisfies D-84's requirement: the authorized amount
+        // must not depend on when the transaction lands.
+        //
+        // **Clamped to `premium_start_bps`, and the clamp is what makes it usable.**
+        // The curve DESCENDS from `premium_start_bps`, so no fill can ever be
+        // charged more than that — escrowing against a larger `max_premium_bps`
+        // would lock capital the auction cannot take. Without it, the honest
+        // idiom for "no slippage limit", `max_premium_bps = BPS`, would demand the
+        // bidder escrow the entire notional; the vault's own tests wrote it that
+        // way and every one of them failed on a balance, which is how the clamp
+        // came to be here. `premium_start_bps` is fixed at open and published on
+        // `epoch_opened`, so a client computes the same bound off the event and
+        // knows exactly what to fund — time-invariant, so D-84 still holds.
+        //
+        // The refund stays non-negative under both terms: the guard above rejected
+        // `premium_bps_now > max_premium_bps`, the curve gives
+        // `premium_bps_now <= premium_start_bps`, and `mul_div_floor` is monotonic
+        // in the rate.
+        let ceiling_bps = max_premium_bps.min(ctx.state.params.premium_start_bps);
+        let premium_max = premium_for_fill(filled, ceiling_bps)?;
+
         // Upsert, never insert. Re-bids **accumulate** into one record, so
         // per-bidder state is bounded no matter how many times someone bids, and
         // `claimed` stays false — a bidder who has already claimed a *different*
@@ -333,7 +365,18 @@ impl AntaresVault {
         // state write, and an earlier version of §5's list put it at step 4,
         // which §11 had to override by declaration.
         let vault_address = env.current_contract_address();
-        vault::asset_client(&env, &ctx.config).transfer(&bidder, &vault_address, &premium);
+        let asset = vault::asset_client(&env, &ctx.config);
+        asset.transfer(&bidder, &vault_address, &premium_max);
+        // The difference goes straight back. Outbound, so the contract authorizes
+        // its own transfer (§11) and `bid` still costs the bidder one signature —
+        // which is why this is preferred to an allowance, whose `approve` leg would
+        // cost them a second transaction.
+        let refund = premium_max
+            .checked_sub(premium)
+            .ok_or(Error::InvalidAmount)?;
+        if refund > 0 {
+            asset.transfer(&vault_address, &bidder, &refund);
+        }
 
         BidFilled {
             round,
