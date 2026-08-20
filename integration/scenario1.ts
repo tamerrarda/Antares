@@ -48,20 +48,28 @@
  * having before committing eleven minutes.
  */
 
-import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antares/common/checks";
+import { mkCheck, type Check } from "@antares/common/checks";
 import { decodeEvent, eventName, type RawEvent } from "@antares/common/events";
-import type { NetworkArgs } from "@antares/common/chain";
-import { isNetworkName, networkConfig, resolveRpcUrl } from "@antares/common/networks";
 import { RECORD_CAP_TICKS, reachLimit } from "@antares/common/oracle";
+
+import {
+  contractError,
+  diagnose,
+  makeCtx,
+  parseOptions,
+  phaseName,
+  record,
+  repoRoot,
+  runStages,
+  type Ctx,
+  type EpochView,
+  type Stage,
+} from "./harness.ts";
 
 import { diffAgainstEpoch, omissions, type ChainState } from "./diff.ts";
 import { ledgerNow, ledgerSecondsUntil, waitUntilLedgerTime } from "./ledger-clock.ts";
-import { addressOf, invoke, invokeAsync, makeReader, u32, type Reader } from "./read.ts";
+import { invoke, invokeAsync, u32 } from "./read.ts";
 import { reconstruct, type LocatedEvent } from "./reconstruct.ts";
-
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 // =================================================================================================
 // The numbers this scenario chooses, each with the reason it is that number
@@ -136,111 +144,13 @@ export const SETTLE_LEAD_SECONDS = 6;
 // Options
 // =================================================================================================
 
-export interface Options {
-  readonly network: string;
-  readonly admin: string;
-  readonly depositor: string;
-  readonly bidderA: string;
-  readonly bidderB: string;
-  readonly record: string;
-  readonly deposit: bigint;
-  readonly notionalA: bigint;
-  readonly notionalB: bigint;
-  readonly maxPremiumBps: number;
-  readonly preflight: boolean;
-  readonly diffOnly: boolean;
-}
-
-export function parseOptions(argv: readonly string[], root: string): Options {
-  const value = (name: string, fallback: string): string => {
-    const i = argv.indexOf(`--${name}`);
-    return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1]! : fallback;
-  };
-  const network = process.env["NETWORK"] ?? "";
-  return {
-    network,
-    admin: value("admin", "antares-testnet"),
-    depositor: value("depositor", value("admin", "antares-testnet")),
-    bidderA: value("bidder-a", "antares-bidder-a"),
-    bidderB: value("bidder-b", "antares-bidder-b"),
-    record: value("record", join(root, "deployments", `${network || "testnet"}.json`)),
-    deposit: BigInt(value("deposit", "100000000")),
-    notionalA: BigInt(value("notional-a", "0")),
-    notionalB: BigInt(value("notional-b", "0")),
-    maxPremiumBps: Number(value("max-premium-bps", "10000")),
-    preflight: argv.includes("--preflight"),
-    diffOnly: argv.includes("--diff-only"),
-  };
-}
-
 // =================================================================================================
 // Shape of a run
 // =================================================================================================
 
-interface DeploymentRecord {
-  readonly oracleId: string;
-  readonly instances: readonly {
-    readonly tokenSuffix: string;
-    readonly vaultId: string;
-    readonly createTx: string;
-    readonly params: Readonly<Record<string, number>>;
-    readonly economicallyMeaningless?: boolean;
-  }[];
-}
-
-interface EpochView {
-  readonly round: number;
-  readonly phase: readonly string[] | string;
-  readonly notional_offered: bigint;
-  readonly notional_sold: bigint;
-  readonly premium_collected: bigint;
-  readonly strike: bigint;
-  readonly open_twap: bigint;
-  readonly opened_at: bigint;
-  readonly auction_end: bigint;
-  readonly expiry: bigint;
-  readonly shares_outstanding: bigint;
-  readonly last_pps: bigint;
-}
-
-export interface Ctx {
-  readonly opts: Options;
-  readonly net: NetworkArgs;
-  readonly root: string;
-  readonly reader: Reader;
-  readonly vault: string;
-  readonly oracle: string;
-  readonly params: Readonly<Record<string, number>>;
-  readonly createTx: string;
-  readonly addresses: { admin: string; depositor: string; bidderA: string; bidderB: string };
-  /** Every transaction this run submitted, so the report is re-derivable from hashes alone. */
-  readonly txs: { label: string; hash: string }[];
-  round?: number;
-  openedAt?: number;
-  auctionEnd?: number;
-  expiry?: number;
-  strike?: bigint;
-}
-
-const phaseName = (p: EpochView["phase"]): string => (Array.isArray(p) ? String(p[0]) : String(p));
-
-/** Record a transaction hash off the CLI's own output, so the run's evidence is hashes. */
-function record(ctx: Ctx, out: { stdout: string; stderr: string }, label: string): void {
-  const combined = `${out.stdout}\n${out.stderr}`;
-  for (const m of combined.matchAll(/Signing transaction:\s*([0-9a-f]{64})\b/g)) {
-    ctx.txs.push({ label, hash: m[1]! });
-  }
-}
-
 // =================================================================================================
 // Stages
 // =================================================================================================
-
-export interface Stage {
-  readonly id: string;
-  readonly title: string;
-  run(ctx: Ctx): Promise<Check[]>;
-}
 
 const stage0: Stage = {
   id: "0",
@@ -922,101 +832,10 @@ export const DIFF_ONLY_STAGES: readonly Stage[] = [stage0, stage7b];
 // Runner
 // =================================================================================================
 
-export class ScenarioRefused extends Error {
-  // An explicit field rather than a parameter property: `erasableSyntaxOnly` forbids the latter,
-  // because `--experimental-strip-types` erases types without emitting the assignment they imply.
-  readonly stage: string;
-  constructor(stage: string, message: string) {
-    super(message);
-    this.name = "ScenarioRefused";
-    this.stage = stage;
-  }
-}
-
-export function repoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 8; i += 1) {
-    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
-    dir = dirname(dir);
-  }
-  throw new Error("Could not locate the repository root.");
-}
-
-/**
- * A thrown call, reported the way every other result here is reported.
- *
- * The contract's error code is pulled to the front. `Error(Contract, #10)` buried in eighteen lines
- * of diagnostic events is the same information as "the vault refused with error 10", and only one of
- * the two can be read at a glance — which matters most at exactly the moment something failed.
- */
-/** The contract's own error, pulled to the front of whatever the CLI printed around it. */
-export function contractError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  const code = /Error\(Contract, #(\d+)\)/.exec(message)?.[1];
-  return code === undefined ? (message.split("\n")[0] ?? "(no message)") : `Error(Contract, #${code})`;
-}
-
-/**
- * The diagnostic events, in the order worth reading them.
- *
- * A Soroban failure prints the innermost call last and the escalation first, so the line that says
- * WHY is usually in the middle of a wall of text. This lifts the oracle's answer out, because a feed
- * that cannot be read makes most entry points refuse and reading the vault's code first sends the
- * reader to the wrong module.
- */
-export function diagnose(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  const parts: string[] = [];
-  const oracle = /fn_return, (reading|spot_check)\], data:\[?(\w+)/.exec(message);
-  if (oracle !== null) parts.push(`The oracle answered \`${oracle[2]}\` to \`${oracle[1]}\`.`);
-  const inner = [...message.matchAll(/topics:\[fn_call, \w+, (\w+)\]/g)].map((m) => m[1]);
-  if (inner.length > 0) parts.push(`Call chain: ${[...new Set(inner)].reverse().join(" -> ")}.`);
-  if (/ResourceLimitExceeded/.test(message)) {
-    parts.push(
-      "ResourceLimitExceeded. If this was a `fill` on mock-price-source, the cause is structural " +
-        "rather than transient: the mock keeps EVERY record ever written in a single Map in " +
-        "INSTANCE storage, so each fill reads the whole map, adds its ticks and writes the whole " +
-        "map back. Successive primes write disjoint tick ranges, so the map grows monotonically — " +
-        "about 240 entries per scenario run at this profile — and after a handful of runs one fill " +
-        "no longer fits in one transaction. It cannot be pruned: the fixture exposes clear_price " +
-        "for one tick and nothing that empties it. A repeatable harness therefore has to start " +
-        "from a FRESHLY DEPLOYED mock, and the vault takes its oracle at construction with no " +
-        "setter, so that means a fresh vault too.",
-    );
-  }
-  // The whole message, trimmed rather than summarised. A submission failure carries its reason
-  // across several lines — \`transaction submission failed: Some(...)\` is a prefix, not an answer —
-  // and a regex that stops at the first newline turns the one useful line into a truncated one.
-  parts.push(message.replace(/\s+/g, " ").slice(0, 2000));
-  return parts.join(" ");
-}
-
-function asFailure(stage: Stage, err: unknown): Check {
-  const message = err instanceof Error ? err.message : String(err);
-  const code = /Error\(Contract, #(\d+)\)/.exec(message)?.[1];
-  const reading = /fn_return, reading\], data:\[(\w+)\]/.exec(message)?.[1];
-  return mkCheck(
-    `stage${stage.id}.threw`,
-    `stage ${stage.id} completed without the chain refusing it`,
-    "no refusal",
-    code === undefined ? message.split("\n")[0] : `Error(Contract, #${code})`,
-    false,
-    [
-      code === undefined ? null : `The vault refused with contract error ${code}.`,
-      reading === undefined
-        ? null
-        : `The oracle answered \`${reading}\` — read that before reading the vault's code, because a feed that cannot be read makes almost every entry point refuse.`,
-      message.slice(0, 1500),
-    ]
-      .filter((l): l is string => l !== null)
-      .join(" "),
-  );
-}
-
 export async function main(argv: readonly string[]): Promise<number> {
-  const root = repoRoot();
-  const opts = parseOptions(argv, root);
-  if (!isNetworkName(opts.network)) {
+  const opts = parseOptions(argv, repoRoot());
+  const ctx = await makeCtx(opts);
+  if (ctx === null) {
     console.error(
       `\nusage: NETWORK=testnet scenario1.ts [--admin <id>] [--bidder-a <id>] [--bidder-b <id>]\n` +
         `                                    [--depositor <id>] [--deposit <stroops>] [--preflight]\n\n` +
@@ -1031,66 +850,20 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 2;
   }
 
-  const netCfg = networkConfig(opts.network);
-  const net: NetworkArgs = {
-    rpcUrl: resolveRpcUrl(netCfg),
-    networkPassphrase: netCfg.networkPassphrase,
-  };
-  const rec = JSON.parse(readFileSync(opts.record, "utf8")) as DeploymentRecord;
-  const inst = rec.instances[0];
-  if (inst === undefined) throw new ScenarioRefused("0", `${opts.record} names no instance to drive.`);
-
-  const addresses = {
-    admin: addressOf(opts.admin),
-    depositor: addressOf(opts.depositor),
-    bidderA: addressOf(opts.bidderA),
-    bidderB: addressOf(opts.bidderB),
-  };
-  const reader = await makeReader(net, addresses.admin);
-  const ctx: Ctx = {
-    opts,
-    net,
-    root,
-    reader,
-    vault: inst.vaultId,
-    oracle: rec.oracleId,
-    params: inst.params,
-    createTx: inst.createTx,
-    addresses,
-    txs: [],
-  };
-
   console.log(`\nAntares integration — 06-TEST-PLAN §7 scenario 1`);
-  console.log(`  network   ${opts.network} via ${net.rpcUrl}`);
+  console.log(`  network   ${opts.network} via ${ctx.net.rpcUrl}`);
   console.log(`  vault     ${ctx.vault}`);
   console.log(`  bidders   ${opts.bidderA}, ${opts.bidderB}`);
   console.log(opts.preflight ? `  --preflight: stages 0-2, nothing is opened\n` : "");
 
   const stages = opts.diffOnly ? DIFF_ONLY_STAGES : opts.preflight ? PREFLIGHT_STAGES : STAGES;
-  let failed = false;
-  for (const stage of stages) {
-    console.log(`\nstage ${stage.id} — ${stage.title}`);
-    // A throw becomes a failed CHECK rather than a stack trace. A harness whose failure mode is an
-    // unhandled ChainError makes the reader dig the contract's error code out of a diagnostic dump
-    // to learn what happened — and the code is the whole answer.
-    const checks = await stage.run(ctx).catch((err: unknown) => [asFailure(stage, err)]);
-    console.log(renderChecks("", checks).slice(1).join("\n"));
-    if (!allPassed(checks)) {
-      console.error(`\nREFUSED at stage ${stage.id}: ${failedIds(checks).join(", ")}`);
-      failed = true;
-      break;
-    }
-  }
-
-  console.log(`\ntransactions this run submitted — the evidence, and all of it public:`);
-  for (const t of ctx.txs) console.log(`  ${t.label.padEnd(24)} ${t.hash}`);
+  const ok = await runStages(stages, ctx);
 
   if (!opts.preflight && !opts.diffOnly) {
     console.log(`\nnot compared, and why (epoch() fields the event log cannot supply):`);
     for (const line of omissions()) console.log(`  - ${line}`);
   }
-
-  return failed ? 1 : 0;
+  return ok ? 0 : 1;
 }
 
 if (process.argv[1]?.endsWith("scenario1.ts")) {
