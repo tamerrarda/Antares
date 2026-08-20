@@ -31,8 +31,8 @@
  * Every call is a simulation. Nothing is signed and nothing is spent.
  */
 
-import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "./lib/checks.ts";
-import { buildInvokeArgv, runStellar, type NetworkArgs } from "./lib/chain.ts";
+import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antares/common/checks";
+import { buildInvokeArgv, runStellar, type NetworkArgs } from "@antares/common/chain";
 import { loadInstances, type InstanceSpec } from "./check-params.ts";
 
 /** The six timing arguments `supports_round` takes, in the ABI's names. */

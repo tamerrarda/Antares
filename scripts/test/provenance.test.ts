@@ -14,7 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { failedIds } from "../lib/checks.ts";
+import { failedIds } from "@antares/common/checks";
 import { checkSourceTree, readSourceTree } from "../lib/provenance.ts";
 
 function git(root: string, ...args: string[]): void {

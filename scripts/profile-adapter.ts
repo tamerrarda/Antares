@@ -36,13 +36,15 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 
+import { RECORD_CAP_TICKS, reachSeconds } from "@antares/common/oracle";
+
 // ---------------------------------------------------------------------------------------------
 // Constants owned by the design. Restated only so the profile can build an honest anchor grid; if
 // one disagrees with its document, the document wins.
 // ---------------------------------------------------------------------------------------------
 
-/** `price-source-api::RECORD_CAP_TICKS`, measured at 255 in Phase 1 (D-69) — not 256. */
-const RECORD_CAP_TICKS = 255;
+// RECORD_CAP_TICKS is imported rather than restated — packages/common/oracle.ts, and D-69 for why
+// it is 255 rather than 256.
 
 /** The windows the vault ships (02-CONTRACT-SPEC §4). The grid is derived from these. */
 const SHIPPED = { twap_window: 900, guard_window: 3600 };
@@ -240,7 +242,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const reach = RECORD_CAP_TICKS * resolution;
+  const reach = reachSeconds(resolution);
   const guardTicks = Math.ceil(SHIPPED.guard_window / resolution);
   const deepest = RECORD_CAP_TICKS - guardTicks - 1;
   console.log(`  resolution ${resolution}s   reachable depth ${RECORD_CAP_TICKS} ticks = ${hms(reach)}`);

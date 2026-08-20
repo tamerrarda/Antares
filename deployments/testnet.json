@@ -1,59 +1,63 @@
 {
-  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. The two commit fields are separate on purpose: the tree a wasm was built from and the tree that ran the deploy are different questions, and one field answers neither when they differ. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57).",
+  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run — deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57).",
   "network": "testnet",
-  "deployedAt": "2026-08-20T11:11:29.240Z",
+  "deployedAt": "2026-08-20T16:46:27.184Z",
   "deployerIdentity": "antares-testnet",
   "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
   "sourceTree": {
-    "commit": "a285130",
-    "dirty": true,
-    "dirtyPaths": [
-      "(not recorded — this field did not exist when this deploy ran)"
-    ],
-    "_correction": "CORRECTED BY HAND, 2026-08-20 (DEV3). This block replaces toolchain.wasmBuiltAtCommit and toolchain.deployedAtCommit, which both read 4109052 and were both WRONG — and wrong in the way that matters most, because the commit field is the line that tells a reader whether to believe the rest of the file. The deploy ran at 2026-08-20T11:11:29Z. 4109052 was committed an hour earlier and a285130 an hour later, so the run came from a working tree that was no commit at all. The named tree is disprovable from this file alone: its scripts/lib/chain.ts uses execFileSync, which returns only stdout and therefore discards the stderr line carrying every transaction hash — so it could not have produced the transactions array below it. The cause was an ordering rather than a slip: write the deploy code, run it, then commit the code and the record together, and the record can never name the tree that produced it, only its parent. THE CORRECTED VALUE: the code that ran is the code committed at a285130; at run time it was uncommitted, which is why dirty is true. That claim is checkable — a285130's chain.ts uses spawnSync and its deploy.ts carries the transaction wiring, both consistent with this file's contents in the way the old value was not. This annotation is hand-written and says so; a machine-written sourceTree has no _correction key. From the next deploy the field is true by construction, because scripts/deploy.ts step 0 now REFUSES a dirty tree. Everything else in this record — addresses, wasm hashes, all six transaction hashes — was verified independently against the network and is unchanged."
+    "commit": "7d4a7e7c5c409b0581a6a9be18022b15e79c9822",
+    "dirty": false,
+    "dirtyPaths": []
+  },
+  "toolchain": {
+    "rust": "1.95.0",
+    "stellarCli": "27.1.0",
+    "sorobanSdk": "=27.0.6",
+    "target": "wasm32v1-none",
+    "node": "v22.18.0"
   },
   "assetId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-  "oracleId": "CD2CWMXSEMYN7PBRWM6BGBMIIWCPGCASVILSZADZUB4CFQCMJ6BG3QUA",
+  "oracleId": "CDKZ2DQP4NRYV7EJ4L4VPBCZBSJT4JY2JLAFTJZ6AG7JR3ZNWNH3CRXR",
   "oracleWasmHash": "908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402",
-  "vaultWasmHash": "ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83",
+  "vaultWasmHash": "3754893362c70ec954cebf6b3c3272b64afb1107bd2c22da7fd6f1c3c9cb07c6",
   "transactions": [
     {
       "label": "create:oracle",
-      "hash": "42421aeb3477fb59ed2fcc615430b4bff530d2bef757ca878099550c07e6a4a7",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/42421aeb3477fb59ed2fcc615430b4bff530d2bef757ca878099550c07e6a4a7"
+      "hash": "2c237c4a037f14a6ce8a1f8100f1b1dea413089d8cd9a6bfc0d4711870591a9f",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/2c237c4a037f14a6ce8a1f8100f1b1dea413089d8cd9a6bfc0d4711870591a9f"
     },
     {
       "label": "prime:set_expires",
-      "hash": "aca953941dc21d30fea985bcae0edf2d19e99defa3f18b33522e74c02c6f30eb",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/aca953941dc21d30fea985bcae0edf2d19e99defa3f18b33522e74c02c6f30eb"
+      "hash": "cc9172e411588cf062b5e43f26a08eef856575901d96baa287f03b6890b6781b",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/cc9172e411588cf062b5e43f26a08eef856575901d96baa287f03b6890b6781b"
     },
     {
       "label": "prime:fill",
-      "hash": "d0dbb93f24b203bbd8a8bdb16f6298987bd95ea8e48ef1678b6a3f428900d830",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/d0dbb93f24b203bbd8a8bdb16f6298987bd95ea8e48ef1678b6a3f428900d830"
+      "hash": "9c54fcafa1de4a77f67446b60b4ec92a2ff4e522c5dabe134056d3ce565d09f7",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/9c54fcafa1de4a77f67446b60b4ec92a2ff4e522c5dabe134056d3ce565d09f7"
     },
     {
       "label": "create:vault-F",
-      "hash": "ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82"
+      "hash": "d75f919264e31da5497693d5bc13bafa68dd48661ffb3ec36af240b5bf9b5333",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/d75f919264e31da5497693d5bc13bafa68dd48661ffb3ec36af240b5bf9b5333"
     },
     {
       "label": "smoke:deposit",
-      "hash": "94e3265d65a417d188c6ec86dc1e4b504946e48cbac2f3626d3784172232fe45",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/94e3265d65a417d188c6ec86dc1e4b504946e48cbac2f3626d3784172232fe45"
+      "hash": "1094f1dd6294933f1e604cc349c09245361a9875e4887ce1e081347b4bac1ed0",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/1094f1dd6294933f1e604cc349c09245361a9875e4887ce1e081347b4bac1ed0"
     },
     {
       "label": "smoke:request_withdraw",
-      "hash": "1bfb3d89c9b0bb8f5a6714e9a0711aaae5fd293557dd475068a480e84c3fd6a4",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/1bfb3d89c9b0bb8f5a6714e9a0711aaae5fd293557dd475068a480e84c3fd6a4"
+      "hash": "07f61f251f397ad81f275a5fde3e8b698a8441328315f11aac296de97b4df59b",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/07f61f251f397ad81f275a5fde3e8b698a8441328315f11aac296de97b4df59b"
     }
   ],
   "instances": [
     {
       "tokenSuffix": "-F",
-      "vaultId": "CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75",
-      "createTx": "ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82",
-      "vaultWasmHash": "ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83",
+      "vaultId": "CBJXQ7SKVLZXXTN22R4RG2GLIIUHHAEP6DHRRVL5REYRGTLQ6VICJRFT",
+      "createTx": "d75f919264e31da5497693d5bc13bafa68dd48661ffb3ec36af240b5bf9b5333",
+      "vaultWasmHash": "3754893362c70ec954cebf6b3c3272b64afb1107bd2c22da7fd6f1c3c9cb07c6",
       "params": {
         "epoch_duration": 600,
         "auction_duration": 20,
@@ -75,16 +79,9 @@
       "depositCap": 1000000000000,
       "rentThreshold": 120960,
       "rentExtendTo": 518400,
-      "allowlistExpiresAt": 1788433865,
+      "allowlistExpiresAt": 1788453960,
       "economicallyMeaningless": true,
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75"
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBJXQ7SKVLZXXTN22R4RG2GLIIUHHAEP6DHRRVL5REYRGTLQ6VICJRFT"
     }
-  ],
-  "toolchain": {
-    "rust": "1.95.0",
-    "stellarCli": "27.1.0",
-    "sorobanSdk": "=27.0.6",
-    "target": "wasm32v1-none",
-    "node": "v22.18.0"
-  }
+  ]
 }

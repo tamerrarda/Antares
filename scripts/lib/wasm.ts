@@ -26,7 +26,7 @@
 
 import { createHash } from "node:crypto";
 
-import { mkCheck, type Check } from "./checks.ts";
+import { mkCheck, type Check } from "@antares/common/checks";
 
 export class WasmError extends Error {
   constructor(message: string) {

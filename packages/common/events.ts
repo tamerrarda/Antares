@@ -298,6 +298,10 @@ export type DecodedEvent =
   | RefundClaimed
   | FeeClaimed
   | Deposited
+  | WithdrawRequested
+  | WithdrawClaimed
+  | PendingRedeemed
+  | DepositCancelled
   | Settled
   | EpochVoided
   | EpochUnresolved

@@ -12,7 +12,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 
-import { failedIds } from "../lib/checks.ts";
+import { failedIds } from "@antares/common/checks";
 import {
   ADAPTER_SURFACE,
   WasmError,

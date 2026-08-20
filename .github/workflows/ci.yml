@@ -2,6 +2,7 @@
 #
 #   fmt → clippy → test → vector-diff → network-agnostic check
 #       → wasm build + size check → reproducible-build
+#   TypeScript, independently: ts; static-rules-ts; bindings drift
 #   scout-audit, fuzz smoke and cargo-mutants: opt-in per run, see the inputs
 #   below. Scout is opt-in rather than per-build since 2026-08-19: measured at
 #   9 m 57 s and still compiling itself when cancelled, to analyse nothing
@@ -11,9 +12,9 @@
 #
 # TWO OWNERS, ONE FILE (DEV-PROTOCOL §3). Everything below is DEV1's except the
 # region marked `DEV3 REGION`, which carries the TypeScript jobs — TS lint,
-# typecheck, `pnpm -r build`, and the TypeScript scope of the network-agnostic
-# check. DEV3 writes those; DEV1 reviews them. Stated here so it is not
-# discovered as a merge conflict.
+# typecheck, `pnpm -r build`, the TypeScript scope of the network-agnostic
+# check, and the bindings drift check. DEV3 writes those; DEV1 reviews them.
+# Stated here so it is not discovered as a merge conflict.
 #
 # Jobs whose inputs do not exist yet (the Python reference, the fuzz targets,
 # the snapshots) do not pass quietly — they say what is missing and name the
@@ -567,7 +568,8 @@ jobs:
   # DEV1 does not write these and does not let them go unwritten.
   # ==========================================================================
   #
-  # WRITTEN 2026-08-19 (DEV3). Two jobs, and one note on each for the reviewer:
+  # WRITTEN 2026-08-19 (DEV3); a third job added 2026-08-20. One note on each for
+# the reviewer:
   #
   #   ts             fmt → lint → typecheck → build → unit tests, in that order,
   #                  behind `pnpm install --frozen-lockfile`. The lockfile is the
@@ -578,7 +580,11 @@ jobs:
   #                  than nominal: a lockfile the pipeline may ignore is not a pin,
   #                  it is a suggestion.**
   #
-  #   static-rules-ts  runs the check's OWN rejecting harness first, then the check.
+  #   bindings       the drift check, which existed and had no runner until
+#                  2026-08-20. Three things about the job will look wrong and
+#                  each is argued where it sits, at the job.
+#
+#   static-rules-ts  runs the check's OWN rejecting harness first, then the check.
   #                  Both live in `scripts/ci/`, so CI and a developer's terminal
   #                  run the same bytes — DEV1 measured that a hand-copied
   #                  paraphrase of a step lets the harness and CI disagree, and
@@ -658,3 +664,74 @@ jobs:
 
       - name: Run the check
         run: bash scripts/ci/network-agnostic-ts.sh
+
+  # ------------------------------- 14. bindings drift (DEV3) -----------------
+  # `packages/bindings` is machine output; this is the runner for the guarantee
+  # `GENERATED.json` already declares about itself. Until 2026-08-20 that
+  # guarantee had none: `pnpm bindings:check` existed, was correct, and appeared
+  # in no workflow — reachable only inside the `pnpm check` aggregate, i.e. only
+  # if a human ran it. **A declared guarantee with no runner is green for the
+  # wrong reason and nobody can tell from the output.** It found a real drift the
+  # first time it was run against a build it had not been run against.
+  #
+  # THREE THINGS IN THIS JOB ARE DELIBERATE AND WILL LOOK WRONG:
+  #
+  # 1. NO `needs:`. It builds one contract and compares text; a Rust unit test
+  #    failing says nothing about whether the committed bindings match the
+  #    interface. `needs: wasm` would have given the size check reach over this
+  #    one, which is the coupling DEV1 wrote out of the `wasm` job by hand.
+  #
+  # 2. NO `--out-dir`, and this is the sharp edge. `stellar contract build
+  #    --out-dir X` leaves the DEFAULT path holding the raw cargo artefact and
+  #    puts the optimized one in X. Measured 2026-08-20 on this contract: 72,920
+  #    bytes at `target/wasm32v1-none/release/` against 64,922 in the out-dir,
+  #    different SHA-256s, identical export sets and identical custom sections —
+  #    so nothing downstream can tell them apart. The `wasm` job above builds
+  #    with `--out-dir` and is right to; this one must not, because the check
+  #    reads the default path and the optimized artefact is the one deployed.
+  #
+  # 3. NO `pnpm install`. Measured, not assumed: the check imports node builtins
+  #    and relative `.ts` files only, and was run to completion in a tree with no
+  #    `node_modules` anywhere. `pnpm/action-setup` is here so CI and a
+  #    developer's terminal run the same command rather than a paraphrase of it.
+  bindings:
+    name: bindings drift (packages/bindings vs the contract)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install && rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the pinned stellar-cli
+        # The generator's version is pinned like every other version, and read
+        # from the same home the deploy reads it from (D-23). A CLI upgrade and
+        # a contract change produce identical diffs and are entirely different
+        # problems, which is why `GENERATED.json` records which one produced it.
+        run: |
+          set -euo pipefail
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o stellar-cli.tar.gz "$url"
+          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          tar xzf stellar-cli.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          install -m755 stellar "$HOME/.local/bin/stellar"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build the vault — the check reads an artefact, so one must exist
+        # `--package` because this job needs one of the three contracts and a
+        # metered workflow should not build the other two to ignore them. Same
+        # bytes either way: verified 2026-08-20, `--package antares-vault` and a
+        # full workspace build produce the identical SHA-256.
+        run: stellar contract build --package antares-vault
+
+      - name: Bindings must be the ones the contract implies
+        # Six assertions, and the first two are preconditions rather than
+        # findings: an unpinned generator or an artefact older than the sources
+        # would make the other four pass against a build nobody ships.
+        run: pnpm bindings:check

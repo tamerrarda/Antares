@@ -29,7 +29,7 @@
 
 import { readFileSync } from "node:fs";
 
-import { mkCheck, type Check } from "./checks.ts";
+import { mkCheck, type Check } from "@antares/common/checks";
 
 export class ToolchainError extends Error {
   constructor(message: string) {

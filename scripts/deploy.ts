@@ -53,7 +53,7 @@ import {
   sigmaRange,
   type InstanceSpec,
 } from "./check-params.ts";
-import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "./lib/checks.ts";
+import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antares/common/checks";
 import {
   buildDeployArgv,
   buildInvokeArgv,
@@ -62,7 +62,7 @@ import {
   runStellar,
   type NetworkArgs,
   type RunResult,
-} from "./lib/chain.ts";
+} from "@antares/common/chain";
 import { checkSourceTree, readSourceTree, type SourceTree } from "./lib/provenance.ts";
 import { checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
 import { checkAdapterSurface, exportedFunctions, sha256 } from "./lib/wasm.ts";

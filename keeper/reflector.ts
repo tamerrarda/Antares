@@ -18,10 +18,15 @@
 
 import { Contract, TransactionBuilder, nativeToScVal, rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
 
+import { RECORD_CAP_TICKS, reachSeconds } from "@antares/common/oracle";
+
 import type { Sample } from "./sigma.ts";
 
-/** `price-source-api::RECORD_CAP_TICKS`, measured at 255 in Phase 1 (D-69) — not 256. */
-export const RECORD_CAP_TICKS = 255;
+// RECORD_CAP_TICKS was defined here, in scripts/profile-adapter.ts and in scripts/verify-environment.ts
+// — three copies of one measured fact. DEV2 found the third and made the placement argument: the
+// duplication spans two packages, so packages/common is the only home that serves both. Re-exported
+// rather than dropped so this module's existing consumers do not have to move with it.
+export { RECORD_CAP_TICKS };
 
 export class FeedError extends Error {
   constructor(message: string) {
@@ -106,7 +111,7 @@ export class Feed {
 
   /** Seconds of history the feed still holds — `RECORD_CAP_TICKS × resolution` (D-69). */
   static reachableDepth(resolution: number): number {
-    return RECORD_CAP_TICKS * resolution;
+    return reachSeconds(resolution);
   }
 
   /**
