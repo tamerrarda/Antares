@@ -5,6 +5,8 @@
 
 #![allow(clippy::inconsistent_digit_grouping)]
 
+extern crate std;
+
 use crate::errors::Error;
 use crate::test_common::deploy;
 use crate::types::*;
@@ -404,6 +406,30 @@ fn a_token_call_does_not_finalize_a_lapsed_round() {
 
 // ==================================== events ===================================
 
+/// Every `mint` amount in the last invocation's stream, in order.
+///
+/// `Mint` is `data_format = "single-value"`, so the amount is the payload itself
+/// rather than a field in a map — which is why this reads the value directly.
+fn mint_amounts(env: &soroban_sdk::Env) -> std::vec::Vec<i128> {
+    use soroban_sdk::xdr::{Int128Parts, ScSymbol, ScVal};
+    let all = env.events().all();
+    let evs = all.events();
+    let mut out = std::vec::Vec::new();
+    for e in evs.iter() {
+        let soroban_sdk::xdr::ContractEventBody::V0(v0) = &e.body;
+        let is_mint = v0
+            .topics
+            .first()
+            .is_some_and(|t| matches!(t, ScVal::Symbol(ScSymbol(n)) if n.as_slice() == b"mint"));
+        if is_mint {
+            if let ScVal::I128(Int128Parts { hi, lo }) = &v0.data {
+                out.push(((*hi as i128) << 64) | (*lo as i128));
+            }
+        }
+    }
+    out
+}
+
 /// §10: every mint and burn emits **both** its SEP-41 event and the vault event —
 /// the SEP-41 stream is the token view, the vault stream is the protocol view.
 #[test]
@@ -415,9 +441,28 @@ fn a_deposit_emits_both_streams() {
 
     assert_eq!(
         d.env.events().all().events().len(),
-        3,
-        "mint and deposited from us, plus the asset's own transfer — the XLM really \
-         moved, and the SAC says so in its own stream"
+        4,
+        "two mints and `deposited` from us, plus the asset's own transfer — the XLM \
+         really moved, and the SAC says so in its own stream. **Four, not three:** the \
+         first deposit also mints the dead shares, and §13 says every mint emits."
+    );
+
+    // **The assertion that matters, and the one whose absence hid the defect.** An
+    // indexer reading only the token stream reconstructs supply by summing mints.
+    // Before the dead-share mint was emitted, that sum came out `DEAD_SHARES` short
+    // of `shares_outstanding` — permanently, from the vault's first transaction —
+    // and the only way to close it was to hard-code a constant no event confirms.
+    // A count alone would not have caught it: three events was the *right* count for
+    // a stream that was wrong.
+    // Captured **once**, before anything else reads through the host: `events().all()`
+    // reports the last invocation's events, and `d.state()` is an invocation. This
+    // file's own header records that trap and I walked into it writing this test.
+    let mints = mint_amounts(&d.env);
+    assert_eq!(mints.len(), 2, "the depositor's, and the vault's");
+    assert_eq!(
+        mints.iter().sum::<i128>(),
+        d.state().shares_outstanding,
+        "the token stream's mints must sum to the supply they created"
     );
 }
 

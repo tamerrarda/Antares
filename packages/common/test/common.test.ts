@@ -572,3 +572,77 @@ test("deposited is round-scoped, so the sweep's roster picks it up", () => {
   assert.ok(hasRound(ev), "a deposit names the round it landed in (§10)");
   assert.ok(decodableEventNames().includes("deposited"));
 });
+
+// ------------------------------------------------- the withdrawal half ---------
+//
+// Phase 6a's gate runs deposit -> open -> fill -> close -> premium -> withdrawal,
+// and until these decoders existed the harness could not read the step it ends on.
+
+const WITHDRAW_REQUESTED: RawEvent = {
+  topics: ["withdraw_requested", "GHOLDER"],
+  data: { round: 7, shares: 10_0000000n },
+  txHash: "txr",
+  ledger: 50,
+};
+
+const WITHDRAW_CLAIMED: RawEvent = {
+  topics: ["withdraw_claimed", "GHOLDER"],
+  data: { round: 7, shares: 10_0000000n, amount: 9_9999000n },
+  txHash: "txc",
+  ledger: 60,
+};
+
+test("the withdrawal pair decodes, and both are round-scoped", () => {
+  assert.deepEqual(decodeEvent(WITHDRAW_REQUESTED), {
+    name: "withdraw_requested",
+    user: "GHOLDER",
+    round: 7,
+    shares: 10_0000000n,
+  });
+  assert.deepEqual(decodeEvent(WITHDRAW_CLAIMED), {
+    name: "withdraw_claimed",
+    user: "GHOLDER",
+    round: 7,
+    shares: 10_0000000n,
+    amount: 9_9999000n,
+  });
+  assert.ok(hasRound(decodeEvent(WITHDRAW_REQUESTED)));
+  assert.ok(hasRound(decodeEvent(WITHDRAW_CLAIMED)));
+});
+
+test("REJECT: a withdrawal missing shares or amount throws rather than defaulting", () => {
+  // A dropped amount coerced to zero reads as "the claim paid nothing", which is a
+  // legitimate outcome the contract can produce — so the mistake would not look like
+  // one downstream. That is the same reasoning as `deposited`'s `instant` flag.
+  const base = WITHDRAW_CLAIMED.data as Record<string, unknown>;
+  const { amount: _a, ...noAmount } = base;
+  assert.throws(() => decodeEvent({ ...WITHDRAW_CLAIMED, data: noAmount }), EventDecodeError);
+  const { shares: _s, ...noShares } = base;
+  assert.throws(() => decodeEvent({ ...WITHDRAW_CLAIMED, data: noShares }), EventDecodeError);
+});
+
+test("pending_redeemed carries the price its shares were minted at", () => {
+  const ev = decodeEvent({
+    topics: ["pending_redeemed", "GLATE"],
+    data: { round: 3, amount: 50_0000000n, shares: 49_0000000n, pps: 10_200_000n },
+    txHash: "txp",
+    ledger: 55,
+  });
+  // The field is what makes a mid-round deposit's conversion auditable from events
+  // alone. Without it a consumer can reproduce the number only by re-deriving it.
+  assert.equal((ev as { pps: bigint }).pps, 10_200_000n);
+  assert.equal((ev as { shares: bigint }).shares, 49_0000000n);
+});
+
+test("deposit_cancelled decodes, and the four new names are registered", () => {
+  const ev = decodeEvent({
+    topics: ["deposit_cancelled", "GCANCEL"],
+    data: { round: 2, amount: 25_0000000n },
+    txHash: "txx",
+    ledger: 56,
+  });
+  assert.equal((ev as { amount: bigint }).amount, 25_0000000n);
+  for (const n of ["withdraw_requested", "withdraw_claimed", "pending_redeemed", "deposit_cancelled"]) {
+    assert.ok(decodableEventNames().includes(n), `${n} is registered`);
+  }
+});

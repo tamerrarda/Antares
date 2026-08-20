@@ -633,6 +633,20 @@ fn mint(env: &Env, ctx: &mut Ctx, to: &Address, amount: i128) -> Result<i128, Er
     let credited = if ctx.state.shares_outstanding == 0 {
         let vault = env.current_contract_address();
         storage::set_shares(env, ctx.rent, &vault, DEAD_SHARES);
+        // **The dead shares are a mint and must say so.** §13: *every* mint emits
+        // its SEP-41 event, and this one did not — `shares_outstanding` rose by the
+        // full `minted` while the only `mint` published carried `credited`, so a
+        // consumer reading the token stream undercounted total supply by
+        // `DEAD_SHARES` from the vault's first transaction onward, permanently, and
+        // could only close the gap by hard-coding a constant no event confirms.
+        // §10 declares itself a public interface whose consumers rebuild state from
+        // it; that claim failed on transaction one.
+        //
+        // An extra event rather than a field on `deposited`: §10's shapes are frozen
+        // and an added field breaks every decoder, while an added event is what
+        // consumers already dispatch on by name. The two mints now sum to `minted`,
+        // which is what `total_supply` reports.
+        crate::token::emit_mint(env, &vault, DEAD_SHARES);
         minted.checked_sub(DEAD_SHARES).ok_or(Error::ZeroShares)?
     } else {
         minted
