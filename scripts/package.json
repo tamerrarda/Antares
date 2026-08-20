@@ -3,15 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Operational scripts. DEV3 owns this package; verify-environment.ts is DEV2's (DEV-PROTOCOL \u00a73).",
+  "description": "Operational scripts. DEV3 owns this package; verify-environment.ts is DEV2's (DEV-PROTOCOL §3).",
   "scripts": {
     "verify-environment": "node --experimental-strip-types verify-environment.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "echo \"(nothing to build)\"",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "check-params": "node --experimental-strip-types check-params.ts"
+    "check-params": "node --experimental-strip-types check-params.ts",
+    "deploy": "node --experimental-strip-types deploy.ts"
   },
   "dependencies": {
+    "@antares/common": "workspace:*",
     "@stellar/stellar-sdk": "^16.2.0"
   },
   "devDependencies": {

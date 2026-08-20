@@ -383,6 +383,212 @@ function render(check: InstanceCheck, sigma: SigmaRange): string[] {
   return lines;
 }
 
+// =================================================================================================
+// The instance set — `scripts/instances.json`, and the whole sixteen fields rather than the six
+// this gate reads
+// =================================================================================================
+
+/**
+ * Every field of `EpochParams` (`types.rs`), with the width the constructor takes it at.
+ *
+ * **Sixteen, and this gate judges six of them.** The other ten still have to be committed
+ * somewhere machine-readable, because `deploy.ts` step 4 passes all sixteen and step 5 compares
+ * what landed against what was gated — and a constructor argument that exists only in a markdown
+ * table is one nobody diffs. 02-CONTRACT-SPEC §1 is their single home; this list is the shape,
+ * never the values.
+ *
+ * The widths are here because `min_fill` and `min_deposit` are `i128` and everything else is a
+ * `u64` or `u32`. A number that has to survive the round trip through JSON and back out of a
+ * contract read is safer carried as the type the contract uses it at.
+ */
+export const EPOCH_PARAM_FIELDS: Readonly<Record<string, "u32" | "u64" | "i128">> = {
+  epoch_duration: "u64",
+  auction_duration: "u64",
+  min_idle_gap: "u64",
+  strike_bps_otm: "u32",
+  premium_start_bps: "u32",
+  premium_floor_bps: "u32",
+  twap_window: "u64",
+  guard_window: "u64",
+  max_staleness: "u64",
+  max_deviation_bps: "u32",
+  oracle_dead_after: "u64",
+  settle_grace: "u64",
+  unresolved_after: "u64",
+  min_fill: "i128",
+  min_deposit: "i128",
+  settle_bounty_bps: "u32",
+};
+
+/**
+ * All sixteen fields, typed so that the six this gate reads are *statically* present.
+ *
+ * The intersection is not decoration. `checkGates` takes a `CoherenceParams`, and a plain
+ * `Record<string, number>` satisfies it only by accident of having the right keys at run time —
+ * which `--experimental-strip-types` would never notice, because it erases annotations without
+ * checking them (06-TEST-PLAN §8). `tsc` is what notices, and this is the type that lets it.
+ */
+export type FullEpochParams = CoherenceParams & Readonly<Record<string, number>>;
+
+export interface InstanceSpec {
+  /** `-A` … `-E`. `symbol()` is `aXLM` plus this (D-52). */
+  readonly suffix: string;
+  readonly note?: string;
+  /** All sixteen, shared values merged with this instance's overrides. */
+  readonly params: FullEpochParams;
+  readonly depositCap: number;
+  /**
+   * `03-STORAGE-TTL.md` §2's tuned values, and constructor arguments in their own right.
+   *
+   * They are committed here rather than chosen by `deploy.ts` because §2 step 3b's job is to
+   * assert the *intended* `rent_extend_to` against the live `max_ttl` — which presupposes an
+   * intention that somebody reviewed. A number the deploy script picks is one no reviewer saw.
+   */
+  readonly rentThreshold: number;
+  readonly rentExtendTo: number;
+}
+
+/**
+ * Read `instances.json` — either a bare array of instances, or `{ shared, instances }`.
+ *
+ * **The array form is kept working on purpose.** It is what the file was when DEV2 wrote it and
+ * what the committed reproduction command in its own note exercises; breaking it would invalidate
+ * a recorded result to gain nothing. The object form adds the two things the array cannot carry:
+ * a `shared` block holding the ten fields identical across all five instances (02-CONTRACT-SPEC
+ * §1: *"every other `EpochParams` field is identical across all five"*) plus `deposit_cap`, which
+ * §1 also states is the same on every instance, and a `_why` so the
+ * reasoning sits with the data instead of in a document the code repository never sees — which is
+ * what DEV2's note on instance A asked for.
+ *
+ * **A missing or unknown field is a refusal, not a default.** Defaulting is how a typo'd key
+ * becomes a silently different vault: `unresolved_afer` would leave `unresolved_after` at whatever
+ * the code chose, the gate would pass, and the deployed instance would differ from the reviewed
+ * one in a field nobody looked at. There is no default anywhere in this loader.
+ */
+export function loadInstances(path: string): InstanceSpec[] {
+  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const isObject = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+
+  let shared: Record<string, unknown> = {};
+  let rows: unknown[];
+  if (Array.isArray(raw)) {
+    rows = raw;
+  } else if (isObject(raw) && Array.isArray(raw["instances"])) {
+    rows = raw["instances"];
+    const sh = raw["shared"];
+    if (sh !== undefined) {
+      if (!isObject(sh)) throw new ParamError(`${path}: "shared" is not an object.`);
+      shared = sh;
+    }
+  } else {
+    throw new ParamError(`${path} is neither an array of instances nor an object with an "instances" array.`);
+  }
+  if (rows.length === 0) {
+    throw new ParamError(`${path} carries no instances. An empty set is not a set that passes.`);
+  }
+
+  const known = Object.keys(EPOCH_PARAM_FIELDS);
+  return rows.map((row, index) => {
+    if (!isObject(row)) throw new ParamError(`${path}: instance ${index} is not an object.`);
+    const suffix = row["suffix"];
+    if (typeof suffix !== "string") {
+      throw new ParamError(`${path}: instance ${index} has no string "suffix".`);
+    }
+    // `token_suffix.len() <= 4` is a constructor rule (`vault.rs`), and a suffix that the
+    // constructor rejects fails the deploy at step 4 rather than here — which is a wasted upload.
+    if (suffix.length > 4) {
+      throw new ParamError(
+        `${path}: suffix "${suffix}" is ${suffix.length} bytes; the constructor caps token_suffix ` +
+          `at 4 and would reject it.`,
+      );
+    }
+    const own = row["params"];
+    if (!isObject(own)) throw new ParamError(`${path}: instance "${suffix}" has no "params" object.`);
+
+    const merged: Record<string, number> = {};
+    const seen = new Set<string>();
+    for (const source of [shared, own]) {
+      for (const [key, value] of Object.entries(source)) {
+        // `deposit_cap` is a constructor argument in its own right, not a field of `EpochParams`,
+        // and it is identical across all five (02-CONTRACT-SPEC §1) — so it is allowed to sit in
+        // `shared` beside the parameters without being merged into them.
+        if (key === "deposit_cap" || key === "rent_threshold" || key === "rent_extend_to") continue;
+        if (!Object.prototype.hasOwnProperty.call(EPOCH_PARAM_FIELDS, key)) {
+          throw new ParamError(
+            `${path}: instance "${suffix}" carries "${key}", which is not a field of EpochParams. ` +
+              `The sixteen are: ${known.join(", ")}. A key nobody recognises is a typo that would ` +
+              `otherwise leave the real field at a value nobody chose.`,
+          );
+        }
+        if (typeof value !== "number" || !Number.isFinite(value)) {
+          throw new ParamError(`${path}: instance "${suffix}" field "${key}" is not a finite number.`);
+        }
+        merged[key] = value;
+        seen.add(key);
+      }
+    }
+    const missing = known.filter((k) => !seen.has(k));
+    if (missing.length > 0) {
+      throw new ParamError(
+        `${path}: instance "${suffix}" is missing ${missing.join(", ")}. ` +
+          `deploy.ts step 4 passes all sixteen fields and step 5 compares what landed against what ` +
+          `this gate judged; a field absent here is one the gate never saw and nobody reviewed. ` +
+          `Put values identical across all five in a "shared" block.`,
+      );
+    }
+
+    const capRaw = row["deposit_cap"] ?? shared["deposit_cap"];
+    if (typeof capRaw !== "number" || !Number.isFinite(capRaw) || capRaw < 0) {
+      throw new ParamError(`${path}: instance "${suffix}" has no non-negative numeric "deposit_cap".`);
+    }
+    if (capRaw !== 0 && capRaw < merged["min_deposit"]!) {
+      throw new ParamError(
+        `${path}: instance "${suffix}" has deposit_cap ${capRaw} below min_deposit ` +
+          `${merged["min_deposit"]!}. validate_params refuses that pair — it is a vault no deposit ` +
+          `can enter.`,
+      );
+    }
+
+    // The rent pair: `03-STORAGE-TTL.md` §2, and `validate_rent`'s `0 < threshold < extend_to`.
+    // Refused here rather than at the constructor, because reaching the constructor means a wasm
+    // upload has already been spent on a set that cannot deploy.
+    const rentOf = (name: string): number => {
+      const v = row[name] ?? shared[name];
+      if (typeof v !== "number" || !Number.isInteger(v) || v <= 0) {
+        throw new ParamError(
+          `${path}: instance "${suffix}" has no positive integer "${name}". 03-STORAGE-TTL §2 tunes ` +
+            `the pair and deploy.ts step 3b asserts the intended value against the live max_ttl — ` +
+            `which presupposes an intention somebody reviewed, not a number a script picked.`,
+        );
+      }
+      return v;
+    };
+    const rentThreshold = rentOf("rent_threshold");
+    const rentExtendTo = rentOf("rent_extend_to");
+    if (rentThreshold >= rentExtendTo) {
+      throw new ParamError(
+        `${path}: instance "${suffix}" has rent_threshold ${rentThreshold} >= rent_extend_to ` +
+          `${rentExtendTo}. validate_rent requires 0 < threshold < extend_to.`,
+      );
+    }
+
+    const note = row["note"];
+    // The `missing` check immediately above is what makes this narrowing true: every one of the
+    // sixteen names is present and numeric, so the six `CoherenceParams` requires are present.
+    // Asserting it here rather than proving it to the compiler keeps the guarantee in one place —
+    // the refusal — instead of splitting it between a refusal and a shape the refusal implies.
+    const spec: InstanceSpec = {
+      suffix,
+      params: merged as FullEpochParams,
+      depositCap: capRaw,
+      rentThreshold,
+      rentExtendTo,
+    };
+    return typeof note === "string" ? { ...spec, note } : spec;
+  });
+}
+
 export function main(argv: readonly string[]): number {
   const args = new Map<string, string>();
   let fastTest = false;
@@ -411,11 +617,7 @@ export function main(argv: readonly string[]): number {
 
   const series = loadSeries(seriesPath);
   const sigma = sigmaRange(series);
-  const raw: unknown = JSON.parse(readFileSync(paramsPath, "utf8"));
-  const instances = (Array.isArray(raw) ? raw : [raw]) as Array<{
-    suffix: string;
-    params: CoherenceParams;
-  }>;
+  const instances = loadInstances(paramsPath);
 
   console.log(`series: ${series.asset} from ${series.source}, measured ${series.measuredAt}`);
   console.log(
