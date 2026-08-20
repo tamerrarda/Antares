@@ -16,6 +16,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  DEAD_SHARES,
   DEPOSIT_EVENTS,
   GENESIS_APP_VERSION,
   IDLE_WITHDRAW_EVENTS,
@@ -206,13 +207,20 @@ class FakeChain implements ChainClient {
     this.invocations.push(`${contractId}.${method}`);
     if (method === "deposit") {
       const amount = args[1] as bigint;
+      // D-36, modelled rather than ignored: the FIRST deposit pays for the dead-share floor out of
+      // its own amount, and those shares are minted to the vault where nobody can withdraw them.
+      // A fake that minted the whole amount would let a battery which forgot the floor pass here
+      // and fail on the first real deploy — which is exactly what happened.
+      const outstanding = this.state.epoch["shares_outstanding"] as bigint;
+      const dead = outstanding === 0n ? DEAD_SHARES : 0n;
+      const credited = amount - dead;
       this.state.totalAssets += amount;
-      this.state.epoch["shares_outstanding"] = (this.state.epoch["shares_outstanding"] as bigint) + amount;
+      this.state.epoch["shares_outstanding"] = outstanding + amount;
       this.state.balance -= amount;
       const events = DEPOSIT_EVENTS.filter((n) => n !== this.opts.dropDepositEvent).map(
         (n): ObservedEvent => ({ topics: [n], data: {} }),
       );
-      return Promise.resolve({ value: amount as T, events, txHash: "TXDEP" });
+      return Promise.resolve({ value: credited as T, events, txHash: "TXDEP" });
     }
     if (method === "request_withdraw") {
       const shares = args[1] as bigint;
@@ -273,7 +281,8 @@ test("the whole step passes end to end and leaves the vault as it found it", asy
   assert.deepEqual(failed(result.checks), []);
   assert.equal(result.passed, true);
   assert.deepEqual(chain.invocations, ["CVAULT.deposit", "CVAULT.request_withdraw"]);
-  assert.equal(chain.state.totalAssets, 0n);
+  // Not zero: D-36's floor stays behind, which is the point of it.
+  assert.equal(chain.state.totalAssets, DEAD_SHARES);
 });
 
 // =================================================================================================
@@ -494,12 +503,34 @@ test("an event that disagrees with storage is caught — that disagreement is a 
 // The smoke round trip
 // =================================================================================================
 
-test("a 1-XLM round trip that returns everything passes", async () => {
+test("a first 1-XLM round trip loses exactly the dead-share floor and passes", async () => {
   const checks = await verifySmokeRoundTrip(new FakeChain(healthyState()), EXPECTED, SMOKE);
   assert.deepEqual(failed(checks), []);
+  // The expectation is the sharpened one, not the old "exactly": D-36 charges the floor to the
+  // first depositor and those shares can never come back out.
+  const trip = checks.find((c) => c.id === "smoke.round_trip_exact")!;
+  assert.equal(trip.expected, ONE_XLM - DEAD_SHARES);
+  assert.equal(
+    checks.find((c) => c.id === "smoke.total_assets_restored")!.expected,
+    DEAD_SHARES,
+    "zero would mean the floor was withdrawable",
+  );
 });
 
-test("a one-stroop rounding loss is caught — this is what 'exactly' is for", async () => {
+test("a LATER deposit round-trips whole, because the floor is charged once", async () => {
+  // The case the old battery could not tell apart, and the reason the script derives which it is
+  // from the vault's own shares_outstanding rather than from a flag.
+  const state = healthyState();
+  state.epoch["shares_outstanding"] = 5n * ONE_XLM;
+  state.totalAssets = 5n * ONE_XLM;
+  const checks = await verifySmokeRoundTrip(new FakeChain(state), EXPECTED, SMOKE);
+  assert.deepEqual(failed(checks), []);
+  assert.equal(checks.find((c) => c.id === "smoke.round_trip_exact")!.expected, ONE_XLM);
+  assert.equal(checks.find((c) => c.id === "smoke.total_assets_restored")!.expected, 5n * ONE_XLM);
+});
+
+test("a one-stroop loss BEYOND the dead-share floor is still caught", async () => {
+  // The sharpening must not have blunted it: a known exact loss is still an exact expectation.
   const chain = new FakeChain(healthyState(), { shortfall: 1n });
   assert.deepEqual(failed(await verifySmokeRoundTrip(chain, EXPECTED, SMOKE)), ["smoke.round_trip_exact"]);
 });
@@ -527,7 +558,10 @@ test("a missing event on either half is caught", async () => {
   );
 });
 
-test("a round trip that pays out more than it took in is caught", async () => {
+test("an over-payment smaller than the dead-share floor is still caught", async () => {
+  // Bounding against `before` instead of `before - DEAD_SHARES` would let this one through: the
+  // floor leaves the account 1 000 stroops down, so a 5-stroop over-payment still lands below the
+  // starting balance. The tighter bound is what makes it visible.
   const chain = new FakeChain(healthyState(), { balanceGain: 5n });
   assert.deepEqual(failed(await verifySmokeRoundTrip(chain, EXPECTED, SMOKE)), ["smoke.no_net_gain"]);
 });
@@ -545,7 +579,8 @@ test("the withdraw is the instant-Idle path, asked for as such", async () => {
   await verifySmokeRoundTrip(spy, EXPECTED, SMOKE);
   // `require_idle = true`: the contract refuses rather than queues if the phase moved. A queued
   // withdrawal paying later would satisfy a laxer assertion and prove nothing about the arithmetic.
-  assert.deepEqual(calls[1], ["request_withdraw", ADMIN, ONE_XLM, true]);
+  // The shares actually minted, not the amount deposited: D-36 took the floor out first.
+  assert.deepEqual(calls[1], ["request_withdraw", ADMIN, ONE_XLM - DEAD_SHARES, true]);
 });
 
 test("the smoke test does not run — and nothing is signed — when a genesis assertion already failed", async () => {

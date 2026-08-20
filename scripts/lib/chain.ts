@@ -66,8 +66,21 @@ export function encodeArg(value: unknown): string {
   return JSON.stringify(value, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 }
 
+/**
+ * `--name value`, except when the value would be mistaken for another flag.
+ *
+ * A value starting with `-` is parsed by clap as an option, not as this option's argument, and the
+ * deploy dies with `unexpected argument '-F' found` — measured on the pinned CLI on 2026-08-20,
+ * where `token_suffix` is literally `-F` and every fast-test and experiment suffix is. Negative
+ * `i128` arguments are the same shape. The `--name=value` form is unambiguous, so it is used
+ * exactly where the ambiguity exists rather than everywhere, which keeps the ordinary case readable
+ * in a failure message.
+ */
 function argPairs(args: Readonly<Record<string, unknown>>): string[] {
-  return Object.entries(args).flatMap(([name, value]) => [`--${name}`, encodeArg(value)]);
+  return Object.entries(args).flatMap(([name, value]) => {
+    const encoded = encodeArg(value);
+    return encoded.startsWith("-") ? [`--${name}=${encoded}`] : [`--${name}`, encoded];
+  });
 }
 
 /**

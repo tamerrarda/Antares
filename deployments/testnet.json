@@ -1,0 +1,51 @@
+{
+  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. The two commit fields are separate on purpose: the tree a wasm was built from and the tree that ran the deploy are different questions, and one field answers neither when they differ. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57).",
+  "network": "testnet",
+  "deployedAt": "2026-08-20T09:55:55.560Z",
+  "deployerIdentity": "antares-testnet",
+  "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+  "toolchain": {
+    "wasmBuiltAtCommit": "191bd739438f92212aa51b245f45e7f5d82b7ef0",
+    "deployedAtCommit": "191bd739438f92212aa51b245f45e7f5d82b7ef0",
+    "rust": "1.95.0",
+    "stellarCli": "27.1.0",
+    "sorobanSdk": "=27.0.6",
+    "target": "wasm32v1-none",
+    "node": "v22.18.0"
+  },
+  "assetId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "oracleId": "CDOLB2NV545X3RPGETL43ULCB2IT75K2VFB7G63KAIXH4NA2BQD6GCWD",
+  "oracleWasmHash": "908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402",
+  "vaultWasmHash": "ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83",
+  "instances": [
+    {
+      "tokenSuffix": "-F",
+      "vaultId": "CAINKG5TO53UJJSB4AZGBCNLCE22ZSLLVY6QXYNPAVYRE2LXFVF247I2",
+      "vaultWasmHash": "ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83",
+      "params": {
+        "epoch_duration": 600,
+        "auction_duration": 20,
+        "min_idle_gap": 30,
+        "strike_bps_otm": 300,
+        "premium_start_bps": 450,
+        "premium_floor_bps": 40,
+        "twap_window": 4,
+        "guard_window": 160,
+        "max_staleness": 60,
+        "max_deviation_bps": 100,
+        "oracle_dead_after": 50,
+        "settle_grace": 30,
+        "unresolved_after": 110,
+        "min_fill": 10000000,
+        "min_deposit": 10000000,
+        "settle_bounty_bps": 25
+      },
+      "depositCap": 1000000000000,
+      "rentThreshold": 120960,
+      "rentExtendTo": 518400,
+      "allowlistExpiresAt": 1788429326,
+      "economicallyMeaningless": true,
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CAINKG5TO53UJJSB4AZGBCNLCE22ZSLLVY6QXYNPAVYRE2LXFVF247I2"
+    }
+  ]
+}

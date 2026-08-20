@@ -398,7 +398,7 @@ const step2: Stage = {
     const which = ctx.opts.fastTest ? "mock_price_source" : "reflector_adapter";
     const built = ctx.wasm[which]!;
     const constructorArgs = ctx.opts.fastTest
-      ? { admin: ctx.opts.identity, decimals: 14 }
+      ? { admin: ctx.deployerAddress!, decimals: 14 }
       : { reflector: ctx.opts.reflectorId!, asset: "XLM" };
 
     const out = runStellar(
@@ -550,6 +550,10 @@ const step3: Stage = {
     // packages/common/networks.ts and deployments/*.json, and §1 says the SAC is "resolved at
     // deploy … then pinned in deployments/". The CLI derives it from the passphrase, so the id can
     // only be the one that matches the network this deploy is signing for.
+    // No `--source-account`: measured against the pinned CLI on 2026-08-20, `contract id asset`
+    // does not accept one and rejects the invocation outright. It needs none — the id is DERIVED
+    // from the asset and the passphrase, which is also why it can only be the id that matches the
+    // network this deploy is signing for.
     const out = runStellar([
       "contract",
       "id",
@@ -560,8 +564,6 @@ const step3: Stage = {
       ctx.netArgs.rpcUrl,
       "--network-passphrase",
       ctx.netArgs.networkPassphrase,
-      "--source-account",
-      ctx.opts.identity,
     ]);
     ctx.assetId = parseContractId(`${out.stdout}\n${out.stderr}`);
     return Promise.resolve([
@@ -587,7 +589,7 @@ const step3b: Stage = {
       allowHttp: ctx.netArgs.rpcUrl.startsWith("http://"),
     });
     const ledger = await server.getLatestLedger();
-    const maxTtl = await readMaxEntryTtl(server);
+    const maxTtl = await readMaxEntryTtl(ctx.netArgs.rpcUrl);
 
     // The intended values are committed in `instances.json` (03-STORAGE-TTL §2's tuned pair); this
     // step's job is to assert them against a ceiling read LIVE, because the network can lower it by
@@ -620,22 +622,36 @@ const step3b: Stage = {
  * Read rather than compiled in, per D-50 and `03-STORAGE-TTL.md` §2: a protocol vote can lower it,
  * and a constant here would let a deploy assert a ceiling the network no longer has.
  */
-async function readMaxEntryTtl(server: {
-  getNetwork: () => Promise<unknown>;
-  _getLedgerEntries?: unknown;
-}): Promise<number> {
-  const anyServer = server as unknown as {
-    getNetwork: () => Promise<Record<string, unknown>>;
-  };
-  const net = await anyServer.getNetwork();
-  const value = net["maxEntryTtl"] ?? net["max_entry_ttl"];
-  if (typeof value === "number" && value > 0) return value;
-  throw new DeployRefused(
-    "3b",
-    "The RPC did not report a max entry TTL, so the intended rent_extend_to cannot be asserted " +
-      "against anything. 03-STORAGE-TTL §2 requires the ceiling to be read live rather than " +
-      "compiled in, and refusing is the only honest response to not having read it.",
+/**
+ * The live `max_ttl`, read from the network's own state-archival configuration.
+ *
+ * **Not from `getNetwork()`**, which was this function's first draft and would have aborted the
+ * first real deploy at step 3b: measured 2026-08-20, that call returns only `friendbotUrl`,
+ * `passphrase` and `protocolVersion`. The ceiling lives in the `configSettingStateArchival` ledger
+ * entry, which is where `profile-adapter.ts` already reads the compute limits from — the same
+ * technique, against a different setting.
+ *
+ * Read live rather than compiled in, per D-50 and `03-STORAGE-TTL.md` §2: a protocol vote can lower
+ * it, and a constant here would let a deploy assert a ceiling the network no longer has.
+ */
+async function readMaxEntryTtl(rpcUrl: string): Promise<number> {
+  const { rpc, xdr } = await import("@stellar/stellar-sdk");
+  const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") });
+  const key = xdr.LedgerKey.configSetting(
+    new xdr.LedgerKeyConfigSetting({ configSettingId: xdr.ConfigSettingId.configSettingStateArchival() }),
   );
+  const entries = await server.getLedgerEntries(key);
+  const setting = entries.entries[0]?.val.configSetting();
+  const maxTtl = setting?.stateArchivalSettings().maxEntryTtl();
+  if (typeof maxTtl !== "number" || maxTtl <= 0) {
+    throw new DeployRefused(
+      "3b",
+      "The network did not report a max entry TTL, so the intended rent_extend_to cannot be " +
+        "asserted against anything. 03-STORAGE-TTL §2 requires the ceiling to be read live rather " +
+        "than compiled in, and refusing is the only honest response to not having read it.",
+    );
+  }
+  return maxTtl;
 }
 
 async function fetchContractWasm(ctx: Ctx, contractId: string): Promise<Uint8Array> {
@@ -657,6 +673,15 @@ const step4: Stage = {
   run: async (ctx) => {
     const checks: Check[] = [];
     const built = ctx.wasm["antares_vault"]!;
+    // Noted BEFORE the first vault transaction, because step 5 finds the constructor's `Initialized`
+    // event by asking RPC for the contract's events from this sequence onwards. Defaulting to the
+    // latest ledger at the time step 5 runs would start the search after the event it is looking
+    // for, and report a missing `Initialized` on a perfectly good deploy.
+    const { rpc } = await import("@stellar/stellar-sdk");
+    const ledgerServer = new rpc.Server(ctx.netArgs.rpcUrl, {
+      allowHttp: ctx.netArgs.rpcUrl.startsWith("http://"),
+    });
+    ctx.startLedger = (await ledgerServer.getLatestLedger()).sequence;
     const now = Math.floor(Date.now() / 1000);
     // D-63's window, chosen once for the whole set so five instances do not drift apart by the
     // seconds between their transactions.
@@ -669,11 +694,14 @@ const step4: Stage = {
           identity: ctx.opts.identity,
           net: ctx.netArgs,
           constructorArgs: {
-            admin: ctx.opts.identity,
+            // Addresses, not the identity NAME. The CLI would resolve an alias here, but step 5
+            // compares config() against ctx.deployerAddress — so they must be the same value by
+            // construction rather than because the CLI happened to resolve it the same way.
+            admin: ctx.deployerAddress!,
             asset: ctx.assetId!,
             oracle: ctx.adapterId!,
-            fee_recipient: ctx.opts.identity,
-            params: epochParamsJson(inst),
+            fee_recipient: ctx.deployerAddress!,
+            params: epochParamsForCli(inst),
             token_suffix: inst.suffix,
             deposit_cap: inst.depositCap,
             rent_threshold: inst.rentThreshold,
@@ -712,10 +740,36 @@ const step4: Stage = {
 /** D-63's genesis window. Two weeks, inside the constructor's thirty-day cap. */
 export const ALLOWLIST_WINDOW_SECONDS = 14 * 86_400;
 
-/** The sixteen fields as the CLI takes a struct: a JSON object with the contract's own field names. */
+/** The sixteen fields as plain numbers — for the deployment record and step 5's expectation. */
 export function epochParamsJson(inst: InstanceSpec): Record<string, number> {
   const out: Record<string, number> = {};
   for (const name of Object.keys(EPOCH_PARAM_FIELDS)) out[name] = inst.params[name]!;
+  return out;
+}
+
+/**
+ * The same sixteen fields, typed the way the CLI's JSON-to-ScVal conversion demands.
+ *
+ * **`i128` goes as a string; `u32` and `u64` go as numbers.** This is not a guess and it took two
+ * rejections to stop guessing. A JSON number in an `i128` field is refused with *"invalid type:
+ * number, expected string or map"*; correcting the `u64`s to strings as well then fails differently
+ * — *"unknown variant `20`"*, serde reading the string as an ScVal type tag. The authority is the
+ * CLI itself: `stellar contract deploy --wasm … -- --help` prints a worked example of every
+ * argument, and for `EpochParams` it quotes exactly `min_deposit` and `min_fill` and nothing else.
+ * Asking the tool beat two rounds of inference, which is the same lesson D-48 records about the
+ * feed.
+ *
+ * This is why `EPOCH_PARAM_FIELDS` records a width per field. Nothing else needed it until now.
+ *
+ * It is deliberately NOT what step 5 compares against: `config()` decodes a `u32` to a `number` and
+ * a `u64` to a `bigint`, so the expectation stays numeric and this shape exists only for the wire.
+ */
+export function epochParamsForCli(inst: InstanceSpec): Record<string, number | string> {
+  const out: Record<string, number | string> = {};
+  for (const [name, width] of Object.entries(EPOCH_PARAM_FIELDS)) {
+    const value = inst.params[name]!;
+    out[name] = width === "i128" ? String(value) : value;
+  }
   return out;
 }
 
