@@ -584,6 +584,25 @@ fn the_deposit_cap_may_sit_below_the_current_total_but_never_below_min_deposit()
     // small and too large. The pair lives in two structs behind two setters, so the
     // constructor's rule has to be re-asserted here or it holds only on day one.
     let min = valid_params().min_deposit;
+
+    // **The accepted bound, and it was unpinned until DEV2's mutation run said so.**
+    // `admin.rs`'s `<` widened to `<=` survived: both existing assertions below sit
+    // *under* the boundary, so nothing observed that `cap == min_deposit` is legal.
+    // The code's own comment says a non-zero cap must **clear** `min_deposit`, and
+    // clearing includes reaching — a vault that accepts exactly one minimum deposit
+    // and no more is legitimate, and the mutant made it unconfigurable.
+    //
+    // This is my own finding from `vault.rs` repeating in my own module, from the
+    // other side: there the unpinned value was the largest accepted, here it is the
+    // smallest. **Assertion written and run by DEV2, who reverted it on the
+    // ownership line and left it copy-pasteable in the standup.**
+    assert_eq!(
+        d.client().try_set_deposit_cap(&min),
+        Ok(Ok(())),
+        "a cap of exactly min_deposit is admissible; `<` is the bound and `<=` would \
+         forbid the smallest vault that can take a deposit at all"
+    );
+
     assert_eq!(
         d.client().try_set_deposit_cap(&(min - 1)),
         Err(Ok(Error::InvalidParams))
