@@ -350,3 +350,173 @@ fn no_view_bumps_a_ttl() {
         );
     }
 }
+
+// ============ `claimable`, which reported 0 for every round until today ==========
+//
+// The field was pinned to zero under a comment that had written its own expiry —
+// *"until `settle.rs` and `claims.rs` land"*. Both landed; the field was not
+// revisited. Nothing caught it, and the way it surfaced is the same story: DEV3's
+// harness bound a claim to this field, so every claim was skipped and the stage
+// passed **green for the wrong reason**.
+//
+// These tests answer all five cases, and the load-bearing one is not "non-zero" —
+// it is that the view returns **exactly what the claim path pays**. A view that is
+// merely non-zero can still be wrong in a way a user only discovers at the button.
+
+fn round_with_fill(
+    d: &crate::test_common::Deployed,
+    outcome: RoundOutcome,
+    spot: i128,
+    strike: i128,
+    who: &Address,
+    fill: Fill,
+) {
+    d.env.as_contract(&d.vault, || {
+        let rent = crate::storage::Rent {
+            threshold: 100,
+            extend_to: 200,
+        };
+        let mut st = crate::storage::get_state(&d.env).unwrap();
+        st.round = 1;
+        st.phase = Phase::Idle;
+        st.bidder_claimable_total = 10_000 * XLM;
+        crate::storage::set_state(&d.env, &st);
+        crate::storage::set_round(
+            &d.env,
+            rent,
+            1,
+            &Round {
+                outcome,
+                pps: PRECISION,
+                strike,
+                expiry: 1,
+                notional_sold: fill.notional,
+                premium: fill.premium_paid,
+                fee: 0,
+                settled_spot: spot,
+                payout_total: 0,
+            },
+        );
+        crate::storage::set_fill(&d.env, rent, 1, who, &fill);
+    });
+    d.fund(&d.vault, 20_000 * XLM);
+}
+
+#[test]
+fn a_settled_round_reports_exactly_what_claim_payout_pays() {
+    let d = deploy();
+    let b = d.user(1_000 * XLM);
+    let fill = Fill {
+        notional: 6_000 * XLM,
+        premium_paid: 72 * XLM,
+        claimed: false,
+    };
+    // 05 §4's numbers: 0.50 spot against a 0.44 strike.
+    round_with_fill(&d, RoundOutcome::Settled, 5_000_000, 4_400_000, &b, fill);
+
+    let quoted = d.client().bidder_position(&1, &b).claimable;
+    assert!(
+        quoted > 0,
+        "an in-the-money settled fill owes the bidder something"
+    );
+
+    // **The assertion that ties the view to the truth.** Anything else — a copied
+    // formula, a stale constant — can be non-zero and still wrong, and the user
+    // finds out at the button.
+    let paid = d.client().claim_payout(&1, &b);
+    assert_eq!(
+        quoted, paid,
+        "the view quoted a different number than the claim paid"
+    );
+}
+
+#[test]
+fn a_voided_round_reports_exactly_what_claim_refund_pays() {
+    let d = deploy();
+    let b = d.user(1_000 * XLM);
+    let fill = Fill {
+        notional: 4_000 * XLM,
+        premium_paid: 16 * XLM,
+        claimed: false,
+    };
+    round_with_fill(&d, RoundOutcome::Voided, 0, 4_400_000, &b, fill);
+
+    let quoted = d.client().bidder_position(&1, &b).claimable;
+    assert_eq!(quoted, 16 * XLM, "a void returns the premium unchanged");
+    assert_eq!(quoted, d.client().claim_refund(&1, &b));
+}
+
+#[test]
+fn the_outcomes_no_claim_path_accepts_report_nothing() {
+    // `claim_payout` opens only on `Settled` and `claim_refund` only on `Voided`;
+    // `open_claim` refuses the rest with `WrongOutcome`. **A non-zero answer here
+    // would render a claim button that reverts** — which is worse than zero,
+    // because it looks like money.
+    for outcome in [RoundOutcome::Lapsed, RoundOutcome::Unresolved] {
+        let d = deploy();
+        let b = d.user(1_000 * XLM);
+        let fill = Fill {
+            notional: 4_000 * XLM,
+            premium_paid: 16 * XLM,
+            claimed: false,
+        };
+        round_with_fill(&d, outcome, 5_000_000, 4_400_000, &b, fill);
+
+        assert_eq!(
+            d.client().bidder_position(&1, &b).claimable,
+            0,
+            "{outcome:?} owes the bidder nothing"
+        );
+        assert_eq!(
+            d.client().try_claim_payout(&1, &b),
+            Err(Ok(Error::WrongOutcome)),
+            "and the entry point agrees"
+        );
+    }
+}
+
+#[test]
+fn a_claimed_fill_and_a_live_round_both_report_nothing() {
+    let d = deploy();
+    let b = d.user(1_000 * XLM);
+    let fill = Fill {
+        notional: 6_000 * XLM,
+        premium_paid: 72 * XLM,
+        claimed: true,
+    };
+    round_with_fill(&d, RoundOutcome::Settled, 5_000_000, 4_400_000, &b, fill);
+    assert_eq!(
+        d.client().bidder_position(&1, &b).claimable,
+        0,
+        "already collected — quoting it again is quoting money that is gone"
+    );
+
+    // The live round: no record exists yet, so what is owed is not decided. The
+    // fifth case, and the one a `match` on outcome alone would have missed.
+    let d2 = deploy();
+    let c = d2.user(1_000 * XLM);
+    d2.open_round_manually(1, Phase::Auction, d2.env.ledger().timestamp() + 100);
+    d2.env.as_contract(&d2.vault, || {
+        let rent = crate::storage::Rent {
+            threshold: 100,
+            extend_to: 200,
+        };
+        crate::storage::set_fill(
+            &d2.env,
+            rent,
+            1,
+            &c,
+            &Fill {
+                notional: 100 * XLM,
+                premium_paid: 4 * XLM,
+                claimed: false,
+            },
+        );
+    });
+    let p = d2.client().bidder_position(&1, &c);
+    assert_eq!(p.notional, 100 * XLM, "the fill is reported honestly");
+    assert_eq!(
+        p.claimable, 0,
+        "but nothing is owed before the outcome exists"
+    );
+}

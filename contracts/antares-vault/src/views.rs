@@ -22,7 +22,8 @@ use crate::auction;
 use crate::errors::Error;
 use crate::storage;
 use crate::types::{
-    BidderPosition, Config, ConfigView, EpochInfo, EpochParams, Phase, Position, State, PRECISION,
+    BidderPosition, Config, ConfigView, EpochInfo, EpochParams, Phase, Position, RoundOutcome,
+    State, PRECISION,
 };
 use crate::{AntaresVault, AntaresVaultArgs, AntaresVaultClient};
 
@@ -250,16 +251,53 @@ impl AntaresVault {
             });
         };
 
-        // `claimable` depends on the round's outcome, which is why the Claims
-        // page cannot be built from `Fill` alone. Settlement and refund arithmetic
-        // are DEV2's and DEV3's; until `settle.rs` and `claims.rs` land this
-        // reports the fill honestly and leaves the amount at 0 rather than
-        // guessing at a formula that lives elsewhere.
+        // `claimable` depends on the round's outcome, which is why the Claims page
+        // cannot be built from `Fill` alone.
+        //
+        // **This returned 0 unconditionally until 2026-08-21, under a comment that
+        // had written its own expiry** — *"until `settle.rs` and `claims.rs` land"*.
+        // They landed, the condition was met, and the field was not revisited: a
+        // view pinned to zero by a lapsed exception, with nothing able to catch it.
+        // That is the same defect `current_premium_bps` carried, and it was found
+        // the same way — DEV3's harness bound a claim to this field, so every claim
+        // was skipped and the stage passed green for the wrong reason.
+        //
+        // **The formulas are called, not copied.** `claims_ref.py` grades
+        // `claims.rs` through the differential layer; a second copy here would sit
+        // outside every layer and drift without anything noticing. Same argument
+        // that kept `current_premium_bps` calling `auction::premium_bps`.
+        //
+        // The four outcomes are answered from what the claim entry points actually
+        // accept rather than from a reading of the spec: `claim_payout` opens only
+        // on `Settled`, `claim_refund` only on `Voided`, and `open_claim` refuses
+        // everything else with `WrongOutcome`. **So `Lapsed` and `Unresolved` are 0
+        // — a bidder is owed nothing on either, and a non-zero answer here would
+        // render a claim button that reverts.** A round that closes `Unresolved`
+        // keeps the premium in the vault, which is the same statement from the
+        // pool's side.
+        // A **live** round has no record yet, and that is the fifth case: nothing is
+        // claimable before finalization, because what is owed is not decided until
+        // the outcome is. `round <= state.round` is already checked above, so this
+        // is the live round rather than a missing one.
+        let claimable = match storage::get_round(&env, round) {
+            _ if fill.claimed => 0,
+            None => 0,
+            Some(record) => match record.outcome {
+                RoundOutcome::Settled => crate::claims::payout_for_fill(
+                    fill.notional,
+                    record.settled_spot,
+                    record.strike,
+                )?,
+                RoundOutcome::Voided => crate::claims::refund_for_fill(fill.premium_paid),
+                RoundOutcome::Lapsed | RoundOutcome::Unresolved => 0,
+            },
+        };
+
         Ok(BidderPosition {
             notional: fill.notional,
             premium_paid: fill.premium_paid,
             claimed: fill.claimed,
-            claimable: 0,
+            claimable,
         })
     }
 
