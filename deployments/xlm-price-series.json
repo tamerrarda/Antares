@@ -8,16 +8,28 @@
     "fillable by a rational counterparty. A committed series is also auditable: a reviewer can see",
     "which closes produced which sigma.",
     "",
+    "CORRECTED 2026-08-20. The first version of this file ended on a PROVISIONAL candle: it was",
+    "fetched at 21:58 UTC on 19 August, and the exchange's newest daily row is always the one still",
+    "in progress. That row read 0.17170 and 19 August actually closed at 0.17030, so the last day's",
+    "move was recorded as +10.85 % when it was +9.94 %, and 30-day sigma as 51.11 % when it was",
+    "49.01 %. Every row is now filtered on its own close time having passed, and the fetch asks for",
+    "one extra row so dropping the live one still leaves a full window.",
+    "",
+    "The arithmetic was never wrong and three of us checked it; what none of us asked was whether",
+    "the last row was final. A number can be reproducible, independently verified and still measure",
+    "something that had not finished happening.",
+    "",
     "This is a point-in-time measurement, like deployments/environment-testnet.json. Re-fetch before",
     "a real deploy; check-params.ts reads whatever series it is given and does not know how old this",
     "one is."
   ],
   "asset": "XLMUSDT",
   "cadence": "daily",
-  "source": "Binance spot klines, GET /api/v3/klines?symbol=XLMUSDT&interval=1d&limit=91",
-  "measuredAt": "2026-08-19T21:58:15+00:00",
+  "source": "Binance spot klines, GET /api/v3/klines?symbol=XLMUSDT&interval=1d&limit=92, rows with an unelapsed close time discarded",
+  "measuredAt": "2026-08-20T07:26:21+00:00",
   "firstClose": "2026-05-21",
   "lastClose": "2026-08-19",
+  "inProgressRowsDropped": 1,
   "closes": [
     0.1467,
     0.1435,
@@ -109,6 +121,6 @@
     0.1563,
     0.1582,
     0.1549,
-    0.1717
+    0.1703
   ]
 }
