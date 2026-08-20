@@ -4,14 +4,13 @@
   "deployedAt": "2026-08-20T11:11:29.240Z",
   "deployerIdentity": "antares-testnet",
   "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
-  "toolchain": {
-    "wasmBuiltAtCommit": "41090520a2541a8e79d78d90a431a7ffb98132a5",
-    "deployedAtCommit": "41090520a2541a8e79d78d90a431a7ffb98132a5",
-    "rust": "1.95.0",
-    "stellarCli": "27.1.0",
-    "sorobanSdk": "=27.0.6",
-    "target": "wasm32v1-none",
-    "node": "v22.18.0"
+  "sourceTree": {
+    "commit": "a285130",
+    "dirty": true,
+    "dirtyPaths": [
+      "(not recorded — this field did not exist when this deploy ran)"
+    ],
+    "_correction": "CORRECTED BY HAND, 2026-08-20 (DEV3). This block replaces toolchain.wasmBuiltAtCommit and toolchain.deployedAtCommit, which both read 4109052 and were both WRONG — and wrong in the way that matters most, because the commit field is the line that tells a reader whether to believe the rest of the file. The deploy ran at 2026-08-20T11:11:29Z. 4109052 was committed an hour earlier and a285130 an hour later, so the run came from a working tree that was no commit at all. The named tree is disprovable from this file alone: its scripts/lib/chain.ts uses execFileSync, which returns only stdout and therefore discards the stderr line carrying every transaction hash — so it could not have produced the transactions array below it. The cause was an ordering rather than a slip: write the deploy code, run it, then commit the code and the record together, and the record can never name the tree that produced it, only its parent. THE CORRECTED VALUE: the code that ran is the code committed at a285130; at run time it was uncommitted, which is why dirty is true. That claim is checkable — a285130's chain.ts uses spawnSync and its deploy.ts carries the transaction wiring, both consistent with this file's contents in the way the old value was not. This annotation is hand-written and says so; a machine-written sourceTree has no _correction key. From the next deploy the field is true by construction, because scripts/deploy.ts step 0 now REFUSES a dirty tree. Everything else in this record — addresses, wasm hashes, all six transaction hashes — was verified independently against the network and is unchanged."
   },
   "assetId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   "oracleId": "CD2CWMXSEMYN7PBRWM6BGBMIIWCPGCASVILSZADZUB4CFQCMJ6BG3QUA",
@@ -80,5 +79,12 @@
       "economicallyMeaningless": true,
       "explorer": "https://stellar.expert/explorer/testnet/contract/CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75"
     }
-  ]
+  ],
+  "toolchain": {
+    "rust": "1.95.0",
+    "stellarCli": "27.1.0",
+    "sorobanSdk": "=27.0.6",
+    "target": "wasm32v1-none",
+    "node": "v22.18.0"
+  }
 }

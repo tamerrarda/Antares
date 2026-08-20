@@ -63,6 +63,7 @@ import {
   type NetworkArgs,
   type RunResult,
 } from "./lib/chain.ts";
+import { checkSourceTree, readSourceTree, type SourceTree } from "./lib/provenance.ts";
 import { checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
 import { checkAdapterSurface, exportedFunctions, sha256 } from "./lib/wasm.ts";
 import { checkProfile } from "./check-oracle-profile.ts";
@@ -103,6 +104,7 @@ export interface Ctx {
   readonly netArgs: NetworkArgs;
   readonly opts: Options;
   pins?: Pins;
+  sourceTree?: SourceTree;
   /** Local wasm paths and their hashes, from step 1. */
   wasm: Record<string, { path: string; sha256: string; bytes: number }>;
   instances: InstanceSpec[];
@@ -227,11 +229,19 @@ function probeToolchain(): Observed {
 
 const step0: Stage = {
   id: "0",
-  title: "toolchain pins (D-23) — asserted from the files that own them, never restated",
+  title: "toolchain pins (D-23) and the source tree — the code that is about to run",
   mutates: false,
   run: (ctx) => {
     ctx.pins = readPins(ctx.root);
-    return Promise.resolve(checkToolchain(ctx.pins, probeToolchain()));
+    ctx.sourceTree = readSourceTree(ctx.root);
+    // The tree check belongs beside the pins because it answers the same question they do — WHICH
+    // CODE IS ABOUT TO RUN — and it belongs before everything else for the same reason they do: a
+    // refusal here costs nothing, and every later step writes something a reader will want to trace
+    // back to a commit.
+    return Promise.resolve([
+      ...checkToolchain(ctx.pins, probeToolchain()),
+      ...checkSourceTree(ctx.sourceTree),
+    ]);
   },
 };
 
@@ -881,12 +891,15 @@ const step6: Stage = {
       // The identity NAME, never a key (07-SECURITY §6) — and the only thing this process knew.
       deployerIdentity: ctx.opts.identity,
       deployerAddress: ctx.deployerAddress,
+      // ONE tree, not two commit fields, and the difference from adapter-testnet.json is real.
+      // That record separates `wasmBuiltAtCommit` from `profiledAtCommit` because it profiles a
+      // contract deployed earlier, so the two are genuinely different trees — 18dcef1a and
+      // 256fbb3. This script BUILDS the wasm at step 1 of the same run, so the two questions have
+      // one answer and writing it twice was two copies of the same value pretending to be evidence.
+      // Step 2 and step 4 already prove the artefact independently, by comparing the bytes the
+      // network serves against the local hash; this field says which source produced them.
+      sourceTree: ctx.sourceTree,
       toolchain: {
-        // Two commits, separately, following deployments/adapter-testnet.json's shape: the tree the
-        // wasm was built from and the tree that ran the deploy are different questions, and a
-        // single "commit" field answers neither when they differ.
-        wasmBuiltAtCommit: gitHead(ctx.root),
-        deployedAtCommit: gitHead(ctx.root),
         rust: ctx.pins!.rust,
         stellarCli: ctx.pins!.stellarCli,
         sorobanSdk: ctx.pins!.sorobanSdk,
@@ -961,21 +974,13 @@ const step6: Stage = {
 const RECORD_PREAMBLE =
   "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract " +
   "id is allowed to live outside packages/common/networks.ts, and every other tool reads its " +
-  "addresses from here. The two commit fields are separate on purpose: the tree a wasm was built " +
-  "from and the tree that ran the deploy are different questions, and one field answers neither " +
-  "when they differ. economicallyMeaningless marks a --fast-test instance and is permanent — a " +
-  "profile stamped that way can never be presented as demand evidence (D-57).";
-
-function gitHead(root: string): string {
-  try {
-    return execFileSync("git", ["-C", root, "rev-parse", "HEAD"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return "(not a git checkout)";
-  }
-}
+  "addresses from here. sourceTree names the code that ran and says whether the tree was clean: a " +
+  "commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is " +
+  "refused at step 0 for exactly that reason. One tree rather than two commit fields, because this " +
+  "script builds the wasm during the same run — deployments/adapter-testnet.json separates them " +
+  "because it profiles a contract deployed earlier, where they are genuinely different trees. " +
+  "economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that " +
+  "way can never be presented as demand evidence (D-57).";
 
 // =================================================================================================
 // The chain client step 5 runs against
