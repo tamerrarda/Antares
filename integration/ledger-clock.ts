@@ -79,6 +79,21 @@ export interface WaitOptions {
   readonly timeoutSeconds?: number;
   /** Called after each poll, so a long wait is legible while it happens. */
   readonly onTick?: (t: LedgerTime) => void;
+  /**
+   * How many **consecutive** failed polls to absorb before giving up. Default 5.
+   *
+   * A fast-test round is about 600 s and this polls every second, so a single wait makes several
+   * hundred RPC calls against a shared public endpoint. One of them failing is normal, and on
+   * 2026-08-20 one did: a run that had already passed both bids died at stage 6 on a bare
+   * `fetch failed`, having thrown away a live round. **A transient failure is not a reason to
+   * abandon a wait** — the ledger clock is still advancing whether or not this process could read
+   * it, which is the whole premise of the file.
+   *
+   * Consecutive rather than cumulative, deliberately: fifty scattered failures across ten minutes
+   * is a busy endpoint, five in a row is an endpoint that has stopped answering, and only the
+   * second is a reason to stop. The count and the last error both reach the refusal.
+   */
+  readonly maxConsecutiveErrors?: number;
   /** Injected in tests. */
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -101,11 +116,24 @@ export async function waitUntilLedgerTime(
   const timeoutSeconds = opts.timeoutSeconds ?? 300;
   const sleep = opts.sleep ?? realSleep;
 
+  const maxErrors = opts.maxConsecutiveErrors ?? 5;
   const started = await ledgerNow(rpc);
   let latest = started;
+  let consecutiveErrors = 0;
+  let lastError: unknown = null;
   const deadline = Date.now() + timeoutSeconds * 1_000;
 
   while (latest.closeTime < target) {
+    if (consecutiveErrors >= maxErrors) {
+      throw new LedgerClockError(
+        `${consecutiveErrors} consecutive polls failed while waiting for the ledger clock to reach ` +
+          `${target}. It last read ${latest.closeTime} (ledger ${latest.sequence}), ` +
+          `${target - latest.closeTime}s short. Last error: ` +
+          `${lastError instanceof Error ? lastError.message : String(lastError)}. ` +
+          `Scattered failures are absorbed; this many in a row is an endpoint that has stopped ` +
+          `answering rather than a busy one.`,
+      );
+    }
     if (Date.now() > deadline) {
       const movedSeconds = latest.closeTime - started.closeTime;
       const movedLedgers = latest.sequence - started.sequence;
@@ -119,8 +147,16 @@ export async function waitUntilLedgerTime(
       );
     }
     await sleep(pollMs);
-    latest = await ledgerNow(rpc);
-    opts.onTick?.(latest);
+    try {
+      latest = await ledgerNow(rpc);
+      consecutiveErrors = 0;
+      opts.onTick?.(latest);
+    } catch (err) {
+      // Absorbed on purpose. `latest` keeps its last good value, so the loop continues against a
+      // stale reading rather than against nothing — and the timeout above still bounds the wait.
+      consecutiveErrors += 1;
+      lastError = err;
+    }
   }
   return latest;
 }

@@ -154,13 +154,19 @@ export function diffAgainstEpoch(
     cmp(
       "net_assets",
       "what the vault holds, less what it has credited and not yet paid",
-      state.holdings - state.liabilities,
+      state.holdings - state.liabilities - state.unsettledPremium,
       chain.totalAssets,
-      "holdings = deposited.amount + bid_filled.premium - (payout_claimed + refund_claimed + " +
+      "net = holdings - liabilities - unsettledPremium. holdings = deposited.amount + " +
+        "bid_filled.premium - (payout_claimed + refund_claimed + " +
         "fee_claimed + settle_bounty + withdraw_claimed).amount; liabilities = settled.payout_total " +
         "+ settled.fee + wclaims + epoch_voided.premium_refunded, less what has been claimed. The " +
         "difference is deliberately the quantity that does NOT depend on which side of the line " +
-        "total_assets() puts an unclaimed credit, because such a credit appears in both terms.",
+        "total_assets() puts an unclaimed credit, because such a credit appears in both terms. " +
+        "unsettledPremium is the third term and it was learned the hard way: premium taken by a " +
+        "round that has not closed is held but belongs to nobody — depositors on settle, lapse or " +
+        "unresolved, the bidders back on void — and total_assets() excludes it. Measured on " +
+        "testnet 2026-08-21, where this check was over by exactly the open round premium and " +
+        "nothing else.",
     ),
   );
 

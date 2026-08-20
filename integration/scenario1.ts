@@ -56,7 +56,7 @@ import { RECORD_CAP_TICKS, reachLimit } from "@antares/common/oracle";
 
 import { diffAgainstEpoch, omissions, type ChainState } from "./diff.ts";
 import { ledgerNow, ledgerSecondsUntil, waitUntilLedgerTime } from "./ledger-clock.ts";
-import { addressOf, invoke, invokeAsync, makeReader, type Reader } from "./read.ts";
+import { addressOf, invoke, invokeAsync, makeReader, u32, type Reader } from "./read.ts";
 import { reconstruct, type LocatedEvent } from "./reconstruct.ts";
 
 import { existsSync, readFileSync } from "node:fs";
@@ -148,6 +148,7 @@ export interface Options {
   readonly notionalB: bigint;
   readonly maxPremiumBps: number;
   readonly preflight: boolean;
+  readonly diffOnly: boolean;
 }
 
 export function parseOptions(argv: readonly string[], root: string): Options {
@@ -168,6 +169,7 @@ export function parseOptions(argv: readonly string[], root: string): Options {
     notionalB: BigInt(value("notional-b", "0")),
     maxPremiumBps: Number(value("max-premium-bps", "10000")),
     preflight: argv.includes("--preflight"),
+    diffOnly: argv.includes("--diff-only"),
   };
 }
 
@@ -696,41 +698,48 @@ const stage7: Stage = {
       ["bidder-a", ctx.opts.bidderA, ctx.addresses.bidderA],
       ["bidder-b", ctx.opts.bidderB, ctx.addresses.bidderB],
     ] as const) {
-      const pos = await ctx.reader.read<{ payout_claimable: bigint; refund_claimable: bigint }>(
+      // `bidder_position.claimable` is NOT the gate, and views.rs says why in its own words:
+      // *"until settle.rs and claims.rs land this reports the fill honestly and leaves the amount
+      // at 0 rather than guessing at a formula that lives elsewhere."* It is a documented
+      // placeholder that is always 0, so a harness gating on it would skip every claim and pass —
+      // which is exactly what the first version of this stage did.
+      const before = await ctx.reader.read<{ notional: bigint; premium_paid: bigint }>(
         ctx.vault,
         "bidder_position",
-        [ctx.round, addr],
+        [u32(ctx.round!), addr],
       );
-      const claimable = pos.payout_claimable ?? 0n;
-      if (claimable > 0n) {
-        record(
-          ctx,
-          invoke({
-            contractId: ctx.vault,
-            method: "claim_payout",
-            identity,
-            net: ctx.net,
-            args: { round: ctx.round, bidder: addr },
-          }),
-          `claim_payout:${who}`,
-        );
-      }
-      const after = await ctx.reader.read<{ payout_claimable: bigint }>(ctx.vault, "bidder_position", [
-        ctx.round,
+      record(
+        ctx,
+        invoke({
+          contractId: ctx.vault,
+          method: "claim_payout",
+          identity,
+          net: ctx.net,
+          args: { round: ctx.round, bidder: addr },
+        }),
+        `claim_payout:${who}`,
+      );
+      const after = await ctx.reader.read<{ claimed: boolean }>(ctx.vault, "bidder_position", [
+        u32(ctx.round!),
         addr,
       ]);
       checks.push(
         mkCheck(
-          `claim.${who}`,
-          `${who}'s payout was credited by the close and is claimable exactly once`,
-          "0 left after claiming",
-          String(after.payout_claimable ?? 0n),
-          (after.payout_claimable ?? 0n) === 0n,
-          claimable > 0n
-            ? `Claimed ${claimable}. The round settled in the money, so this is a real payout ` +
-                "rather than a call that returns zero."
-            : "Nothing was claimable, which means the close did not credit this bidder — read " +
-                "settle.itm_price above before reading this as a claims fault.",
+          `claim.${who}.filled`,
+          `${who} is on record as having filled, which is what makes a claim meaningful`,
+          "> 0",
+          String(before.notional),
+          before.notional > 0n,
+        ),
+        mkCheck(
+          `claim.${who}.claimed`,
+          `${who}'s claim is marked taken, so it cannot be taken twice`,
+          true,
+          after.claimed,
+          after.claimed === true,
+          `Filled ${before.notional} for a premium of ${before.premium_paid}. The round settled in ` +
+            "the money, so this is a real payout rather than a call that returns zero — the amount " +
+            "itself is asserted from the event log in stage 7b, not read back from a view.",
         ),
       );
     }
@@ -896,6 +905,19 @@ export const STAGES: readonly Stage[] = [
 /** Stages 0–2 only: the state a round could start from, proved before spending eleven minutes. */
 export const PREFLIGHT_STAGES: readonly Stage[] = [stage0, stage1, stage2];
 
+/**
+ * The diff alone, against whatever history the vault already has.
+ *
+ * **The claim does not need a round of its own.** Stage 7b reads the event log from the vault's
+ * creation and compares it to `epoch()`; it does not care whether this process produced that
+ * history or somebody else did — which is the point, since an outsider did not produce it either.
+ * So a vault carrying a settled round, an unresolved round and a live one is a *better* subject
+ * than a fresh single round, and it costs two minutes rather than eleven.
+ *
+ * Stage 0 comes along because the diff needs the record's ids and the creation transaction.
+ */
+export const DIFF_ONLY_STAGES: readonly Stage[] = [stage0, stage7b];
+
 // =================================================================================================
 // Runner
 // =================================================================================================
@@ -1001,7 +1023,10 @@ export async function main(argv: readonly string[]): Promise<number> {
         `  06-TEST-PLAN §7 scenario 1, against a --fast-test deployment. Identity NAMES, never\n` +
         `  secrets (07-SECURITY §6). Create bidders with \`stellar keys generate --fund <name>\`.\n\n` +
         `  --preflight  stages 0-2 only: record, identities, allowlist and the feed. Run this\n` +
-        `               first; a full round is one epoch_duration and cannot be shortened.\n`,
+        `               first; a full round is one epoch_duration and cannot be shortened.\n` +
+        `  --diff-only  stage 7b alone, against whatever history the vault already has. The\n` +
+        `               reconstruction does not need a round of its own — it never cared who\n` +
+        `               produced the events.\n`,
     );
     return 2;
   }
@@ -1041,7 +1066,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   console.log(`  bidders   ${opts.bidderA}, ${opts.bidderB}`);
   console.log(opts.preflight ? `  --preflight: stages 0-2, nothing is opened\n` : "");
 
-  const stages = opts.preflight ? PREFLIGHT_STAGES : STAGES;
+  const stages = opts.diffOnly ? DIFF_ONLY_STAGES : opts.preflight ? PREFLIGHT_STAGES : STAGES;
   let failed = false;
   for (const stage of stages) {
     console.log(`\nstage ${stage.id} — ${stage.title}`);
@@ -1060,7 +1085,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   console.log(`\ntransactions this run submitted — the evidence, and all of it public:`);
   for (const t of ctx.txs) console.log(`  ${t.label.padEnd(24)} ${t.hash}`);
 
-  if (!opts.preflight) {
+  if (!opts.preflight && !opts.diffOnly) {
     console.log(`\nnot compared, and why (epoch() fields the event log cannot supply):`);
     for (const line of omissions()) console.log(`  - ${line}`);
   }

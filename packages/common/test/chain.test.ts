@@ -287,3 +287,30 @@ test("two runStellarAsync calls actually overlap — which is the only reason it
     `intervals did not overlap: [${aStart},${aEnd}] [${bStart},${bEnd}]`,
   );
 });
+
+test("an inclusion-fee ceiling reaches the CLI, and is absent when not asked for", () => {
+  // A bid rather than a charge: Stellar takes the market rate and refunds the rest. The flag exists
+  // because a fee floor that rises between simulation and apply is invisible to simulation — the
+  // same gap D-84 describes one layer down — and it cost a scenario run an eleven-minute round.
+  const withFee = buildInvokeArgv({
+    contractId: cid("A"),
+    method: "fill",
+    identity: "someone",
+    net: NET,
+    args: { count: 240 },
+    maxFee: 20_000_000,
+  });
+  assert.ok(withFee.includes("--fee"));
+  assert.equal(withFee[withFee.indexOf("--fee") + 1], "20000000");
+  // Before `--`, so it is the CLI's flag and not the contract method's argument.
+  assert.ok(withFee.indexOf("--fee") < withFee.indexOf("--"));
+
+  const without = buildInvokeArgv({
+    contractId: cid("A"),
+    method: "fill",
+    identity: "someone",
+    net: NET,
+    args: { count: 240 },
+  });
+  assert.ok(!without.includes("--fee"), "omitted means the CLI's own default, not a zero");
+});

@@ -64,8 +64,9 @@ const CHAIN: ChainState = {
   expiry: 1_700_000_600,
   sharesOutstanding: 10_000_000n,
   lastPps: 10_000_000n,
-  // holdings (10 000 000 deposited + 31 500 000 premium) less nothing credited yet.
-  totalAssets: 41_500_000n,
+  // The deposit alone. The round is still OPEN, so its 31 500 000 of premium is held but belongs
+  // to nobody yet — depositors on settle, the bidders back on void — and total_assets() excludes it.
+  totalAssets: 10_000_000n,
   ledgerTime: 1_700_000_300,
 };
 
@@ -332,4 +333,117 @@ test("pps is compared only once a round has closed", () => {
   const open = reconstruct([deposit(10_000_000n, 10_000_000n - DEAD_SHARES), opened()]);
   assert.equal(open.lastPps, null);
   assert.ok(!diffAgainstEpoch(open, CHAIN).some((c) => c.id === "events.last_pps"));
+});
+
+// --- the two terms the live chain taught this module, on 2026-08-21 -------------------------------
+
+test("an instant withdrawal discharges no queue credit, because none was ever made", () => {
+  // The deploy's own smoke round trip is exactly this shape, and the first version of the fold
+  // subtracted from liabilities on every withdraw_claimed — driving them NEGATIVE by the whole
+  // withdrawn amount and putting the reconstruction 9 999 000 stroops out against a live vault.
+  const s = reconstruct([
+    deposit(10_000_000n, 9_999_000n),
+    at({ name: "withdraw_requested", user: ALICE, round: 0, shares: 9_999_000n }),
+    at({ name: "withdraw_claimed", user: ALICE, round: 0, shares: 9_999_000n, amount: 9_999_000n }),
+  ]);
+  assert.equal(s.liabilities, 0n, "nothing credited it, so nothing is discharged");
+  assert.equal(s.wclaimsOutstanding, 0n);
+  assert.equal(s.holdings, 1_000n);
+  assert.equal(s.holdings - s.liabilities - s.unsettledPremium, 1_000n);
+});
+
+test("a queued withdrawal DOES discharge the credit its finalization made", () => {
+  const opened_ = reconstruct([deposit(100_000_000n, 99_999_000n), opened()]);
+  const closed = reconstruct(
+    [
+      at({
+        name: "settled",
+        round: 1,
+        spot: 170_000_000n,
+        strike: 175_000_000n,
+        notionalSold: 0n,
+        payoutTotal: 0n,
+        premium: 0n,
+        fee: 0n,
+        pps: 10_000_000n,
+        wclaims: 4_000_000n,
+      }),
+    ],
+    [],
+    opened_,
+  );
+  assert.equal(closed.wclaimsOutstanding, 4_000_000n);
+  assert.equal(closed.liabilities, 4_000_000n);
+
+  const claimed = reconstruct(
+    [at({ name: "withdraw_claimed", user: ALICE, round: 1, shares: 4_000_000n, amount: 4_000_000n })],
+    [],
+    closed,
+  );
+  assert.equal(claimed.liabilities, 0n, "the credit is discharged exactly once");
+  assert.equal(claimed.wclaimsOutstanding, 0n);
+});
+
+test("premium from an open round is held but is not vault assets, and closing releases it", () => {
+  const open = reconstruct([
+    deposit(10_000_000n, 9_999_000n),
+    opened(),
+    fill(ALICE, 400_000_000n, 18_000_000n, 400_000_000n),
+  ]);
+  assert.equal(open.unsettledPremium, 18_000_000n);
+  assert.equal(open.holdings - open.liabilities - open.unsettledPremium, 10_000_000n);
+
+  const settled = reconstruct(
+    [
+      at({
+        name: "settled",
+        round: 1,
+        spot: 170_000_000n,
+        strike: 175_000_000n,
+        notionalSold: 400_000_000n,
+        payoutTotal: 0n,
+        premium: 18_000_000n,
+        fee: 0n,
+        pps: 10_100_000n,
+        wclaims: 0n,
+      }),
+    ],
+    [],
+    open,
+  );
+  assert.equal(settled.unsettledPremium, 0n);
+  assert.equal(
+    settled.holdings - settled.liabilities - settled.unsettledPremium,
+    28_000_000n,
+    "on settle the premium becomes depositors' assets",
+  );
+});
+
+test("a voided round keeps the premium a debt rather than releasing it", () => {
+  const open = reconstruct([
+    deposit(10_000_000n, 9_999_000n),
+    opened(),
+    fill(ALICE, 400_000_000n, 18_000_000n, 400_000_000n),
+  ]);
+  const voided = reconstruct(
+    [
+      at({
+        name: "epoch_voided",
+        round: 1,
+        reason: "FeedUnusable",
+        premiumRefunded: 18_000_000n,
+        pps: 10_000_000n,
+        wclaims: 0n,
+      }),
+    ],
+    [],
+    open,
+  );
+  assert.equal(voided.unsettledPremium, 0n, "cleared as unsettled...");
+  assert.equal(voided.liabilities, 18_000_000n, "...and re-entered as a named credit, never both");
+  assert.equal(
+    voided.holdings - voided.liabilities - voided.unsettledPremium,
+    10_000_000n,
+    "net is unchanged by a void — the premium was never depositors' money",
+  );
 });
