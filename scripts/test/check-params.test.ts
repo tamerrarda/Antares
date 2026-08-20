@@ -17,11 +17,13 @@ import { join } from "node:path";
 
 import {
   BPS,
+  EPOCH_PARAM_FIELDS,
   ParamError,
   checkGates,
   checkSet,
   fairValueBps,
   floorOverFair,
+  loadInstances,
   loadSeries,
   normalCdf,
   realizedVolatility,
@@ -297,4 +299,139 @@ test("floor / fair is produced across the whole measured range", () => {
 
 test("BPS matches the contract's own denominator", () => {
   assert.equal(BPS, 10_000);
+});
+
+// =================================================================================================
+// loadInstances — the sixteen fields, and the refusal to default
+// =================================================================================================
+
+const SHARED_TEN = {
+  auction_duration: 2700,
+  twap_window: 900,
+  guard_window: 3600,
+  max_staleness: 600,
+  oracle_dead_after: 43_200,
+  settle_grace: 7200,
+  unresolved_after: 75_600,
+  min_fill: 1_000_000_000,
+  min_deposit: 100_000_000,
+  settle_bounty_bps: 25,
+};
+
+const SIX_A = {
+  epoch_duration: 604_800,
+  strike_bps_otm: 300,
+  premium_start_bps: 450,
+  premium_floor_bps: 40,
+  max_deviation_bps: 100,
+  min_idle_gap: 14_400,
+};
+
+function writeInstances(body: unknown): string {
+  const path = join(mkdtempSync(join(tmpdir(), "antares-instances-")), "instances.json");
+  writeFileSync(path, JSON.stringify(body));
+  return path;
+}
+
+test("loadInstances merges shared and per-instance into the full sixteen", () => {
+  const path = writeInstances({
+    shared: { ...SHARED_TEN, deposit_cap: 1_000_000_000_000 },
+    instances: [{ suffix: "-A", params: SIX_A }],
+  });
+  const [a] = loadInstances(path);
+  assert.equal(Object.keys(a!.params).length, 16);
+  assert.deepEqual(Object.keys(a!.params).sort(), Object.keys(EPOCH_PARAM_FIELDS).sort());
+  assert.equal(a!.params["auction_duration"], 2700, "shared value did not reach the instance");
+  assert.equal(a!.params["premium_floor_bps"], 40, "own value did not survive the merge");
+  assert.equal(a!.depositCap, 1_000_000_000_000);
+});
+
+test("an instance may override a shared field, and the override wins", () => {
+  const path = writeInstances({
+    shared: { ...SHARED_TEN, deposit_cap: 1_000_000_000_000 },
+    instances: [{ suffix: "-C", params: { ...SIX_A, auction_duration: 1800 } }],
+  });
+  assert.equal(loadInstances(path)[0]!.params["auction_duration"], 1800);
+});
+
+test("a missing field is a refusal, never a default", () => {
+  const short = { ...SHARED_TEN };
+  delete (short as Record<string, unknown>)["unresolved_after"];
+  const path = writeInstances({
+    shared: { ...short, deposit_cap: 1_000_000_000_000 },
+    instances: [{ suffix: "-A", params: SIX_A }],
+  });
+  assert.throws(() => loadInstances(path), /missing unresolved_after/);
+});
+
+test("an unrecognised field is a refusal — this is the typo case, and it is the point", () => {
+  // `unresolved_afer` would otherwise leave the real field at whatever the code chose, the gate
+  // would pass, and the deployed vault would differ from the reviewed one in a field nobody read.
+  const typo = { ...SHARED_TEN, unresolved_afer: 75_600 };
+  delete (typo as Record<string, unknown>)["unresolved_after"];
+  const path = writeInstances({
+    shared: { ...typo, deposit_cap: 1_000_000_000_000 },
+    instances: [{ suffix: "-A", params: SIX_A }],
+  });
+  assert.throws(() => loadInstances(path), /"unresolved_afer", which is not a field of EpochParams/);
+});
+
+test("the bare-array form still loads, so DEV2's recorded reproduction command keeps working", () => {
+  const path = writeInstances([
+    { suffix: "-A", params: { ...SIX_A, ...SHARED_TEN }, deposit_cap: 1_000_000_000_000 },
+  ]);
+  assert.equal(loadInstances(path)[0]!.params["settle_bounty_bps"], 25);
+});
+
+test("a suffix the constructor would reject is refused here, before a wasm upload is spent", () => {
+  const path = writeInstances({
+    shared: { ...SHARED_TEN, deposit_cap: 1_000_000_000_000 },
+    instances: [{ suffix: "-LONG", params: SIX_A }],
+  });
+  // 5 bytes against the constructor's `token_suffix.len() <= 4`.
+  assert.throws(() => loadInstances(path), /caps token_suffix\s+at 4/);
+});
+
+test("a deposit_cap below min_deposit is refused — validate_params would call it a vault nobody can enter", () => {
+  const path = writeInstances({
+    shared: { ...SHARED_TEN, deposit_cap: 1000 },
+    instances: [{ suffix: "-A", params: SIX_A }],
+  });
+  assert.throws(() => loadInstances(path), /below min_deposit/);
+});
+
+test("an empty set does not pass by having nothing to refuse", () => {
+  assert.throws(
+    () => loadInstances(writeInstances({ shared: SHARED_TEN, instances: [] })),
+    /carries no instances/,
+  );
+  assert.throws(() => loadInstances(writeInstances({ shared: SHARED_TEN })), /neither an array/);
+});
+
+test("the committed instances.json loads, and every instance carries all sixteen", () => {
+  const specs = loadInstances(new URL("../instances.json", import.meta.url).pathname);
+  assert.equal(specs.length, 5, "02-CONTRACT-SPEC §1 deploys five (D-47/D-57)");
+  assert.deepEqual(
+    specs.map((s) => s.suffix),
+    ["-A", "-B", "-C", "-D", "-E"],
+  );
+  for (const s of specs) {
+    assert.deepEqual(Object.keys(s.params).sort(), Object.keys(EPOCH_PARAM_FIELDS).sort(), s.suffix);
+    // The relations validate_params enforces against epoch_duration — the two that a *shared*
+    // auction_duration and a per-instance epoch_duration could break, and the reason the shared
+    // block was checked against the short epochs before it was written.
+    assert.ok(
+      s.params["auction_duration"]! <= Math.floor(s.params["epoch_duration"] / 24),
+      `${s.suffix}: auction_duration > epoch_duration / 24`,
+    );
+    assert.ok(
+      s.params["min_idle_gap"]! >= Math.floor(s.params["epoch_duration"] / 50),
+      `${s.suffix}: min_idle_gap < epoch_duration / 50`,
+    );
+    assert.ok(
+      s.params["unresolved_after"]! > s.params["oracle_dead_after"]!,
+      `${s.suffix}: void branch unreachable`,
+    );
+    assert.ok(s.depositCap >= s.params["min_deposit"]!, `${s.suffix}: cap below min_deposit`);
+  }
 });
