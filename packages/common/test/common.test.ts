@@ -300,11 +300,21 @@ test("payout_claimed and refund_claimed both decode", () => {
 test("REJECT: an unregistered event name throws rather than being skipped", () => {
   // Skipping is data loss dressed as tolerance: an indexer that ignores what it does not know
   // reports a consistent view of an incomplete history (08-OFFCHAIN §1).
+  //
+  // The fixture was `settled` — DEV2's, and unregistered when this was written. Registering it
+  // turned this test red, which is the right kind of failure and the wrong place for it: the rule
+  // under test is about *unknown* names, not about which are outstanding today. So the fixture is a
+  // name that is not an event and never will be, and the assertion below states that requirement
+  // rather than leaving the next registration to rediscover it.
+  const NEVER_AN_EVENT = "not_an_event";
   assert.throws(
-    () => decodeEvent({ topics: ["settled", 7], data: {}, txHash: "t", ledger: 1 }),
+    () => decodeEvent({ topics: [NEVER_AN_EVENT, 7], data: {}, txHash: "t", ledger: 1 }),
     (err: unknown) => err instanceof EventDecodeError && /no decoder registered/.test(err.message),
   );
-  assert.ok(!decodableEventNames().includes("settled"), "settled is DEV2's to register");
+  assert.ok(
+    !decodableEventNames().includes(NEVER_AN_EVENT),
+    "this fixture must never name a real event, or the next developer to register theirs breaks it",
+  );
 });
 
 test("REJECT: a missing data field, a non-integer amount, and a truncated topic list", () => {
