@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared off-chain seam: the single home for every network, asset and contract address (08-OFFCHAIN §1), plus event decoding, retry and logging.",
+  "description": "Shared off-chain seam: the single home for every network, asset and contract address (08-OFFCHAIN §1), plus event decoding, the Check vocabulary every gate reports in, retry and logging.",
   "exports": {
     ".": {
       "types": "./index.ts",
@@ -20,6 +20,10 @@
     "./events": {
       "types": "./events.ts",
       "default": "./dist/events.js"
+    },
+    "./checks": {
+      "types": "./checks.ts",
+      "default": "./dist/checks.js"
     },
     "./retry": {
       "types": "./retry.ts",

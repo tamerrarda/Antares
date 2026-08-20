@@ -1,5 +1,11 @@
 /**
- * The vocabulary every gate in `deploy.ts` speaks: a comparison, its two sides, and why it exists.
+ * The vocabulary every gate speaks: a comparison, its two sides, and why it exists.
+ *
+ * **Moved here from `scripts/lib/` on 2026-08-20, and the move is the argument.** It lived beside
+ * the deploy because the deploy was its only caller; `integration/` is the second, and `scripts/`
+ * publishes no `dist`, so nothing outside that directory can import from it. Two gates reporting
+ * in two vocabularies is the duplication this file exists to prevent, one level up: a reader who
+ * has learned to read one gate's output should not have to learn a second.
  *
  * `09-DEPLOYMENT.md` §2 and `DEV3.md` §6.1 both describe the deploy the same way — *"the gates run
  * **in sequence, asserted by the script**, not by the operator's memory"*. A gate that prints a

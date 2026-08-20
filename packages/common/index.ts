@@ -9,5 +9,6 @@
 export * from "./networks.ts";
 export * from "./deployments.ts";
 export * from "./events.ts";
+export * from "./checks.ts";
 export * from "./retry.ts";
 export * from "./logging.ts";

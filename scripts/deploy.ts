@@ -53,7 +53,7 @@ import {
   sigmaRange,
   type InstanceSpec,
 } from "./check-params.ts";
-import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "./lib/checks.ts";
+import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antares/common/checks";
 import {
   buildDeployArgv,
   buildInvokeArgv,

@@ -10,7 +10,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { mkCheck, type Check } from "../lib/checks.ts";
+import { mkCheck, type Check } from "@antares/common/checks";
 import {
   ALLOWLIST_WINDOW_SECONDS,
   CALL_SIGNATURES,

@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "./lib/checks.ts";
+import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antares/common/checks";
 import { parseVersion, readPins } from "./lib/toolchain.ts";
 import { sha256 } from "./lib/wasm.ts";
 

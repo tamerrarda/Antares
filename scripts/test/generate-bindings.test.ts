@@ -9,7 +9,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { failedIds } from "../lib/checks.ts";
+import { failedIds } from "@antares/common/checks";
 import {
   checkBindings,
   countMethods,

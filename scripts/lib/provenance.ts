@@ -35,7 +35,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
-import { mkCheck, type Check } from "./checks.ts";
+import { mkCheck, type Check } from "@antares/common/checks";
 
 export interface SourceTree {
   /** `git rev-parse HEAD`, or `(not a git checkout)`. */
