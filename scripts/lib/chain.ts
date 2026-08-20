@@ -31,7 +31,7 @@
  * one, because D-50's gate must not rest on a default staying a no-op.
  */
 
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 export class ChainError extends Error {
   constructor(message: string) {
@@ -166,9 +166,38 @@ export function parseContractId(output: string): string {
   return found[0]!;
 }
 
-/** A transaction hash out of the CLI's output: 64 hex characters. */
+/**
+ * Every transaction hash the CLI reported, in the order it submitted them.
+ *
+ * **Anchored on the CLI's own label, never on the shape of the string, and that is a bug fix rather
+ * than a preference.** A wasm hash is also 64 hex characters, and `stellar contract deploy` prints
+ * *"Deploying contract using wasm hash 908dde6d…"* **before** *"Signing transaction: e4266667…"* —
+ * so a bare `[0-9a-f]{64}` match returns the wasm hash as the transaction hash, confidently and
+ * silently. Measured on the pinned CLI, 2026-08-20.
+ *
+ * **All of them, because one command is not one transaction.** A `contract deploy` against a wasm
+ * the network has not seen submits two — the upload and the create — and prints a label for each;
+ * against one already installed it prints *"Skipping install because wasm already installed"* and
+ * submits only the create. A caller that took the first hash would record the upload as the
+ * deployment, and a caller that took the last would record nothing at all on the runs where it
+ * mattered.
+ *
+ * Both streams are scanned. The CLI puts the answer on stdout and the diagnosis on stderr, and this
+ * label lives on stderr today — but which stream a diagnostic lands on is the CLI's business, and a
+ * parser that depends on it would break on a release note nobody read.
+ */
+export function parseTxHashes(output: string): string[] {
+  return [...output.matchAll(/Signing transaction:\s*([0-9a-f]{64})\b/g)].map((m) => m[1]!);
+}
+
+/** The first transaction a command submitted, or `null` if it submitted none (a simulation does not). */
 export function parseTxHash(output: string): string | null {
-  return [...new Set(output.match(/\b[0-9a-f]{64}\b/g) ?? [])][0] ?? null;
+  return parseTxHashes(output)[0] ?? null;
+}
+
+/** True when the CLI reported that the wasm was already installed, so no upload was submitted. */
+export function skippedUpload(output: string): boolean {
+  return /Skipping install because wasm already installed/.test(output);
 }
 
 export interface RunResult {
@@ -185,19 +214,29 @@ export interface RunResult {
  * that was meant to be unattended.
  */
 export function runStellar(argv: readonly string[], bin = "stellar"): RunResult {
-  try {
-    const stdout = execFileSync(bin, argv as string[], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    return { stdout, stderr: "" };
-  } catch (e: unknown) {
-    const err = e as { stdout?: string; stderr?: string; message?: string; status?: number };
+  // `spawnSync`, not `execFileSync`, and the difference is the whole point of this function.
+  // `execFileSync` RETURNS ONLY STDOUT: piping stderr makes it available on the thrown error and
+  // nowhere else, so on the success path it is discarded. This header used to claim both streams
+  // were returned while the code returned an empty string for one of them — and the consequence
+  // was not cosmetic, because the CLI prints `Signing transaction: <hash>` on stderr. Every
+  // transaction hash a successful deploy reported was being thrown away, and step 6's own check is
+  // what caught it.
+  const r = spawnSync(bin, argv as string[], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const stdout = r.stdout ?? "";
+  const stderr = r.stderr ?? "";
+  if (r.error !== undefined) {
+    throw new ChainError(`Could not run \`${bin}\`: ${r.error.message}`);
+  }
+  if (r.status !== 0) {
     throw new ChainError(
-      `\`${bin} ${argv.join(" ")}\` failed with status ${err.status ?? "(unknown)"}.\n` +
-        `stderr:\n${(err.stderr ?? "").trim().slice(0, 4000)}\n` +
-        `stdout:\n${(err.stdout ?? "").trim().slice(0, 2000)}`,
+      `\`${bin} ${argv.join(" ")}\` failed with status ${r.status ?? "(signalled)"}.\n` +
+        `stderr:\n${stderr.trim().slice(0, 4000)}\n` +
+        `stdout:\n${stdout.trim().slice(0, 2000)}`,
     );
   }
+  return { stdout, stderr };
 }

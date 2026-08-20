@@ -1,12 +1,12 @@
 {
   "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. The two commit fields are separate on purpose: the tree a wasm was built from and the tree that ran the deploy are different questions, and one field answers neither when they differ. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57).",
   "network": "testnet",
-  "deployedAt": "2026-08-20T09:55:55.560Z",
+  "deployedAt": "2026-08-20T11:11:29.240Z",
   "deployerIdentity": "antares-testnet",
   "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
   "toolchain": {
-    "wasmBuiltAtCommit": "191bd739438f92212aa51b245f45e7f5d82b7ef0",
-    "deployedAtCommit": "191bd739438f92212aa51b245f45e7f5d82b7ef0",
+    "wasmBuiltAtCommit": "41090520a2541a8e79d78d90a431a7ffb98132a5",
+    "deployedAtCommit": "41090520a2541a8e79d78d90a431a7ffb98132a5",
     "rust": "1.95.0",
     "stellarCli": "27.1.0",
     "sorobanSdk": "=27.0.6",
@@ -14,13 +14,46 @@
     "node": "v22.18.0"
   },
   "assetId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-  "oracleId": "CDOLB2NV545X3RPGETL43ULCB2IT75K2VFB7G63KAIXH4NA2BQD6GCWD",
+  "oracleId": "CD2CWMXSEMYN7PBRWM6BGBMIIWCPGCASVILSZADZUB4CFQCMJ6BG3QUA",
   "oracleWasmHash": "908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402",
   "vaultWasmHash": "ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83",
+  "transactions": [
+    {
+      "label": "create:oracle",
+      "hash": "42421aeb3477fb59ed2fcc615430b4bff530d2bef757ca878099550c07e6a4a7",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/42421aeb3477fb59ed2fcc615430b4bff530d2bef757ca878099550c07e6a4a7"
+    },
+    {
+      "label": "prime:set_expires",
+      "hash": "aca953941dc21d30fea985bcae0edf2d19e99defa3f18b33522e74c02c6f30eb",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/aca953941dc21d30fea985bcae0edf2d19e99defa3f18b33522e74c02c6f30eb"
+    },
+    {
+      "label": "prime:fill",
+      "hash": "d0dbb93f24b203bbd8a8bdb16f6298987bd95ea8e48ef1678b6a3f428900d830",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/d0dbb93f24b203bbd8a8bdb16f6298987bd95ea8e48ef1678b6a3f428900d830"
+    },
+    {
+      "label": "create:vault-F",
+      "hash": "ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82"
+    },
+    {
+      "label": "smoke:deposit",
+      "hash": "94e3265d65a417d188c6ec86dc1e4b504946e48cbac2f3626d3784172232fe45",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/94e3265d65a417d188c6ec86dc1e4b504946e48cbac2f3626d3784172232fe45"
+    },
+    {
+      "label": "smoke:request_withdraw",
+      "hash": "1bfb3d89c9b0bb8f5a6714e9a0711aaae5fd293557dd475068a480e84c3fd6a4",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/1bfb3d89c9b0bb8f5a6714e9a0711aaae5fd293557dd475068a480e84c3fd6a4"
+    }
+  ],
   "instances": [
     {
       "tokenSuffix": "-F",
-      "vaultId": "CAINKG5TO53UJJSB4AZGBCNLCE22ZSLLVY6QXYNPAVYRE2LXFVF247I2",
+      "vaultId": "CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75",
+      "createTx": "ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82",
       "vaultWasmHash": "ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83",
       "params": {
         "epoch_duration": 600,
@@ -43,9 +76,9 @@
       "depositCap": 1000000000000,
       "rentThreshold": 120960,
       "rentExtendTo": 518400,
-      "allowlistExpiresAt": 1788429326,
+      "allowlistExpiresAt": 1788433865,
       "economicallyMeaningless": true,
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CAINKG5TO53UJJSB4AZGBCNLCE22ZSLLVY6QXYNPAVYRE2LXFVF247I2"
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75"
     }
   ]
 }

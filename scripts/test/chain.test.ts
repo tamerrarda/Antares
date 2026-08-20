@@ -18,6 +18,8 @@ import {
   encodeArg,
   parseContractId,
   parseTxHash,
+  parseTxHashes,
+  skippedUpload,
 } from "../lib/chain.ts";
 
 // The fixtures are BUILT rather than written out, and that is the network-agnostic rule working
@@ -149,12 +151,49 @@ test("output holding no id is refused, and the refusal shows what the CLI printe
   );
 });
 
-test("a transaction hash is recognised and its absence is reported as absence", () => {
-  const h = "a".repeat(64);
-  assert.equal(parseTxHash(`tx ${h} succeeded`), h);
+const TX1 = "e4266667e3e0887b117a30c31a310b81d7eda990249f9528f4fb6bfee1b271ee";
+const TX2 = "5836a47a207f55feb0a717983fe1988e18856905ca0e8dc8845cc50fe366216e";
+const WASM_HASH = "908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402";
+
+test("a transaction hash is read from the CLI's label, and its absence reported as absence", () => {
+  assert.equal(parseTxHash(`ℹ️  Signing transaction: ${TX1}\n✅ submitted`), TX1);
   assert.equal(parseTxHash("no hash here"), null);
-  // A contract id is not a transaction hash, and base32 must not be mistaken for hex.
+  // A simulation submits nothing, so there is nothing to report.
+  assert.equal(parseTxHash("ℹ️  Simulating transaction…\n1\n"), null);
   assert.equal(parseTxHash(VAULT), null);
+});
+
+test("a wasm hash is NOT mistaken for a transaction hash — it is 64 hex and comes FIRST", () => {
+  // The real shape, measured 2026-08-20. A bare [0-9a-f]{64} match returns WASM_HASH here,
+  // confidently and silently, and the deployment record then cites a hash no explorer can resolve.
+  const out = [
+    "ℹ️  Uploading contract WASM…",
+    "ℹ️  Skipping install because wasm already installed",
+    `ℹ️  Deploying contract using wasm hash ${WASM_HASH}`,
+    `ℹ️  Signing transaction: ${TX1}`,
+    "✅ Deployed!",
+  ].join("\n");
+  assert.deepEqual(parseTxHashes(out), [TX1]);
+  assert.equal(parseTxHashes(out).includes(WASM_HASH), false);
+});
+
+test("one command is not one transaction: an upload and a create are both captured, in order", () => {
+  const out = [
+    "ℹ️  Uploading contract WASM…",
+    `ℹ️  Signing transaction: ${TX1}`,
+    `ℹ️  Deploying contract using wasm hash ${WASM_HASH}`,
+    `ℹ️  Signing transaction: ${TX2}`,
+    "✅ Deployed!",
+  ].join("\n");
+  assert.deepEqual(parseTxHashes(out), [TX1, TX2]);
+  // Taking the first would record the upload as the deployment; taking the last would record
+  // nothing on the runs where the wasm was already installed.
+  assert.equal(skippedUpload(out), false);
+});
+
+test("the already-installed case is distinguishable, so the single hash can be labelled correctly", () => {
+  assert.equal(skippedUpload("ℹ️  Skipping install because wasm already installed"), true);
+  assert.equal(skippedUpload("ℹ️  Uploading contract WASM…"), false);
 });
 
 test("a value that looks like a flag is passed with = , or clap eats it as an option", () => {
