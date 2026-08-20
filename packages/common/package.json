@@ -3,14 +3,32 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared off-chain seam: the single home for every network, asset and contract address (08-OFFCHAIN \u00a71), plus event decoding, retry and logging.",
+  "description": "Shared off-chain seam: the single home for every network, asset and contract address (08-OFFCHAIN §1), plus event decoding, retry and logging.",
   "exports": {
-    ".": "./dist/index.js",
-    "./networks": "./dist/networks.js",
-    "./deployments": "./dist/deployments.js",
-    "./events": "./dist/events.js",
-    "./retry": "./dist/retry.js",
-    "./logging": "./dist/logging.js"
+    ".": {
+      "types": "./index.ts",
+      "default": "./dist/index.js"
+    },
+    "./networks": {
+      "types": "./networks.ts",
+      "default": "./dist/networks.js"
+    },
+    "./deployments": {
+      "types": "./deployments.ts",
+      "default": "./dist/deployments.js"
+    },
+    "./events": {
+      "types": "./events.ts",
+      "default": "./dist/events.js"
+    },
+    "./retry": {
+      "types": "./retry.ts",
+      "default": "./dist/retry.js"
+    },
+    "./logging": {
+      "types": "./logging.ts",
+      "default": "./dist/logging.js"
+    }
   },
   "files": [
     "dist"

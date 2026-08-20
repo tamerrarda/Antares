@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["*.ts", "ci/**/*.ts", "test/**/*.ts"]
+  "include": ["*.ts", "lib/**/*.ts", "ci/**/*.ts", "test/**/*.ts"]
 }

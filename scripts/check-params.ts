@@ -437,6 +437,15 @@ export interface InstanceSpec {
   /** All sixteen, shared values merged with this instance's overrides. */
   readonly params: FullEpochParams;
   readonly depositCap: number;
+  /**
+   * `03-STORAGE-TTL.md` §2's tuned values, and constructor arguments in their own right.
+   *
+   * They are committed here rather than chosen by `deploy.ts` because §2 step 3b's job is to
+   * assert the *intended* `rent_extend_to` against the live `max_ttl` — which presupposes an
+   * intention that somebody reviewed. A number the deploy script picks is one no reviewer saw.
+   */
+  readonly rentThreshold: number;
+  readonly rentExtendTo: number;
 }
 
 /**
@@ -504,7 +513,7 @@ export function loadInstances(path: string): InstanceSpec[] {
         // `deposit_cap` is a constructor argument in its own right, not a field of `EpochParams`,
         // and it is identical across all five (02-CONTRACT-SPEC §1) — so it is allowed to sit in
         // `shared` beside the parameters without being merged into them.
-        if (key === "deposit_cap") continue;
+        if (key === "deposit_cap" || key === "rent_threshold" || key === "rent_extend_to") continue;
         if (!Object.prototype.hasOwnProperty.call(EPOCH_PARAM_FIELDS, key)) {
           throw new ParamError(
             `${path}: instance "${suffix}" carries "${key}", which is not a field of EpochParams. ` +
@@ -541,6 +550,29 @@ export function loadInstances(path: string): InstanceSpec[] {
       );
     }
 
+    // The rent pair: `03-STORAGE-TTL.md` §2, and `validate_rent`'s `0 < threshold < extend_to`.
+    // Refused here rather than at the constructor, because reaching the constructor means a wasm
+    // upload has already been spent on a set that cannot deploy.
+    const rentOf = (name: string): number => {
+      const v = row[name] ?? shared[name];
+      if (typeof v !== "number" || !Number.isInteger(v) || v <= 0) {
+        throw new ParamError(
+          `${path}: instance "${suffix}" has no positive integer "${name}". 03-STORAGE-TTL §2 tunes ` +
+            `the pair and deploy.ts step 3b asserts the intended value against the live max_ttl — ` +
+            `which presupposes an intention somebody reviewed, not a number a script picked.`,
+        );
+      }
+      return v;
+    };
+    const rentThreshold = rentOf("rent_threshold");
+    const rentExtendTo = rentOf("rent_extend_to");
+    if (rentThreshold >= rentExtendTo) {
+      throw new ParamError(
+        `${path}: instance "${suffix}" has rent_threshold ${rentThreshold} >= rent_extend_to ` +
+          `${rentExtendTo}. validate_rent requires 0 < threshold < extend_to.`,
+      );
+    }
+
     const note = row["note"];
     // The `missing` check immediately above is what makes this narrowing true: every one of the
     // sixteen names is present and numeric, so the six `CoherenceParams` requires are present.
@@ -550,6 +582,8 @@ export function loadInstances(path: string): InstanceSpec[] {
       suffix,
       params: merged as FullEpochParams,
       depositCap: capRaw,
+      rentThreshold,
+      rentExtendTo,
     };
     return typeof note === "string" ? { ...spec, note } : spec;
   });
