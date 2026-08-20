@@ -16,16 +16,16 @@
 //! `Round`, settle at a chosen price, or block the unpausable set — is structural
 //! here rather than policy: no such code path exists in this file or any other.
 
-use soroban_sdk::{contractimpl, Address, Env};
+use soroban_sdk::{contractimpl, Address, BytesN, Env};
 
 use crate::errors::Error;
 use crate::events::{
-    AllowedChanged, AllowlistToggled, FeeChanged, FeeRecipientChanged, ParamsChanged, Paused,
-    Unpaused,
+    AdminChanged, AdminTransferStarted, AllowedChanged, AllowlistToggled, CapChanged, FeeChanged,
+    FeeRecipientChanged, Migrated, ParamsChanged, Paused, RentParamsChanged, Unpaused, Upgraded,
 };
 use crate::storage;
 use crate::types::EpochParams;
-use crate::vault::{enter, validate_params};
+use crate::vault::{enter, validate_params, validate_rent};
 use crate::{AntaresVault, AntaresVaultArgs, AntaresVaultClient};
 
 #[contractimpl]
@@ -179,6 +179,192 @@ impl AntaresVault {
 
         AllowedChanged { bidder, allowed }.publish(&env);
         Ok(())
+    }
+
+    // Below the current total is legal: it blocks new deposits without touching a
+    // stroop of what is already in. `cap == 0` is legal too and means uncapped
+    // (§16) — which is why the floor below is conditional rather than absolute.
+    //
+    // **A non-zero cap must clear `min_deposit`, and that is the whole reason this
+    // is not a one-line setter.** The pair lives in two structs behind two setters,
+    // so without this check `set_deposit_cap` and `set_epoch_params` can be walked
+    // into a state where every deposit is at once too small and too large — the
+    // constructor applies the identical rule, and a rule enforced at the door but
+    // not at the setter is enforced nowhere after day one.
+    /// Set the deposit cap. Zero means uncapped; below the current total is legal.
+    pub fn set_deposit_cap(env: Env, cap: i128) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        if cap < 0 || (cap != 0 && cap < ctx.config.params.min_deposit) {
+            return Err(Error::InvalidParams);
+        }
+
+        let old = ctx.config.deposit_cap;
+        ctx.config.deposit_cap = cap;
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        CapChanged { old, new: cap }.publish(&env);
+        Ok(())
+    }
+
+    // `validate_rent` is the same function the constructor calls, and calling it
+    // here is the point rather than tidiness: `extend_to` above the live ceiling
+    // makes **every** mutating call fail at its own final bump — the unpausable
+    // exit included, so an unchecked value here bricks exactly what I8 promises
+    // cannot be bricked (03-STORAGE-TTL §2).
+    //
+    // The set-time check is hygiene, not the defence. The ceiling can be lowered by
+    // protocol vote after this returns, so the load-bearing guard stays the per-call
+    // clamp in `Rent::effective`. Two layers because one of them can go stale.
+    //
+    // The new values take effect from the **next** call, not this one: `ctx.rent`
+    // was read before the write and this call's own bump uses it. That is the same
+    // shape as `set_epoch_params` taking effect next epoch, and it means a call can
+    // never be priced under a rule it did not start under.
+    /// Set the rent threshold and extension window. Takes effect from the next call.
+    pub fn set_rent_params(env: Env, threshold: u32, extend_to: u32) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+        validate_rent(&env, threshold, extend_to)?;
+
+        let old_threshold = ctx.config.rent_threshold;
+        let old_extend_to = ctx.config.rent_extend_to;
+        ctx.config.rent_threshold = threshold;
+        ctx.config.rent_extend_to = extend_to;
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        RentParamsChanged {
+            old_threshold,
+            new_threshold: threshold,
+            old_extend_to,
+            new_extend_to: extend_to,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    // **Two steps, and the second one is the whole feature.** A one-step
+    // `set_admin` hands the role to whatever address was typed; a typo is
+    // unrecoverable and takes every setter, `upgrade` and `migrate` with it. Here
+    // the new admin has to prove they hold the key by calling `accept_admin`, so
+    // an address nobody controls simply never completes.
+    //
+    // Overwriting a prior pending is deliberate: the admin changing their mind must
+    // not need a third call to undo the second, and a pending transfer confers
+    // nothing until accepted.
+    //
+    // §11's rule binds here — the contract's own address as `pending_admin` is
+    // refused. It is the one address that could accept and then be unable to act.
+    /// Nominate a new admin. They must call `accept_admin` before anything changes.
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        if new_admin == env.current_contract_address() {
+            return Err(Error::InvalidAddress);
+        }
+
+        let current = ctx.config.admin.clone();
+        ctx.config.pending_admin = Some(new_admin.clone());
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        AdminTransferStarted {
+            current,
+            pending: new_admin,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    // Authorised by the **pending** admin, not the current one — that asymmetry is
+    // what makes the two-step mean anything. `NoPendingAdmin` rather than
+    // `Unauthorized` when there is nothing to accept: the caller may well hold a
+    // key, and telling them the transfer does not exist is the accurate answer.
+    /// Complete a pending admin transfer. Called by the incoming admin.
+    pub fn accept_admin(env: Env) -> Result<(), Error> {
+        let mut ctx = enter(&env, false)?;
+        let Some(pending) = ctx.config.pending_admin.clone() else {
+            return Err(Error::NoPendingAdmin);
+        };
+        pending.require_auth();
+
+        let old = ctx.config.admin.clone();
+        ctx.config.admin = pending.clone();
+        ctx.config.pending_admin = None;
+        storage::set_config(&env, &ctx.config);
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        AdminChanged { old, new: pending }.publish(&env);
+        Ok(())
+    }
+
+    // **No phase gate here, and that is deliberate.** `deploy.ts` refuses to run an
+    // upgrade unless the vault is Idle (09-DEPLOYMENT §4) — a policy, enforced where
+    // policy belongs. Putting it on-chain would make the contract unupgradeable
+    // exactly when a live round is the thing that needs fixing, which is the state
+    // an upgrade is most likely to be for.
+    //
+    // **`AppVersion` does not move.** Code and schema are separate versions and only
+    // `migrate` advances the schema, so the event carries the version *before* any
+    // migration — that pairing is what lets a reader order a code change against a
+    // schema change afterwards.
+    /// Replace the contract code. Does not migrate storage; see `migrate`.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        let app_version = storage::get_app_version(&env);
+        env.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
+        storage::set_state(&env, &ctx.state);
+        storage::bump_instance(&env, ctx.rent);
+
+        Upgraded {
+            wasm_hash: new_wasm_hash,
+            app_version,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    // **v1 defines no target, so every call fails, and that is the correct
+    // behaviour rather than a stub.** A `migrate` that returned `Ok` here would
+    // advance `AppVersion` to a schema that does not exist — claiming a data
+    // transformation nobody wrote. §14 is explicit: calling it is an error, not a
+    // no-op.
+    //
+    // The order check is written now rather than added with the first real target,
+    // because **it is itself the idempotence guard**: `to_version == app + 1` means
+    // a second call with the same argument fails, and a guard bolted on later is one
+    // that was missing for a release. When v2 lands, the body slots in after this
+    // check and the two errors below separate — wrong target, versus a target this
+    // build cannot reach.
+    /// Advance the storage schema. v1 has no target, so this always rejects.
+    pub fn migrate(env: Env, to_version: u32) -> Result<(), Error> {
+        let ctx = enter(&env, false)?;
+        ctx.config.admin.require_auth();
+
+        let from_version = storage::get_app_version(&env);
+        if to_version != from_version.saturating_add(1) {
+            return Err(Error::MigrationOrder);
+        }
+
+        // Where the migration body goes. Until one exists there is nothing this
+        // call can honestly do, and `Migrated` stays unpublished rather than
+        // announcing a schema change that did not happen.
+        let _ = Migrated {
+            from_version,
+            to_version,
+        };
+        Err(Error::MigrationOrder)
     }
 }
 
