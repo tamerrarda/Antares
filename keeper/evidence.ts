@@ -81,6 +81,33 @@ export interface EpochEvidence {
    * only one of them is a gap in the evidence.
    */
   readonly sigmaRealized: SigmaEvidence | null;
+  /**
+   * What this record is **missing**, and why.
+   *
+   * Soroban RPC keeps ~7 days of events against a 3-to-14-day epoch, so a keeper that started late
+   * or was down for a stretch produces a record with holes in it. Those holes are unrecoverable —
+   * not by us, not by a reviewer — so the honest thing is to name them in the file rather than
+   * publish a record that reads as whole. A reader who cannot tell a complete history from a
+   * partial one has evidence of nothing.
+   */
+  readonly historyGaps: HistoryGaps;
+}
+
+export interface HistoryGaps {
+  /** Ledgers the retention window had already dropped when this round's events were first read. */
+  readonly missedLedgers: number;
+  /** Event names seen but not decoded — other modules' events, and anything malformed. */
+  readonly skipped: readonly string[];
+  /** True when nothing was missed and nothing was skipped. The one field a reader checks first. */
+  readonly complete: boolean;
+}
+
+/** `historyGaps` for a record with nothing missing. */
+export const NO_GAPS: HistoryGaps = { missedLedgers: 0, skipped: [], complete: true };
+
+/** Shape a fetch's shortfall into the published form. */
+export function historyGaps(missedLedgers: number, skipped: readonly string[]): HistoryGaps {
+  return { missedLedgers, skipped: [...skipped], complete: missedLedgers === 0 && skipped.length === 0 };
 }
 
 export interface EvidenceFile {

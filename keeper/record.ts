@@ -22,7 +22,7 @@
 
 import { hasRound, isTerminal, type DecodedEvent, type TerminalEvent } from "@antares/common/events";
 
-import type { EpochEvidence, Fill, SigmaEvidence } from "./evidence.ts";
+import { NO_GAPS, type EpochEvidence, type Fill, type HistoryGaps, type SigmaEvidence } from "./evidence.ts";
 
 export class RecordError extends Error {
   constructor(message: string) {
@@ -47,6 +47,8 @@ export interface RoundInputs {
   readonly closedAt: number;
   readonly events: readonly Located[];
   readonly sigmaRealized: SigmaEvidence | null;
+  /** Defaults to "nothing missing" — which must be a *claim* the caller makes, not an assumption. */
+  readonly historyGaps?: HistoryGaps;
 }
 
 const OUTCOME: Record<TerminalEvent["name"], string> = {
@@ -128,6 +130,7 @@ export function epochRecord(inputs: RoundInputs): EpochEvidence {
     events: inputs.events.map((l) => l.event),
     fills: fillIndex(inputs.events),
     sigmaRealized: inputs.sigmaRealized,
+    historyGaps: inputs.historyGaps ?? NO_GAPS,
   };
 }
 

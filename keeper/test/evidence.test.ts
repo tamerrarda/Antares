@@ -9,7 +9,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { appendEpoch, evidencePath, EvidenceError, sigmaEvidence, type EpochEvidence } from "../evidence.ts";
+import {
+  appendEpoch,
+  evidencePath,
+  EvidenceError,
+  NO_GAPS,
+  sigmaEvidence,
+  type EpochEvidence,
+} from "../evidence.ts";
 import { realizedSigma, type Sample } from "../sigma.ts";
 
 const NET = "testnet";
@@ -26,6 +33,7 @@ const epoch = (round: number, over: Partial<EpochEvidence> = {}): EpochEvidence 
   events: [{ type: "settled", round }],
   fills: [{ bidder: "GBIDDER", notional: "5000000000", premium: "200000000", txHash: "def456" }],
   sigmaRealized: null,
+  historyGaps: NO_GAPS,
   ...over,
 });
 
