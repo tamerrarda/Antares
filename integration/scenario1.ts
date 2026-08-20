@@ -56,7 +56,7 @@ import { RECORD_CAP_TICKS, reachLimit } from "@antares/common/oracle";
 
 import { diffAgainstEpoch, omissions, type ChainState } from "./diff.ts";
 import { ledgerNow, ledgerSecondsUntil, waitUntilLedgerTime } from "./ledger-clock.ts";
-import { addressOf, invoke, invokeAsync, makeReader, type Reader } from "./read.ts";
+import { addressOf, invoke, invokeAsync, makeReader, u32, type Reader } from "./read.ts";
 import { reconstruct, type LocatedEvent } from "./reconstruct.ts";
 
 import { existsSync, readFileSync } from "node:fs";
@@ -696,41 +696,48 @@ const stage7: Stage = {
       ["bidder-a", ctx.opts.bidderA, ctx.addresses.bidderA],
       ["bidder-b", ctx.opts.bidderB, ctx.addresses.bidderB],
     ] as const) {
-      const pos = await ctx.reader.read<{ payout_claimable: bigint; refund_claimable: bigint }>(
+      // `bidder_position.claimable` is NOT the gate, and views.rs says why in its own words:
+      // *"until settle.rs and claims.rs land this reports the fill honestly and leaves the amount
+      // at 0 rather than guessing at a formula that lives elsewhere."* It is a documented
+      // placeholder that is always 0, so a harness gating on it would skip every claim and pass —
+      // which is exactly what the first version of this stage did.
+      const before = await ctx.reader.read<{ notional: bigint; premium_paid: bigint }>(
         ctx.vault,
         "bidder_position",
-        [ctx.round, addr],
+        [u32(ctx.round!), addr],
       );
-      const claimable = pos.payout_claimable ?? 0n;
-      if (claimable > 0n) {
-        record(
-          ctx,
-          invoke({
-            contractId: ctx.vault,
-            method: "claim_payout",
-            identity,
-            net: ctx.net,
-            args: { round: ctx.round, bidder: addr },
-          }),
-          `claim_payout:${who}`,
-        );
-      }
-      const after = await ctx.reader.read<{ payout_claimable: bigint }>(ctx.vault, "bidder_position", [
-        ctx.round,
+      record(
+        ctx,
+        invoke({
+          contractId: ctx.vault,
+          method: "claim_payout",
+          identity,
+          net: ctx.net,
+          args: { round: ctx.round, bidder: addr },
+        }),
+        `claim_payout:${who}`,
+      );
+      const after = await ctx.reader.read<{ claimed: boolean }>(ctx.vault, "bidder_position", [
+        u32(ctx.round!),
         addr,
       ]);
       checks.push(
         mkCheck(
-          `claim.${who}`,
-          `${who}'s payout was credited by the close and is claimable exactly once`,
-          "0 left after claiming",
-          String(after.payout_claimable ?? 0n),
-          (after.payout_claimable ?? 0n) === 0n,
-          claimable > 0n
-            ? `Claimed ${claimable}. The round settled in the money, so this is a real payout ` +
-                "rather than a call that returns zero."
-            : "Nothing was claimable, which means the close did not credit this bidder — read " +
-                "settle.itm_price above before reading this as a claims fault.",
+          `claim.${who}.filled`,
+          `${who} is on record as having filled, which is what makes a claim meaningful`,
+          "> 0",
+          String(before.notional),
+          before.notional > 0n,
+        ),
+        mkCheck(
+          `claim.${who}.claimed`,
+          `${who}'s claim is marked taken, so it cannot be taken twice`,
+          true,
+          after.claimed,
+          after.claimed === true,
+          `Filled ${before.notional} for a premium of ${before.premium_paid}. The round settled in ` +
+            "the money, so this is a real payout rather than a call that returns zero — the amount " +
+            "itself is asserted from the event log in stage 7b, not read back from a view.",
         ),
       );
     }

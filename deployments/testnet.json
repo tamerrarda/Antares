@@ -1,11 +1,11 @@
 {
   "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run — deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57).",
   "network": "testnet",
-  "deployedAt": "2026-08-20T16:46:27.184Z",
+  "deployedAt": "2026-08-20T17:15:26.578Z",
   "deployerIdentity": "antares-testnet",
   "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
   "sourceTree": {
-    "commit": "7d4a7e7c5c409b0581a6a9be18022b15e79c9822",
+    "commit": "8bcfb8e1897ec8544d1cf8d47c2ef0e005fa92dc",
     "dirty": false,
     "dirtyPaths": []
   },
@@ -17,47 +17,52 @@
     "node": "v22.18.0"
   },
   "assetId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-  "oracleId": "CDKZ2DQP4NRYV7EJ4L4VPBCZBSJT4JY2JLAFTJZ6AG7JR3ZNWNH3CRXR",
+  "oracleId": "CAMEYH5NRD5W6GK4RPAP2UYAB6P6DI44EBGYA6NIDQEQDKJT6NURQWCL",
   "oracleWasmHash": "908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402",
-  "vaultWasmHash": "3754893362c70ec954cebf6b3c3272b64afb1107bd2c22da7fd6f1c3c9cb07c6",
+  "vaultWasmHash": "19a0a90e600ddef996f21b9a794232b8e4a802f6ae6c03fab0bd0bc3012c0685",
   "transactions": [
     {
       "label": "create:oracle",
-      "hash": "2c237c4a037f14a6ce8a1f8100f1b1dea413089d8cd9a6bfc0d4711870591a9f",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/2c237c4a037f14a6ce8a1f8100f1b1dea413089d8cd9a6bfc0d4711870591a9f"
+      "hash": "a607dabd1e75583ce0fdf03b893b829254f0f3cc9214f8eda21cc65cac268b90",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/a607dabd1e75583ce0fdf03b893b829254f0f3cc9214f8eda21cc65cac268b90"
     },
     {
       "label": "prime:set_expires",
-      "hash": "cc9172e411588cf062b5e43f26a08eef856575901d96baa287f03b6890b6781b",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/cc9172e411588cf062b5e43f26a08eef856575901d96baa287f03b6890b6781b"
+      "hash": "c8764ee4c03efa5e4bf84450c9aaac88edb42e636f2ac68f7fded4bee24ba0eb",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/c8764ee4c03efa5e4bf84450c9aaac88edb42e636f2ac68f7fded4bee24ba0eb"
     },
     {
       "label": "prime:fill",
-      "hash": "9c54fcafa1de4a77f67446b60b4ec92a2ff4e522c5dabe134056d3ce565d09f7",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/9c54fcafa1de4a77f67446b60b4ec92a2ff4e522c5dabe134056d3ce565d09f7"
+      "hash": "1254b8adaab35bd70a05b28b7cccfd8994b884cec609a64eb78a8b982b1813c6",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/1254b8adaab35bd70a05b28b7cccfd8994b884cec609a64eb78a8b982b1813c6"
+    },
+    {
+      "label": "upload:antares_vault",
+      "hash": "a60c5b2dec942b58584069740e8654099c939d4eeb51a2d1f95163b948e343f8",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/a60c5b2dec942b58584069740e8654099c939d4eeb51a2d1f95163b948e343f8"
     },
     {
       "label": "create:vault-F",
-      "hash": "d75f919264e31da5497693d5bc13bafa68dd48661ffb3ec36af240b5bf9b5333",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/d75f919264e31da5497693d5bc13bafa68dd48661ffb3ec36af240b5bf9b5333"
+      "hash": "89149506b062e6376172f49bf816f115fb85f2f1e8a2a8f21ee99d0938ce2502",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/89149506b062e6376172f49bf816f115fb85f2f1e8a2a8f21ee99d0938ce2502"
     },
     {
       "label": "smoke:deposit",
-      "hash": "1094f1dd6294933f1e604cc349c09245361a9875e4887ce1e081347b4bac1ed0",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/1094f1dd6294933f1e604cc349c09245361a9875e4887ce1e081347b4bac1ed0"
+      "hash": "1fcfa59a461a38deb76518de40435d75d9d8743cdeb0ccf628345dca9dd95131",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/1fcfa59a461a38deb76518de40435d75d9d8743cdeb0ccf628345dca9dd95131"
     },
     {
       "label": "smoke:request_withdraw",
-      "hash": "07f61f251f397ad81f275a5fde3e8b698a8441328315f11aac296de97b4df59b",
-      "explorer": "https://stellar.expert/explorer/testnet/tx/07f61f251f397ad81f275a5fde3e8b698a8441328315f11aac296de97b4df59b"
+      "hash": "0445c3677bdf351e602a559a173f8858166c259a699aa5e1b6c7fd8d8c205177",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/0445c3677bdf351e602a559a173f8858166c259a699aa5e1b6c7fd8d8c205177"
     }
   ],
   "instances": [
     {
       "tokenSuffix": "-F",
-      "vaultId": "CBJXQ7SKVLZXXTN22R4RG2GLIIUHHAEP6DHRRVL5REYRGTLQ6VICJRFT",
-      "createTx": "d75f919264e31da5497693d5bc13bafa68dd48661ffb3ec36af240b5bf9b5333",
-      "vaultWasmHash": "3754893362c70ec954cebf6b3c3272b64afb1107bd2c22da7fd6f1c3c9cb07c6",
+      "vaultId": "CCQACUEBMQMX6SCMMFNU6DHKNN4JLRYTGF2ILHBXXUZOUTMWD4HPZOBQ",
+      "createTx": "89149506b062e6376172f49bf816f115fb85f2f1e8a2a8f21ee99d0938ce2502",
+      "vaultWasmHash": "19a0a90e600ddef996f21b9a794232b8e4a802f6ae6c03fab0bd0bc3012c0685",
       "params": {
         "epoch_duration": 600,
         "auction_duration": 20,
@@ -79,9 +84,9 @@
       "depositCap": 1000000000000,
       "rentThreshold": 120960,
       "rentExtendTo": 518400,
-      "allowlistExpiresAt": 1788453960,
+      "allowlistExpiresAt": 1788455694,
       "economicallyMeaningless": true,
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CBJXQ7SKVLZXXTN22R4RG2GLIIUHHAEP6DHRRVL5REYRGTLQ6VICJRFT"
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CCQACUEBMQMX6SCMMFNU6DHKNN4JLRYTGF2ILHBXXUZOUTMWD4HPZOBQ"
     }
   ]
 }

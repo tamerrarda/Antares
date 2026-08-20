@@ -99,3 +99,53 @@ test("ledgerSecondsUntil answers in ledger time, and goes negative once the wind
   assert.equal(await ledgerSecondsUntil(ticking(1_000), 1_020), 20);
   assert.equal(await ledgerSecondsUntil(ticking(1_030), 1_020), -10);
 });
+
+// --- transport failures, which are the ones that actually happen ---------------------------------
+//
+// Added 2026-08-20 after a run that had already passed both bids died at stage 6 on a bare
+// `fetch failed`, eleven minutes in, having thrown away a live round. A wait that abandons itself
+// because one poll out of several hundred failed is exactly the intermittent harness this file
+// argues against in its own header.
+
+/** A ledger that advances, but whose first `failures` polls after the start throw. */
+function flaky(from: number, failAt: readonly number[], stepSeconds = 5): LedgerClockRpc {
+  let calls = 0;
+  let closeTime = from;
+  let sequence = 1_000;
+  return {
+    getLatestLedger() {
+      calls += 1;
+      if (failAt.includes(calls)) return Promise.reject(new Error("fetch failed"));
+      const current = { sequence, closeTime: String(closeTime) };
+      closeTime += stepSeconds;
+      sequence += 1;
+      return Promise.resolve(current);
+    },
+  };
+}
+
+const noSleep2 = (): Promise<void> => Promise.resolve();
+
+test("scattered poll failures are absorbed — the ledger clock advances regardless", async () => {
+  // Fails on polls 2, 4 and 6 of a wait that needs several. A busy endpoint, not a dead one.
+  const t = await waitUntilLedgerTime(flaky(1_000, [2, 4, 6]), 1_030, { sleep: noSleep2 });
+  assert.ok(t.closeTime >= 1_030, `arrived at ${t.closeTime}`);
+});
+
+test("enough failures IN A ROW is a different thing, and it refuses with the count", async () => {
+  await assert.rejects(
+    () => waitUntilLedgerTime(flaky(1_000, [2, 3, 4, 5, 6]), 1_100, { sleep: noSleep2 }),
+    (err: unknown) => {
+      assert.ok(err instanceof LedgerClockError);
+      assert.match(err.message, /5 consecutive polls failed/);
+      assert.match(err.message, /fetch failed/);
+      assert.match(err.message, /last read 1000/);
+      return true;
+    },
+  );
+});
+
+test("the consecutive counter resets, so a run of four then a success is survivable", async () => {
+  const t = await waitUntilLedgerTime(flaky(1_000, [2, 3, 4, 5, 7, 8, 9, 10]), 1_020, { sleep: noSleep2 });
+  assert.ok(t.closeTime >= 1_020, `arrived at ${t.closeTime}`);
+});

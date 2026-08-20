@@ -18,6 +18,7 @@
  */
 
 import { runStellar, runStellarAsync, buildInvokeArgv, type NetworkArgs } from "@antares/common/chain";
+import { withBackoff } from "@antares/common/retry";
 
 export interface Reader {
   /** A view call, by simulation. Never signs, never submits. */
@@ -32,6 +33,31 @@ export interface Reader {
   getLatestLedger(): Promise<{ sequence: number; closeTime: string | number }>;
 }
 
+/**
+ * An argument whose ScVal type the caller states, because this reader cannot infer it.
+ *
+ * **Measured, and it cost a run.** `nativeToScVal(1)` does not produce a `u32`, and the SDK's
+ * generated argument dispatch answers a type mismatch with `unreachable` — so
+ * `bidder_position(1, addr)` came back as `Error(WasmVm, InvalidAction)` and
+ * `"VM call trapped: UnreachableCodeReached"`, which reads exactly like a panic inside the view.
+ * It is not: the same call with an explicit `u32` returns the position.
+ *
+ * This is the class of bug `packages/bindings` exists to make impossible, and the honest note is
+ * that the reader below does not use them. It cannot: half its calls go to `mock-price-source`,
+ * which has no generated client. So the ABI knowledge the bindings hold is supplied here one
+ * argument at a time, explicitly, rather than guessed.
+ */
+export interface TypedArg {
+  readonly scvType: "u32" | "u64" | "i128";
+  readonly value: number | bigint;
+}
+
+export const u32 = (value: number): TypedArg => ({ scvType: "u32", value });
+export const u64 = (value: number | bigint): TypedArg => ({ scvType: "u64", value });
+
+const isTyped = (v: unknown): v is TypedArg =>
+  typeof v === "object" && v !== null && "scvType" in v && "value" in v;
+
 export class ReadError extends Error {
   constructor(message: string) {
     super(message);
@@ -39,12 +65,33 @@ export class ReadError extends Error {
   }
 }
 
+/**
+ * A network blip is retried; a contract refusal is not.
+ *
+ * The distinction is the whole value. `ReadError` means the chain answered and said no — a failed
+ * simulation, a transaction that is not SUCCESS — and retrying that turns one permanent error into
+ * three. Anything else reaching this point is transport, and transport fails: a scenario run makes
+ * several hundred calls against a shared public endpoint, and on 2026-08-20 a bare `fetch failed`
+ * mid-run discarded a live round eleven minutes in.
+ *
+ * Two attempts, not ten. This is the thin layer for a single blip; a sustained outage is
+ * `waitUntilLedgerTime`'s consecutive-failure budget, which is a different question with a
+ * different answer.
+ */
+const transport = <T>(op: () => Promise<T>): Promise<T> =>
+  withBackoff(op, {
+    attempts: 3,
+    initialDelayMs: 250,
+    isRetryable: (err) => !(err instanceof ReadError),
+  });
+
 export async function makeReader(net: NetworkArgs, sourceAddress: string): Promise<Reader> {
   const { rpc, scValToNative, nativeToScVal, Contract, TransactionBuilder, Account } =
     await import("@stellar/stellar-sdk");
   const server = new rpc.Server(net.rpcUrl, { allowHttp: net.rpcUrl.startsWith("http://") });
 
   const toScVal = (v: unknown): ReturnType<typeof nativeToScVal> => {
+    if (isTyped(v)) return nativeToScVal(v.value, { type: v.scvType });
     if (typeof v === "string" && /^[GC][A-Z2-7]{55}$/.test(v)) return nativeToScVal(v, { type: "address" });
     if (typeof v === "bigint") return nativeToScVal(v, { type: "i128" });
     return nativeToScVal(v);
@@ -60,7 +107,7 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
         .addOperation(new Contract(contractId).call(method, ...args.map(toScVal)))
         .setTimeout(30)
         .build();
-      const sim = await server.simulateTransaction(tx);
+      const sim = await transport(() => server.simulateTransaction(tx));
       if (rpc.Api.isSimulationError(sim)) {
         throw new ReadError(`${contractId}.${method}() failed to simulate: ${sim.error}`);
       }
@@ -77,10 +124,12 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
       // Bounded rather than open: a scenario run spans minutes, so more than a handful of pages
       // means the filter is wrong, and spinning against a shared endpoint is its own failure.
       for (let page = 0; page < 20; page += 1) {
-        const res: Awaited<ReturnType<typeof server.getEvents>> = await server.getEvents(
-          cursor === undefined
-            ? { startLedger, filters: [{ type: "contract", contractIds: [contractId] }], limit: 200 }
-            : { cursor, filters: [{ type: "contract", contractIds: [contractId] }], limit: 200 },
+        const res: Awaited<ReturnType<typeof server.getEvents>> = await transport(() =>
+          server.getEvents(
+            cursor === undefined
+              ? { startLedger, filters: [{ type: "contract", contractIds: [contractId] }], limit: 200 }
+              : { cursor, filters: [{ type: "contract", contractIds: [contractId] }], limit: 200 },
+          ),
         );
         for (const e of res.events) {
           out.push({
@@ -97,7 +146,7 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
     },
 
     async ledgerOf(txHash: string): Promise<number> {
-      const tx = await server.getTransaction(txHash);
+      const tx = await transport(() => server.getTransaction(txHash));
       // Against the SDK's own enum rather than the string "SUCCESS": the string comparison also
       // discards the discriminated-union narrowing that makes `tx.ledger` readable on the line below.
       if (tx.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
@@ -106,7 +155,7 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
       return tx.ledger;
     },
 
-    getLatestLedger: () => server.getLatestLedger(),
+    getLatestLedger: () => transport(() => server.getLatestLedger()),
   };
 }
 
