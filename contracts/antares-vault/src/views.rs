@@ -214,6 +214,7 @@ impl AntaresVault {
             asset: config.asset,
             oracle: config.oracle,
             fee_recipient: config.fee_recipient,
+            fee_claimable: state.fee_claimable,
             fee_bps: config.fee_bps,
             deposit_cap: config.deposit_cap,
             deposit_headroom,

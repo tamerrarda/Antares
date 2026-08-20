@@ -371,6 +371,12 @@ pub struct ConfigView {
     // D-63 — readable before anyone deposits.
     pub allowlist_expires_at: u64,
     pub app_version: u32,
+    // **Added at the Phase-5 freeze, and it is a breaking change to this shape
+    // rather than an addition to it** — §12 freezes here, and after that a non-zero
+    // fee would be readable only from `fee_accrued`, which leaves the RPC window in
+    // about seven days. A protocol whose accrued fee is unobservable after a week
+    // is not publicly verifiable, which is the claim the README makes.
+    pub fee_claimable: i128,
     pub params: EpochParams,
     pub rent_threshold: u32,
     pub rent_extend_to: u32,

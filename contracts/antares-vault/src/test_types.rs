@@ -308,6 +308,11 @@ fn every_contracttype_round_trips_through_val() {
             allowlist_enabled: true,
             allowlist_expires_at: 3,
             app_version: 1,
+            // Added at the Phase-5 freeze. A round-trip test that constructs the
+            // struct by name is what makes a field addition a **compile error** here
+            // rather than a silent decode change at the bindings layer — which is
+            // the whole reason this file names every field instead of using `..`.
+            fee_claimable: 6,
             params,
             rent_threshold: 4,
             rent_extend_to: 5,

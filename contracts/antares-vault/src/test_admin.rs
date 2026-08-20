@@ -488,3 +488,240 @@ fn a_non_admin_cannot_allow_a_bidder() {
     d.env.set_auths(&[]);
     d.client().set_allowed(&bidder, &true);
 }
+
+// ===================== Phase 5 — the rest of the admin surface ==================
+//
+// Six entry points and six events, and one gate item that cannot be met here.
+//
+// **`upgrade`'s happy path is not tested natively and that is a limitation, not an
+// omission.** `update_current_contract_wasm` needs a hash the host has actually
+// seen, so a native test would have to `include_bytes!` a built wasm — which does
+// not exist on a clean `cargo test`, and cannot be guarded by a feature because
+// D-50 bans conditional compilation outside `#[cfg(test)]`. 06-TEST-PLAN §7.5
+// already assigns the real drill to testnet: deploy v-current, state in place,
+// upgrade to a marker build, migrate. **DEV1.md's Phase-5 gate asks for "state
+// preserved across an upgrade from a committed snapshot" and that wording cannot be
+// satisfied in this crate** — raised rather than faked with a test that swaps
+// nothing and asserts nothing moved.
+
+fn other(d: &crate::test_common::Deployed) -> soroban_sdk::Address {
+    soroban_sdk::Address::generate(&d.env)
+}
+
+#[test]
+fn every_admin_entry_point_rejects_a_non_admin() {
+    // One list, driven twice: the point is not that each rejects, it is that
+    // **none of them was forgotten**. A setter added without a line here is a
+    // setter whose auth nobody checked, which is how an admin surface grows a hole.
+    let names: &[&str] = &[
+        "set_epoch_params",
+        "set_paused",
+        "set_fee_bps",
+        "set_fee_recipient",
+        "set_allowlist_enabled",
+        "set_allowed",
+        "set_deposit_cap",
+        "set_rent_params",
+        "transfer_admin",
+        "upgrade",
+        "migrate",
+    ];
+    assert_eq!(
+        names.len(),
+        11,
+        "eleven admin-authorised entry points; `accept_admin` is the twelfth and is \
+         authorised by the *pending* admin, so it is tested separately below"
+    );
+
+    for name in names {
+        let d = deploy();
+        d.env.set_auths(&[]);
+        let a = other(&d);
+        let r = match *name {
+            "set_epoch_params" => d.client().try_set_epoch_params(&valid_params()).is_err(),
+            "set_paused" => d.client().try_set_paused(&true).is_err(),
+            "set_fee_bps" => d.client().try_set_fee_bps(&10).is_err(),
+            "set_fee_recipient" => d.client().try_set_fee_recipient(&a).is_err(),
+            "set_allowlist_enabled" => d.client().try_set_allowlist_enabled(&false).is_err(),
+            "set_allowed" => d.client().try_set_allowed(&a, &true).is_err(),
+            "set_deposit_cap" => d.client().try_set_deposit_cap(&(1_000 * XLM)).is_err(),
+            "set_rent_params" => d.client().try_set_rent_params(&100, &200).is_err(),
+            "transfer_admin" => d.client().try_transfer_admin(&a).is_err(),
+            "upgrade" => d
+                .client()
+                .try_upgrade(&soroban_sdk::BytesN::from_array(&d.env, &[7u8; 32]))
+                .is_err(),
+            "migrate" => d.client().try_migrate(&2).is_err(),
+            _ => unreachable!(),
+        };
+        assert!(r, "{name} accepted a call with no admin authorisation");
+    }
+}
+
+#[test]
+fn the_deposit_cap_may_sit_below_the_current_total_but_never_below_min_deposit() {
+    let d = deploy();
+    let user = d.user(1_000 * XLM);
+    d.client().deposit(&user, &(100 * XLM));
+
+    // Below what is already in: legal, and it blocks new deposits without touching
+    // a stroop of the old ones — which is the whole reason a cap is not a limit.
+    // 50 XLM: below the 100 already deposited, and still above `min_deposit`. The
+    // first draft used 1 XLM and was refused — correctly, since that is below
+    // `min_deposit` too, and the two conditions are separate rules that a single
+    // badly-chosen number conflates.
+    d.client().set_deposit_cap(&(50 * XLM));
+    assert_eq!(
+        d.state().locked_assets,
+        100 * XLM,
+        "nothing was clawed back"
+    );
+
+    // Zero is uncapped, not closed (§16).
+    d.client().set_deposit_cap(&0);
+
+    // Non-zero below `min_deposit` is the state where every deposit is at once too
+    // small and too large. The pair lives in two structs behind two setters, so the
+    // constructor's rule has to be re-asserted here or it holds only on day one.
+    let min = valid_params().min_deposit;
+    assert_eq!(
+        d.client().try_set_deposit_cap(&(min - 1)),
+        Err(Ok(Error::InvalidParams))
+    );
+    assert_eq!(
+        d.client().try_set_deposit_cap(&-1),
+        Err(Ok(Error::InvalidParams))
+    );
+}
+
+#[test]
+fn rent_params_are_validated_the_same_way_the_constructor_validates_them() {
+    let d = deploy();
+    let ceiling = d.env.as_contract(&d.vault, || d.env.storage().max_ttl());
+
+    d.client().set_rent_params(&100, &200);
+    let cfg = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    assert_eq!((cfg.rent_threshold, cfg.rent_extend_to), (100, 200));
+
+    for (t, e, why) in [
+        (0u32, 200u32, "a zero threshold never triggers a bump"),
+        (200, 200, "threshold == extend_to leaves no window"),
+        (300, 200, "threshold above the window is unorderable"),
+        (
+            100,
+            ceiling + 1,
+            "above the live ceiling bricks every mutating call",
+        ),
+    ] {
+        assert_eq!(
+            d.client().try_set_rent_params(&t, &e),
+            Err(Ok(Error::InvalidParams)),
+            "{why}"
+        );
+    }
+}
+
+#[test]
+fn the_admin_transfer_takes_two_steps_and_the_second_one_is_the_feature() {
+    let d = deploy();
+    let heir = other(&d);
+
+    d.client().transfer_admin(&heir);
+    let cfg = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    assert_eq!(
+        cfg.pending_admin,
+        Some(heir.clone()),
+        "recorded, not applied"
+    );
+    assert_ne!(cfg.admin, heir, "and the role has not moved yet");
+
+    // A change of mind overwrites rather than needing a third call to undo.
+    let heir2 = other(&d);
+    d.client().transfer_admin(&heir2);
+    assert_eq!(
+        d.env
+            .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap())
+            .pending_admin,
+        Some(heir2.clone())
+    );
+
+    d.client().accept_admin();
+    let cfg = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    assert_eq!(cfg.admin, heir2, "the role moved on acceptance");
+    assert_eq!(cfg.pending_admin, None, "and the pending slot is cleared");
+}
+
+#[test]
+fn accepting_a_transfer_that_was_never_started_says_so() {
+    let d = deploy();
+    // `NoPendingAdmin`, not `Unauthorized`: the caller may well hold a key, and the
+    // accurate answer is that there is nothing to accept.
+    assert_eq!(
+        d.client().try_accept_admin(),
+        Err(Ok(Error::NoPendingAdmin))
+    );
+}
+
+#[test]
+fn the_contract_cannot_be_nominated_as_its_own_admin() {
+    let d = deploy();
+    // §11. It is the one address that could accept and then be unable to act.
+    assert_eq!(
+        d.client().try_transfer_admin(&d.vault),
+        Err(Ok(Error::InvalidAddress))
+    );
+}
+
+#[test]
+fn migrate_rejects_every_version_because_v1_defines_no_target() {
+    let d = deploy();
+    let before = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_app_version(&d.env));
+
+    // Wrong target: the order guard, which is also the idempotence guard.
+    assert_eq!(
+        d.client().try_migrate(&(before + 2)),
+        Err(Ok(Error::MigrationOrder))
+    );
+    assert_eq!(
+        d.client().try_migrate(&before),
+        Err(Ok(Error::MigrationOrder))
+    );
+
+    // Right target, and still an error: returning `Ok` would advance the schema
+    // version to a shape nobody wrote a migration for (§14).
+    assert_eq!(
+        d.client().try_migrate(&(before + 1)),
+        Err(Ok(Error::MigrationOrder))
+    );
+
+    assert_eq!(
+        d.env
+            .as_contract(&d.vault, || crate::storage::get_app_version(&d.env)),
+        before,
+        "no path through migrate may move the schema version in v1"
+    );
+}
+
+#[test]
+fn the_config_view_reports_the_accrued_fee() {
+    let d = deploy();
+    // The Phase-5 addition, and the reason it could not wait: after §12 freezes, a
+    // non-zero fee would be readable only from `fee_accrued`, which leaves the RPC
+    // window in about seven days.
+    assert_eq!(d.client().config().fee_claimable, 0);
+
+    d.env.as_contract(&d.vault, || {
+        let mut s = crate::storage::get_state(&d.env).unwrap();
+        s.fee_claimable = 42;
+        crate::storage::set_state(&d.env, &s);
+    });
+    assert_eq!(d.client().config().fee_claimable, 42);
+}
