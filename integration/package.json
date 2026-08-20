@@ -1,0 +1,22 @@
+{
+  "name": "@antares/integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "06-TEST-PLAN §7's harness. Reconstructs vault state from transaction hashes and events ALONE, then diffs it against epoch() — the README's public-verifiability claim, tested rather than asserted.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "scenario1": "node --experimental-strip-types scenario1.ts"
+  },
+  "dependencies": {
+    "@antares/common": "workspace:*",
+    "@antares/keeper": "workspace:*",
+    "@stellar/stellar-sdk": "^16.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}
