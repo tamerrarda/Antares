@@ -597,3 +597,151 @@ fn the_constructor_emits_initialized_once() {
         "exactly one event, and it is initialized — the constructor is the only place it can be emitted"
     );
 }
+
+// ================ the boundaries mutation testing found unpinned ================
+//
+// A 174-mutant run against `vault.rs` left fourteen survivors and nine were one
+// shape: **every guard has a test that drives it to reject, and none pins the
+// largest value it accepts.** A `>` silently widened to `>=` changes nothing any
+// existing test observes, because no test stands on the boundary.
+//
+// These functions are covered by any line count. The gap is in what the assertions
+// *pin*, and only mutation testing names that.
+
+fn build(r: &Roles, p: EpochParams, suffix: &str, cap: i128) -> Address {
+    r.env.register(
+        AntaresVault,
+        (
+            r.admin.clone(),
+            r.asset.clone(),
+            r.oracle.clone(),
+            r.fee_recipient.clone(),
+            p,
+            String::from_str(&r.env, suffix),
+            cap,
+            RENT_THRESHOLD,
+            RENT_EXTEND_TO,
+            0u64,
+        ),
+    )
+}
+
+#[test]
+fn a_floor_equal_to_the_start_is_accepted() {
+    let r = roles();
+    let mut p = valid_params();
+    // The rule rejects `floor > start`. `floor == start` is a degenerate but legal
+    // curve — it opens at its floor and decays nowhere. Nothing forbids it, and
+    // until now nothing said so either, which is what let `>` widen to `>=`.
+    p.premium_floor_bps = p.premium_start_bps;
+    build(&r, p, "", CAP);
+}
+
+#[test]
+#[should_panic(expected = "#41")]
+fn a_floor_one_stroop_above_the_start_is_not() {
+    let r = roles();
+    let mut p = valid_params();
+    p.premium_floor_bps = p.premium_start_bps + 1;
+    build(&r, p, "", CAP);
+}
+
+#[test]
+fn a_strike_at_the_ceiling_is_accepted() {
+    let r = roles();
+    let mut p = valid_params();
+    p.strike_bps_otm = 10_000;
+    // The breaker must stay under half the strike, so it moves with it rather than
+    // being left at a value the new strike would fail against.
+    p.max_deviation_bps = 4_999;
+    build(&r, p, "", CAP);
+}
+
+#[test]
+fn a_breaker_at_the_ceiling_is_accepted() {
+    let r = roles();
+    let mut p = valid_params();
+    // On-chain the only bound is `0 < max_deviation_bps <= BPS`. The tighter rule —
+    // under half the strike — is an off-chain coherence gate, not this function's,
+    // so the ceiling here is reachable and a test had to stand on it.
+    p.max_deviation_bps = 10_000;
+    build(&r, p, "", CAP);
+}
+
+#[test]
+#[should_panic(expected = "#41")]
+fn a_breaker_above_the_ceiling_is_not() {
+    let r = roles();
+    let mut p = valid_params();
+    p.max_deviation_bps = 10_001;
+    build(&r, p, "", CAP);
+}
+
+#[test]
+fn a_four_character_suffix_is_accepted() {
+    let r = roles();
+    // Four is the longest legal name. A test that only proves five is refused
+    // leaves the cap itself unstated, which is what the surviving mutant used.
+    build(&r, valid_params(), "-ABC", CAP);
+}
+
+#[test]
+fn a_zero_deposit_cap_is_legal_at_genesis_and_means_uncapped() {
+    let r = roles();
+    // The setter accepts zero and §16 says it means uncapped. Whether the
+    // *constructor* admits the same value is what a surviving `deposit_cap < 0`
+    // mutant was asking, and no test answered it either way.
+    let vault = build(&r, valid_params(), "", 0);
+    let cfg = r
+        .env
+        .as_contract(&vault, || crate::storage::get_config(&r.env).unwrap());
+    assert_eq!(cfg.deposit_cap, 0);
+}
+
+#[test]
+#[should_panic(expected = "#53")]
+fn the_contracts_own_address_is_rejected_as_admin() {
+    let r = roles();
+    let me = Address::generate(&r.env);
+    r.env.register_at(
+        &me,
+        AntaresVault,
+        (
+            me.clone(),
+            r.asset.clone(),
+            r.oracle.clone(),
+            r.fee_recipient.clone(),
+            valid_params(),
+            String::from_str(&r.env, ""),
+            CAP,
+            RENT_THRESHOLD,
+            RENT_EXTEND_TO,
+            0u64,
+        ),
+    );
+}
+
+#[test]
+#[should_panic(expected = "#53")]
+fn the_contracts_own_address_is_rejected_as_fee_recipient() {
+    let r = roles();
+    let me = Address::generate(&r.env);
+    // Three of the four positions had no rejecting test — only `asset` did — which
+    // is why a `||` in the four-way chain could flip to `&&` and survive.
+    r.env.register_at(
+        &me,
+        AntaresVault,
+        (
+            r.admin.clone(),
+            r.asset.clone(),
+            r.oracle.clone(),
+            me.clone(),
+            valid_params(),
+            String::from_str(&r.env, ""),
+            CAP,
+            RENT_THRESHOLD,
+            RENT_EXTEND_TO,
+            0u64,
+        ),
+    );
+}

@@ -844,3 +844,192 @@ fn a_round_whose_pool_cannot_cover_one_stroop_per_share_finalizes_at_pps_zero() 
     assert!(st.locked_assets >= 0, "and the pool never goes negative");
     assert_eq!(st.phase, Phase::Idle, "terminal either way (I10)");
 }
+
+// ============ what the mutation run found unasserted, not uncovered =============
+//
+// Four survivors here were paths a test walks through without pinning what happens
+// on them. The distinction matters: line coverage says these are tested.
+
+/// `instant` rides on the event and nowhere else, so nothing but the event can
+/// pin it — which is why inverting it survived a run in which the path itself is
+/// well covered. Off-chain that flag is the difference between "this depositor
+/// holds shares now" and "they hold a pending claim", and an indexer has only the
+/// event to tell them apart.
+fn instant_flag(env: &Env) -> bool {
+    use soroban_sdk::xdr::{ScMap, ScSymbol, ScVal};
+    let all = env.events().all();
+    let evs = all.events();
+    for e in evs.iter() {
+        let soroban_sdk::xdr::ContractEventBody::V0(v0) = &e.body;
+        if let ScVal::Map(Some(ScMap(entries))) = &v0.data {
+            for kv in entries.iter() {
+                if let (ScVal::Symbol(ScSymbol(k)), ScVal::Bool(b)) = (&kv.key, &kv.val) {
+                    if k.as_slice() == b"instant" {
+                        return *b;
+                    }
+                }
+            }
+        }
+    }
+    panic!("no `deposited` event carried an `instant` field");
+}
+
+#[test]
+fn the_deposited_event_says_which_path_the_deposit_took() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+
+    d.client().deposit(&a, &(100 * XLM));
+    assert!(
+        instant_flag(&d.env),
+        "an Idle deposit reports instant = true"
+    );
+
+    d.open_round_manually(1, Phase::Auction, d.env.ledger().timestamp() + 100);
+    let b = d.user(1_000 * XLM);
+    d.client().deposit(&b, &(50 * XLM));
+    assert!(
+        !instant_flag(&d.env),
+        "a mid-round deposit mints nothing and must report instant = false"
+    );
+}
+
+#[test]
+fn a_queued_withdrawal_moves_no_money_and_says_nothing_about_a_transfer() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+    d.client().deposit(&a, &(100 * XLM));
+    d.open_round_manually(1, Phase::Auction, d.env.ledger().timestamp() + 100);
+
+    let before = d.balance(&a);
+    d.client().request_withdraw(&a, &(10 * XLM), &false);
+    let emitted = d.env.events().all().events().len();
+
+    // **The balance is the wrong assertion and my first attempt used it.** A
+    // zero-amount SAC transfer moves nothing either, so a balance check cannot tell
+    // the two arms apart — and the mutant survived the fix. What distinguishes them
+    // is the *event*: a zero-amount call is a legal no-op that still publishes a
+    // transfer for money that did not move, which is the false line 08-OFFCHAIN
+    // says an indexer must never be handed. The code's own comment said so; I
+    // asserted the balance anyway.
+    assert_eq!(d.balance(&a), before, "a queued request pays nothing now");
+    assert_eq!(
+        emitted, 2,
+        "two events — the share burn and the request. A third is the transfer of \
+         nothing that should not have happened"
+    );
+}
+
+#[test]
+fn a_pending_withdraw_from_an_older_round_is_replaced_rather_than_accumulated() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+    d.client().deposit(&a, &(100 * XLM));
+
+    // Queue in round 1.
+    d.open_round_manually(1, Phase::Auction, d.env.ledger().timestamp() + 100);
+    d.client().request_withdraw(&a, &(10 * XLM), &false);
+
+    // Round 2, with round 1 never finalized, so the older record is still there and
+    // is *not* claimable. The match guard `p.round == round` was replaced by `true`
+    // and survived — no test had a pending withdraw from a different round, so
+    // nothing observed the difference between replacing the record and adding to it.
+    d.open_round_manually(2, Phase::Auction, d.env.ledger().timestamp() + 100);
+    d.client().request_withdraw(&a, &(20 * XLM), &false);
+
+    let queued = d
+        .env
+        .as_contract(&d.vault, || {
+            crate::storage::get_pending_withdraw(&d.env, &a)
+        })
+        .expect("a pending record");
+    assert_eq!(
+        queued.round, 2,
+        "the record belongs to the round that wrote it"
+    );
+    assert_eq!(
+        queued.shares,
+        20 * XLM,
+        "a request from a different round replaces rather than accumulating — 30 here \
+         would credit the user for shares round 2 never snapshotted"
+    );
+}
+
+#[test]
+fn an_empty_auction_lapses_at_exactly_its_end_not_a_second_later() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+    d.client().deposit(&a, &(100 * XLM));
+
+    let end = d.env.ledger().timestamp() + 100;
+    d.open_round_manually(1, Phase::Auction, end);
+
+    // Exactly `auction_end`, not past it. `<` widened to `<=` survived because no
+    // test stood on this instant — and the boundary is the same one §4 fixes for
+    // `bid`: a bid *at* `auction_end` is late, which is only coherent if the lapse
+    // is available at that same instant.
+    d.env.ledger().set_timestamp(end);
+    d.client().deposit(&a, &(10 * XLM));
+
+    assert_eq!(
+        d.state().phase,
+        Phase::Idle,
+        "the empty auction lapsed at its end"
+    );
+    assert_eq!(
+        d.env
+            .as_contract(&d.vault, || crate::storage::get_round(&d.env, 1))
+            .map(|r| r.outcome),
+        Some(RoundOutcome::Lapsed)
+    );
+}
+
+#[test]
+fn a_claim_worth_nothing_succeeds_and_moves_no_money() {
+    let d = deploy();
+    let a = d.user(1_000 * XLM);
+    d.client().deposit(&a, &(100 * XLM));
+    d.open_round_manually(1, Phase::Auction, d.env.ledger().timestamp() + 100);
+    d.client().request_withdraw(&a, &(10 * XLM), &false);
+
+    // Finalize the round at a price of zero — the state D-66 deliberately allows —
+    // so the queued shares are worth nothing when they are claimed.
+    d.env.as_contract(&d.vault, || {
+        let mut s = crate::storage::get_state(&d.env).unwrap();
+        s.phase = Phase::Idle;
+        s.last_pps = 0;
+        crate::storage::set_state(&d.env, &s);
+        crate::storage::set_round(
+            &d.env,
+            crate::storage::Rent {
+                threshold: 100,
+                extend_to: 200,
+            },
+            1,
+            &Round {
+                outcome: RoundOutcome::Unresolved,
+                pps: 0,
+                strike: 1,
+                expiry: 1,
+                notional_sold: 0,
+                premium: 0,
+                fee: 0,
+                settled_spot: 0,
+                payout_total: 0,
+            },
+        );
+    });
+
+    let before = d.balance(&a);
+    d.client().claim_withdraw(&a);
+    let emitted = d.env.events().all().events().len();
+
+    // Same correction as above, and the same mistake made twice: the balance is
+    // identical under both arms, so only the event count separates a claim worth
+    // nothing from a transfer of nothing.
+    assert_eq!(d.balance(&a), before, "nothing moved");
+    assert_eq!(
+        emitted, 1,
+        "one event — the claim. A transfer of zero would be a second"
+    );
+}

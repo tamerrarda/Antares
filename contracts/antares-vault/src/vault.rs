@@ -1019,7 +1019,13 @@ impl AntaresVault {
             );
         }
 
-        if paid > 0 || claimed_round != 0 {
+        // `claimed_round != 0` alone, and a surviving mutant is what showed the
+        // other half was saying nothing. `paid` is assigned only inside the branch
+        // that also sets `claimed_round = existing.round`, and rounds are numbered
+        // from 1 — so `paid > 0` **implies** `claimed_round != 0` and the disjunct
+        // could never change the answer. Both mutants at this line were the tool
+        // asking why the condition tested something it already knew.
+        if claimed_round != 0 {
             WithdrawClaimed {
                 user: from.clone(),
                 round: claimed_round,
