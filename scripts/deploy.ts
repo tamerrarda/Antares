@@ -57,6 +57,7 @@ import {
 } from "./lib/chain.ts";
 import { checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
 import { checkAdapterSurface, exportedFunctions, sha256 } from "./lib/wasm.ts";
+import { checkProfile } from "./check-oracle-profile.ts";
 import type { ChainClient, ObservedEvent } from "./verify-deployment.ts";
 
 // =================================================================================================
@@ -233,7 +234,16 @@ const step0a: Stage = {
     // 0.91 for a perfectly healthy feed. Neither is a deploy's call to make about somebody else's
     // evidence, so it writes its own file. §2 step 3c asks to "record all in deployments/", not to
     // overwrite what is already there.
-    const out = join(ctx.root, "deployments", `environment-${ctx.net.name}-deploy.json`);
+    // A dry run and a deploy produce different things and are named differently, because the
+    // directory they land in is where committed records live. `-dryrun` is gitignored — a rehearsal
+    // dressed as evidence is worse than no evidence, and an untracked file in `deployments/` is one
+    // `git add -A` away from being committed as if it were a deploy's. `-deploy` is NOT ignored: it
+    // is the battery reading that licensed a real deploy, and §2 step 0a wants it kept.
+    const out = join(
+      ctx.root,
+      "deployments",
+      `environment-${ctx.net.name}-${ctx.opts.dryRun ? "dryrun" : "deploy"}.json`,
+    );
     let ok = true;
     let detail = "";
     try {
@@ -432,6 +442,104 @@ const step2: Stage = {
 // =================================================================================================
 // Steps 3 / 3b — the XLM SAC, and the live limits that PRODUCE a constructor argument
 // =================================================================================================
+
+/**
+ * Prime `mock-price-source` so the vault it will serve can actually open a round.
+ *
+ * Two things, and the first is not optional. The mock's constructor leaves `expires()` at `None`,
+ * which **is** an unfunded feed: `supports_round` condition 7 answers false for any non-zero round
+ * span, so the vault would construct happily — `validate_params` passes `round_span = 0` and skips
+ * 7 — and then refuse *every* `open_epoch`. Verified against a live mock on 2026-08-20: unfunded,
+ * the open path is rejected; funded past the round span, accepted.
+ *
+ * The records are the second. `reading()` looks on a grid whose oldest guard sample sits
+ * `4 x guard_step` behind the anchor, and an empty window reads as a dead feed. This fills a band
+ * comfortably wider than that.
+ *
+ * **What this does NOT do is keep the feed fed.** A full cycle needs records at settlement too, and
+ * that belongs to whatever drives the cycle rather than to a deploy — a deploy that pre-filled the
+ * future would be manufacturing the evidence the cycle is supposed to produce.
+ */
+const step2b: Stage = {
+  id: "2b",
+  title: "prime mock-price-source — an unfunded feed constructs fine and then never opens",
+  mutates: true,
+  skipWhen: (ctx) => (ctx.opts.fastTest ? null : "the real adapter reads a live Reflector feed"),
+  run: (ctx) => {
+    const now = Math.floor(Date.now() / 1000);
+    const inst = ctx.instances[0]!;
+    const roundSpan = inst.params["epoch_duration"] + inst.params["unresolved_after"]!;
+    // Generous rather than exact: condition 7 wants the feed to outlive the round, and a testnet
+    // profile that expires mid-experiment fails in a way that looks like a bug in the vault.
+    const expiresAt = now + MOCK_FEED_LIFETIME_SECONDS;
+    runStellar(
+      buildInvokeArgv({
+        contractId: ctx.adapterId!,
+        method: "set_expires",
+        identity: ctx.opts.identity,
+        net: ctx.netArgs,
+        args: { at: expiresAt },
+      }),
+    );
+    runStellar(
+      buildInvokeArgv({
+        contractId: ctx.adapterId!,
+        method: "fill",
+        identity: ctx.opts.identity,
+        net: ctx.netArgs,
+        args: { end: now, count: MOCK_FEED_RECORDS, price: MOCK_FEED_PRICE },
+      }),
+    );
+    return Promise.resolve([
+      mkCheck(
+        "mock.expires",
+        "the mock's feed outlives the round span, so open_epoch's condition 7 can pass",
+        `> now + ${roundSpan}`,
+        `now + ${MOCK_FEED_LIFETIME_SECONDS}`,
+        MOCK_FEED_LIFETIME_SECONDS > roundSpan,
+        "The constructor leaves expires() at None, which IS an unfunded feed — the vault would " +
+          "construct and then refuse every open, because validate_params passes round_span = 0 and " +
+          "skips condition 7 while open_epoch enforces it.",
+      ),
+      mkCheck(
+        "mock.records",
+        "the feed carries records across the guard window",
+        `>= 4 x guard_step`,
+        MOCK_FEED_RECORDS,
+        MOCK_FEED_RECORDS >= inst.params["guard_window"]!,
+      ),
+    ]);
+  },
+};
+
+/** A day, against a fast-test round span of minutes. Deliberately not tight — see step 2b. */
+const MOCK_FEED_LIFETIME_SECONDS = 86_400;
+const MOCK_FEED_RECORDS = 240;
+/** 0.17 at the mock's 14 decimals — the live XLM price, so a fast-test round is not absurd. */
+const MOCK_FEED_PRICE = 17_000_000_000_000n;
+
+/**
+ * The profile against the deployed source's **own** eight conditions.
+ *
+ * This closes a gap that `validate_params` alone leaves open. The constructor calls
+ * `supports_round` with `round_span = 0`, which **skips condition 7** so that a sponsorship
+ * shortfall can never block the `set_epoch_params` call that repairs it. A vault can therefore
+ * deploy cleanly and then refuse every `open_epoch` — which is exactly the shape of failure
+ * §2 step 3c describes when it says the older `+ oracle_dead_after` form was *weaker than the
+ * on-chain gate*, so *"a deploy could pass and the first `open_epoch` refuse."*
+ *
+ * It asks the deployed contract rather than recomputing: the eight conditions live once, in
+ * `price-source-api`, and a second copy here would agree only on the day it was written.
+ */
+const step3c: Stage = {
+  id: "3c",
+  title: "the profile against the deployed source's eight supports_round conditions",
+  mutates: false,
+  run: (ctx) => {
+    const src = { contractId: ctx.adapterId!, identity: ctx.opts.identity, net: ctx.netArgs };
+    return Promise.resolve(ctx.instances.flatMap((inst) => checkProfile(src, inst)));
+  },
+};
 
 const step3: Stage = {
   id: "3",
@@ -915,8 +1023,10 @@ export const STAGES: readonly Stage[] = [
   step1,
   step1b,
   step2,
+  step2b,
   step3,
   step3b,
+  step3c,
   step4,
   step5,
   step6,
@@ -941,7 +1051,13 @@ export function parseOptions(argv: readonly string[], env = process.env): Option
     identity: values.get("identity") ?? env["DEPLOY_IDENTITY"] ?? "",
     reflectorId: values.get("reflector") ?? env["REFLECTOR_ID"],
     seriesPath: resolvePath(values.get("series") ?? join(root, "deployments", "xlm-price-series.json")),
-    paramsPath: resolvePath(values.get("params") ?? join(root, "scripts", "instances.json")),
+    // `--fast-test` points at the fast-test profile, because otherwise the flag points at nothing:
+    // instances.json holds production parameter sets, whose seven-day epochs are the very thing the
+    // profile exists to escape. An explicit `--params` still wins.
+    paramsPath: resolvePath(
+      values.get("params") ??
+        join(root, "scripts", flags.has("fast-test") ? "instances-fast-test.json" : "instances.json"),
+    ),
     fastTest: flags.has("fast-test"),
     experiment: flags.has("experiment"),
     dryRun: flags.has("dry-run"),

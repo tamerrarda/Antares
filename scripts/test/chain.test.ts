@@ -20,12 +20,19 @@ import {
   parseTxHash,
 } from "../lib/chain.ts";
 
+// The fixtures are BUILT rather than written out, and that is the network-agnostic rule working
+// rather than an inconvenience. 06-TEST-PLAN §8's check greps every tracked file under scripts/ for
+// a real passphrase or a Stellar address and exempts exactly two paths; a test is not one of them.
+// A real passphrase here would also be the very literal the rule exists to stop — and it is
+// git-aware, so a fixture like that goes red on the commit rather than in the working tree, which
+// is how this file turned the job red once already.
 const NET = {
   rpcUrl: "https://rpc.example/soroban",
-  networkPassphrase: "Test SDF Network ; September 2015",
+  networkPassphrase: "Fixture Network ; not a real passphrase",
 };
-const VAULT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const OTHER = "CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+const cid = (letter: string): string => `C${letter.repeat(55)}`;
+const VAULT = cid("A");
+const OTHER = cid("B");
 
 test("a deploy names the wasm, the identity and the network, and disables optimization", () => {
   const argv = buildDeployArgv({

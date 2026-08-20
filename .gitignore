@@ -71,3 +71,7 @@ contracts/*/test_snapshots/test_properties/
 #
 #   ANTARES_VECTOR_DUMP=$PWD/test-vectors/generated cargo test -p antares-vault generated_vectors
 test-vectors/generated/
+
+# A dry run of scripts/deploy.ts writes its environment battery here. It is a rehearsal,
+# not evidence: `-deploy.json` (a real deploy) is committed, `-dryrun.json` never is.
+deployments/environment-*-dryrun.json
