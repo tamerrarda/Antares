@@ -1,0 +1,29 @@
+{
+  "name": "@antares/bindings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GENERATED TypeScript bindings for antares-vault. src/index.ts is machine output — never edit it; run `pnpm -w bindings:write` (09-DEPLOYMENT, IP-5).",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.2.0",
+    "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}

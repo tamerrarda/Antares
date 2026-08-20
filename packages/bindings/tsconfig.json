@@ -1,0 +1,16 @@
+{
+  "//": "Three relaxations against the repo's usual settings, and each one is a property of MACHINE OUTPUT rather than a preference. src/index.ts is generated verbatim and must stay byte-identical to what `stellar contract bindings typescript` emits, or the drift check can never pass — so the config bends and the file does not. `verbatimModuleSyntax` is off because the generator imports types with value syntax. `erasableSyntaxOnly` is off because its constructor uses a TypeScript PARAMETER PROPERTY, which is not erasable — so this is the one package in the repo that cannot be run from source under --experimental-strip-types, and consumers must build it first. `DOM` is in lib because the generator emits a `typeof window !== undefined` guard: these bindings are browser-capable by design, which is what web/ will need.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "erasableSyntaxOnly": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

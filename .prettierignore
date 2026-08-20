@@ -27,3 +27,9 @@ scripts/verify-environment.ts
 # would put a slow, always-changing set in front of a gate whose value is that it is fast and
 # stable. The four hand-written vectors beside them ARE checked.
 test-vectors/generated/
+
+# packages/bindings/src is MACHINE OUTPUT and is byte-compared against a fresh generation
+# (scripts/generate-bindings.ts). Formatting it to our rules would make it permanently "drifted":
+# the check would fail on every run, for a difference nobody introduced, and the fix a reader would
+# reach for is to stop running the check. The generator's formatting is part of the artefact.
+packages/bindings/src/

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Antares \u2014 epoch-gated covered-call vault on Stellar. Off-chain workspace root.",
+  "description": "Antares — epoch-gated covered-call vault on Stellar. Off-chain workspace root.",
   "packageManager": "pnpm@11.1.2",
   "engines": {
     "node": ">=22 <23",
@@ -16,7 +16,9 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "check": "pnpm fmt && pnpm lint && pnpm typecheck && pnpm build && pnpm test"
+    "check": "pnpm fmt && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm bindings:check",
+    "bindings:check": "node --experimental-strip-types scripts/generate-bindings.ts",
+    "bindings:write": "node --experimental-strip-types scripts/generate-bindings.ts --write"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

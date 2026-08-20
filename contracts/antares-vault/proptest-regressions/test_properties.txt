@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f71e2ebc3e9fc9e0be595782f61953fc779c22ccc5131b1f423f25da009d8a03 # shrinks to ops = [SetFee(1), Deposit { who: 0, amount: 1000000000 }, Jump(60), OpenEpoch, Bid { who: 0, size: ShareOfOffer(100), max_premium_bps: 10000 }, Jump(4000), CloseRound { bounty_to: 0 }]

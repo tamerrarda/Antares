@@ -20,7 +20,7 @@
 //! | `pending_deposits_total` | deposit during a live round, cancel, redeem | yes |
 //! | `withdraw_claimable_total` | finalization, claim | yes |
 //! | `bidder_claimable_total` | settlement and the bidder claims | **no — but the reason changed, see below** |
-//! | `fee_claimable` | settlement | **no — same** |
+//! | `fee_claimable` | settlement | **yes, since `bid` landed — see below** |
 //!
 //! **Corrected when `Op::Bid` was added with I10.** This table used to say those
 //! two terms could not move because *`bid` is DEV3's and unwritten*. `bid` has
@@ -35,10 +35,16 @@
 //! - `fee_claimable` needs `fee_bps > 0` *and* a round that sold something. The
 //!   generator has `SetFee`, so the first half is reachable; the fee ships at
 //!   zero (D-56), so it only accrues when that op fires before a settling close.
+//!   **It now does, and this row moved from "no" to "yes" on 2026-08-20.** With
+//!   `bid` in the generator the ordering `SetFee → deposit → open → bid → close`
+//!   is reached freely, and the coverage assertion below — which still demanded
+//!   `fee_claimable == 0` — fired on three runs out of three. That was the table
+//!   being stale rather than a term escaping: **I1's sum now covers four of the
+//!   five terms, not three.**
 //!
 //! **The suite reports that rather than leaving it to be assumed**: `Observed`
 //! records the maximum each term reached, and the test asserts the three that
-//! should move did. A five-term assertion over a three-term state is exactly the
+//! should move did. A five-term assertion over a four-term state is exactly the
 //! "green but proves less than it claims" shape this project keeps finding, and
 //! naming it is the only defence available until the generator can move a price.
 //!
@@ -954,14 +960,27 @@ proptest! {
             w.assert_i10(&label);
         }
 
-        // The three terms this phase can move must actually have moved, or the
-        // five-term assertion above proved less than it claims. The other two are
-        // named in the module header and become live with DEV3's `bid`.
+        // CORRECTED 2026-08-20: this asserted `fee_claimable == 0` as well, and fired
+        // reliably — three runs out of three once `bid` was in the generator. The line
+        // contradicted the module header three paragraphs above it, which already said
+        // `fee_claimable` "only accrues when that op fires before a settling close": the
+        // generator has `SetFee`, so the ordering `SetFee → deposit → open → bid → close`
+        // reaches it, and that is coverage GAINED rather than a term escaping. Its own
+        // note said the header table needed the correction, and it did.
+        //
+        // `bidder_claimable` stays asserted at zero because its gap is *structural* rather
+        // than a matter of ordering: `prime_feed` refills at one constant price, so
+        // `spot == strike` at every close and the payout is zero by construction. No
+        // sequence of the ops this generator emits can move it, and the missing piece is a
+        // price-moving operation. Keeping the two together would have hidden that
+        // distinction behind whichever one failed first.
         prop_assert!(
-            w.observed.bidder_claimable == 0 && w.observed.fee_claimable == 0,
-            "a term this walk cannot reach moved: {:?} — `bid` has landed and is in the \
-             generator, so if this fires it means the feed moved or a fee was set before a \
-             settling close, and the header table needs the correction rather than this line,",
+            w.observed.bidder_claimable == 0,
+            "bidder_claimable moved: {:?} — this suite's feed never moves, so `spot == strike` \
+             at every close and an in-the-money payout is unreachable by construction. If this \
+             fires, either a price-moving op was added to the generator (in which case the \
+             module header's table and this line are both out of date, and I1 now covers five \
+             terms rather than four) or the payout arithmetic pays when it should not,",
             w.observed
         );
     }
