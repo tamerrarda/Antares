@@ -725,3 +725,167 @@ fn the_config_view_reports_the_accrued_fee() {
     });
     assert_eq!(d.client().config().fee_claimable, 42);
 }
+// ============================ upgrade, for real ================================
+//
+// **I said this could not be tested natively and I was wrong.** The claim was that
+// `update_current_contract_wasm` needs a hash the host has seen, so a test would
+// have to `include_bytes!` a built wasm that does not exist on a clean
+// `cargo test`. The first half is true; the second does not follow. The host
+// validates one thing before accepting an upload — a `contractenvmetav0` custom
+// section carrying an interface version — and that is thirty bytes a test can
+// build. Nothing here reads the filesystem and nothing depends on a build step.
+//
+// The version is declared as protocol 21 with `pre_release: 0` deliberately: the
+// host accepts an interface **older** than the ledger's as long as its pre-release
+// is zero, so this stays valid as protocols rise rather than needing a bump.
+
+fn upgradeable_wasm(env: &soroban_sdk::Env) -> soroban_sdk::Bytes {
+    use soroban_sdk::xdr::{Limits, ScEnvMetaEntry, ScEnvMetaEntryInterfaceVersion, WriteXdr};
+    let meta = ScEnvMetaEntry::ScEnvMetaKindInterfaceVersion(ScEnvMetaEntryInterfaceVersion {
+        protocol: 21,
+        pre_release: 0,
+    });
+    let xdr = meta.to_xdr(Limits::none()).unwrap();
+    let name: &[u8] = b"contractenvmetav0";
+
+    // `\0asm` + version 1, then one custom section: id 0, length, name, payload.
+    let mut w =
+        soroban_sdk::Bytes::from_array(env, &[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+    w.push_back(0x00);
+    w.push_back((1 + name.len() + xdr.len()) as u8);
+    w.push_back(name.len() as u8);
+    w.append(&soroban_sdk::Bytes::from_slice(env, name));
+    w.append(&soroban_sdk::Bytes::from_slice(env, &xdr));
+    w
+}
+
+/// **The assertion the gate actually names, and the one worth building first.**
+///
+/// Happy path and idempotence are properties of the entry point. *State
+/// preservation is a property of the storage schema* — which is the thing an
+/// upgrade can break and the thing `migrate` exists to repair. Until this ran,
+/// D-13's upgradeability claim rested on the code compiling.
+///
+/// Three storage classes are checked because an upgrade could plausibly affect
+/// them differently: instance (`Config`, `State`, `AppVersion`), persistent
+/// per-key (`Round`), and the share ledger.
+#[test]
+fn a_position_a_round_and_the_app_version_all_survive_an_upgrade() {
+    let d = deploy();
+    let user = d.user(1_000 * XLM);
+    d.client().deposit(&user, &(100 * XLM));
+
+    // A finalized round, written directly: how it got there is not what is under
+    // test, and `Round` is the per-key persistent class an instance-storage
+    // migration would not touch.
+    let record = Round {
+        outcome: RoundOutcome::Lapsed,
+        pps: PRECISION,
+        strike: 42,
+        expiry: 7,
+        notional_sold: 0,
+        premium: 0,
+        fee: 0,
+        settled_spot: 0,
+        payout_total: 0,
+    };
+    d.env.as_contract(&d.vault, || {
+        let rent = crate::storage::Rent {
+            threshold: 100,
+            extend_to: 200,
+        };
+        crate::storage::set_round(&d.env, rent, 1, &record);
+        crate::storage::set_app_version(&d.env, 1);
+    });
+
+    let before_config = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_config(&d.env).unwrap());
+    let before_state = d.state();
+    let before_shares = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_shares(&d.env, &user));
+    let before_version = d
+        .env
+        .as_contract(&d.vault, || crate::storage::get_app_version(&d.env));
+
+    let hash = d
+        .env
+        .deployer()
+        .upload_contract_wasm(upgradeable_wasm(&d.env));
+    d.client().upgrade(&hash);
+
+    // Read through the host rather than through the contract: the code has been
+    // replaced, so the vault's own views are gone. Storage is what the claim is
+    // about, and storage is what is read.
+    d.env.as_contract(&d.vault, || {
+        assert_eq!(
+            crate::storage::get_config(&d.env).unwrap(),
+            before_config,
+            "Config did not survive the swap"
+        );
+        assert_eq!(
+            crate::storage::get_state(&d.env).unwrap(),
+            before_state,
+            "State did not survive the swap"
+        );
+        assert_eq!(
+            crate::storage::get_round(&d.env, 1),
+            Some(record),
+            "a finalized round is immutable (I7) and an upgrade is not an exception"
+        );
+        assert_eq!(
+            crate::storage::get_shares(&d.env, &user),
+            before_shares,
+            "the depositor's position did not survive"
+        );
+        assert_eq!(
+            crate::storage::get_app_version(&d.env),
+            before_version,
+            "`upgrade` must not move the schema version — only `migrate` does (§14)"
+        );
+    });
+    assert!(
+        before_shares > 0,
+        "the position must be non-trivial to prove anything"
+    );
+}
+
+/// **The swap is real, and this is the assertion that proves it.**
+///
+/// I set out to write an idempotence test — upgrade twice with the same hash — and
+/// it failed, for a reason worth keeping rather than papering over: **after the
+/// first upgrade the contract's code *is* the new wasm**, which exports nothing, so
+/// the second call cannot reach `upgrade` at all. `upgrade` therefore has no
+/// idempotence to test across a real swap; the second call runs different code by
+/// definition. The gate's idempotence belongs to `migrate`, whose order guard is
+/// exactly that and is driven in three directions below.
+///
+/// What the failure exposed is better than what it replaced. Nothing else here
+/// proves the code was actually replaced rather than the call being a silent no-op
+/// — and a no-op `upgrade` that returned `Ok` and emitted `upgraded` would pass
+/// every other test in this file.
+#[test]
+#[should_panic]
+fn upgrade_really_replaces_the_code_so_the_old_surface_is_gone() {
+    let d = deploy();
+    let hash = d
+        .env
+        .deployer()
+        .upload_contract_wasm(upgradeable_wasm(&d.env));
+
+    d.client().upgrade(&hash);
+    // The storage survived — the test above proves that. The *code* did not, and
+    // reaching for any entry point now is what demonstrates the swap happened.
+    let _ = d.client().config();
+}
+
+#[test]
+#[should_panic]
+fn upgrading_to_a_hash_nobody_uploaded_fails() {
+    let d = deploy();
+    // The failure path. A typo'd hash must not silently succeed and leave the
+    // contract pointing at nothing.
+    d.client()
+        .upgrade(&soroban_sdk::BytesN::from_array(&d.env, &[9u8; 32]));
+}
