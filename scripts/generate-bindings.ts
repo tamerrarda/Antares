@@ -72,23 +72,33 @@ export function countMethods(source: string): number {
 }
 
 /**
- * The newest file that can change \`antares_vault.wasm\`: every \`.rs\` and \`Cargo.toml\` under
- * \`contracts/\`, plus the workspace manifests and the toolchain pin.
+ * The newest file that can change `antares_vault.wasm`: every `.rs` and `Cargo.toml` under
+ * `contracts/`, plus the workspace manifests and the toolchain pin.
  *
  * This exists because the check below **reads a wasm off the disk rather than building one**, and a
  * stale artefact makes every other assertion here vacuous in the passing direction: the committed
  * bindings really are byte-identical to a fresh generation from *that* wasm, and that wasm is not
  * the contract. Measured 2026-08-20, and by Tamer rather than by me — reviewing this file with an
- * older \`vault.rs\` still compiled into \`target/\`, the check reported all five assertions green.
+ * older `vault.rs` still compiled into `target/`, the check reported all five assertions green.
  *
  * So the precondition is enforced here instead of being written down. It is the same shape as the
  * finding that produced it: a guarantee that is declared and has no runner is green for the wrong
  * reason, and nobody can tell from the output.
  *
  * mtime rather than content, because content would mean building — which is the thing this check is
- * cheap enough to run without. It errs toward refusing: a \`git checkout\` restamps sources and makes
- * an otherwise-current wasm look stale, and the answer to that is \`stellar contract build\`, which
+ * cheap enough to run without. It errs toward refusing: a `git checkout` restamps sources and makes
+ * an otherwise-current wasm look stale, and the answer to that is `stellar contract build`, which
  * is what the check would have wanted anyway.
+ *
+ * # What it does NOT catch, which is the other half of the door
+ *
+ * A **stale** artefact and a **wrong** artefact are different failures and this one only sees the
+ * first. `stellar contract build --out-dir X` leaves the raw cargo output at the default path and
+ * puts the optimized build in `X` — and the raw one is *newer*, so freshness passes it. It also
+ * exports the same 42 functions, so `bindings.surface` passes, and the bindings generated from it
+ * are byte-identical, so `bindings.no_drift` reports zero difference. **The only assertion that
+ * separates them is `bindings.wasm_recorded`, which compares the SHA-256.** Measured 2026-08-20,
+ * and by walking into it twice: once here, and once again while checking the first.
  */
 export function newestSource(root: string): { path: string; mtimeMs: number } | null {
   const files: string[] = [];
@@ -209,7 +219,9 @@ export function checkBindings(input: BindingsCheckInput): Check[] {
         "the contract makes no_drift, surface and wasm_recorded vacuous — they would compare the " +
         "committed bindings against a build nobody is shipping and pass. Run `stellar contract " +
         "build` (or `--package antares-vault`) and run this again. A checkout restamps sources, " +
-        "so this can fire on a wasm that was current a moment ago; the fix is the same either way.",
+        "so this can fire on a wasm that was current a moment ago; the fix is the same either way. " +
+        "It catches a STALE artefact and not a WRONG one — a --out-dir build leaves a newer raw " +
+        "artefact at this path, which this passes and bindings.wasm_recorded is what refuses.",
     ),
   );
 
