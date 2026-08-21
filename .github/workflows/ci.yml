@@ -470,6 +470,17 @@ jobs:
           for t in fuzz/fuzz_targets/*.rs; do
             name=$(basename "$t" .rs)
             echo "--- $name ---"
+            # Known crashing inputs first, and they are the reason this job is worth dispatching
+            # at all: fuzz/corpus/ is gitignored, so an input found on one machine is reachable
+            # from no other. fuzz/regressions/ is tracked precisely so a crash outlives the
+            # machine that found it — one did not, and was recovered by accident.
+            if [ -d "fuzz/regressions/$name" ]; then
+              for r in fuzz/regressions/"$name"/*; do
+                [ -f "$r" ] || continue
+                echo "regression: $r"
+                cargo +nightly fuzz run "$name" "$r"
+              done
+            fi
             cargo +nightly fuzz run "$name" -- -max_total_time=300
           done
 
