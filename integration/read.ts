@@ -19,8 +19,51 @@
 
 import { runStellar, runStellarAsync, buildInvokeArgv, type NetworkArgs } from "@antares/common/chain";
 import { withBackoff } from "@antares/common/retry";
+import { createHash } from "node:crypto";
+
+/**
+ * What a call costs, off the simulation that was going to happen anyway.
+ *
+ * **There is no `--sim-only`.** 00-ROADMAP §, 07-SECURITY §5 and DEV3.md all say to profile with
+ * that flag; it appears nowhere in the codebase and the pinned CLI 27.1.0 marks it deprecated.
+ * `--send=no` prints the return value and nothing else — no fee, no instruction count. The
+ * authoritative source is the RPC simulation response, which this module already receives and used
+ * to throw away.
+ *
+ * Field names measured 2026-08-21 against testnet rather than assumed: the resources object carries
+ * `instructions`, `diskReadBytes` and `writeBytes` — **there is no `readBytes`** on this protocol —
+ * and the entry counts come from the footprint's two arrays. `minResourceFee` arrives as a string.
+ */
+export interface ResourceCost {
+  readonly minResourceFee: bigint;
+  readonly instructions: number;
+  readonly diskReadBytes: number;
+  readonly writeBytes: number;
+  readonly readOnlyEntries: number;
+  readonly readWriteEntries: number;
+}
+
+/**
+ * A simulation whose refusal is a value rather than a throw.
+ *
+ * `read` is for calls expected to succeed and throws otherwise. This is for calls whose REFUSAL is
+ * the thing under test — scenario 4 asks nine functions whether pause blocks them, and eight of the
+ * possible answers are refusals that mean the invariant holds.
+ */
+export interface SimOutcome<T> {
+  readonly ok: boolean;
+  readonly value: T | null;
+  /** The contract's own error number when it produced one; `null` for a host error or success. */
+  readonly errorCode: number | null;
+  readonly errorText: string | null;
+  readonly cost: ResourceCost | null;
+}
+
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(Buffer.from(bytes)).digest("hex");
 
 export interface Reader {
+  /** Simulate, returning the refusal as a value and the resource cost alongside it. */
+  simulate<T>(contractId: string, method: string, args?: readonly unknown[]): Promise<SimOutcome<T>>;
   /** A view call, by simulation. Never signs, never submits. */
   read<T>(contractId: string, method: string, args?: readonly unknown[]): Promise<T>;
   /** Contract events from `startLedger` forward, native-decoded, with their transaction hashes. */
@@ -30,6 +73,14 @@ export interface Reader {
   ): Promise<{ topics: unknown[]; data: unknown; txHash: string; ledger: number }[]>;
   /** The ledger a transaction landed in — §7's "from transaction hashes" made literal. */
   ledgerOf(txHash: string): Promise<number>;
+  /**
+   * The bytes the network is actually serving for a contract, hashed.
+   *
+   * The only honest way to say an upgrade happened. `upgraded` announces a hash and the deployer
+   * accepted one; this reads back what the network will execute, which is the claim that matters
+   * and the same one D-50's gate makes about a fresh deploy.
+   */
+  servedWasmSha256(contractId: string): Promise<string>;
   getLatestLedger(): Promise<{ sequence: number; closeTime: string | number }>;
 }
 
@@ -85,6 +136,40 @@ const transport = <T>(op: () => Promise<T>): Promise<T> =>
     isRetryable: (err) => !(err instanceof ReadError),
   });
 
+/** Pulled out of a simulation response, or `null` when the response carried no resource data. */
+function costOf(sim: {
+  minResourceFee?: string;
+  transactionData?: { build(): unknown };
+}): ResourceCost | null {
+  try {
+    const data = sim.transactionData?.build() as
+      | {
+          resources(): {
+            instructions(): number;
+            diskReadBytes(): number;
+            writeBytes(): number;
+            footprint(): { readOnly(): unknown[]; readWrite(): unknown[] };
+          };
+        }
+      | undefined;
+    if (data === undefined || sim.minResourceFee === undefined) return null;
+    const r = data.resources();
+    const fp = r.footprint();
+    return {
+      minResourceFee: BigInt(sim.minResourceFee),
+      instructions: r.instructions(),
+      diskReadBytes: r.diskReadBytes(),
+      writeBytes: r.writeBytes(),
+      readOnlyEntries: fp.readOnly().length,
+      readWriteEntries: fp.readWrite().length,
+    };
+  } catch {
+    // A shape this does not recognise is reported as "no profile" rather than as a zero, because a
+    // zero would read as a free call.
+    return null;
+  }
+}
+
 export async function makeReader(net: NetworkArgs, sourceAddress: string): Promise<Reader> {
   const { rpc, scValToNative, nativeToScVal, Contract, TransactionBuilder, Account } =
     await import("@stellar/stellar-sdk");
@@ -98,6 +183,39 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
   };
 
   return {
+    async simulate<T>(contractId: string, method: string, args: readonly unknown[] = []) {
+      const tx = new TransactionBuilder(new Account(sourceAddress, "0"), {
+        fee: "100",
+        networkPassphrase: net.networkPassphrase,
+      })
+        .addOperation(new Contract(contractId).call(method, ...args.map(toScVal)))
+        .setTimeout(30)
+        .build();
+      const sim = await transport(() => server.simulateTransaction(tx));
+      // An error response carries no resource data at all, which is why this is typed as unknown
+      // and narrowed inside costOf rather than being read off the union.
+      const cost = costOf(sim as unknown as Parameters<typeof costOf>[0]);
+      if (rpc.Api.isSimulationError(sim)) {
+        const text = String(sim.error);
+        const code = /Error\(Contract, #(\d+)\)/.exec(text)?.[1];
+        return {
+          ok: false,
+          value: null,
+          errorCode: code === undefined ? null : Number(code),
+          errorText: text.split("\n")[0] ?? text,
+          cost,
+        };
+      }
+      const retval = sim.result?.retval;
+      return {
+        ok: true,
+        value: retval === undefined ? null : (scValToNative(retval) as T),
+        errorCode: null,
+        errorText: null,
+        cost,
+      };
+    },
+
     async read<T>(contractId: string, method: string, args: readonly unknown[] = []): Promise<T> {
       // A simulation is built against a source account that only has to exist; nothing is signed.
       const tx = new TransactionBuilder(new Account(sourceAddress, "0"), {
@@ -153,6 +271,11 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
         throw new ReadError(`transaction ${txHash} is ${tx.status}, so it has no ledger to read from.`);
       }
       return tx.ledger;
+    },
+
+    async servedWasmSha256(contractId: string): Promise<string> {
+      const bytes = await transport(() => server.getContractWasmByContractId(contractId));
+      return sha256(bytes);
     },
 
     getLatestLedger: () => transport(() => server.getLatestLedger()),
