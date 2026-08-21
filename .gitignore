@@ -83,3 +83,9 @@ deployments/environment-*-dryrun.json
 # `git add -A` would carry them in.
 /crash-*
 /minimized-from-*
+
+# Landing artwork sources. Raw frames and logo exports, kept out of the repository at Tamer's
+# instruction: whatever ships under web/public/ is generated from them and the generation is
+# reproducible, so the sources are archive material rather than build input.
+/antaresimage*.zip
+/antaresimage*/

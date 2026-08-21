@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""
+Generate the scroll-sequence frames from the masters in `antaresimages/`.
+
+The masters are archive material and are **not** in the repository (`.gitignore` keeps
+`antaresimage*/` and the zip out). Everything under `web/public/frames/` is produced by this
+script, so the sources are reproducible input rather than build input.
+
+# Sizing was measured, not chosen
+
+The previous pipeline shipped 2133-wide frames at 297 KB each and applied `UnsharpMask(0.8, 60, 3)`
+afterwards. Measured on 2026-08-21 against the new masters, both decisions come off:
+
+  * **The sharpening is gone.** It existed to recover detail the old masters did not have. The new
+    masters carry 9x the edge energy of the old *shipped* frames — 5218 against 581 on the disc, at
+    equal scale, with the old side being the sharpened one. There is nothing to recover, and the
+    step cost 21% in bytes because sharpening adds exactly the high frequency WebP encodes worst.
+
+  * **The resolution comes down, and sharpness goes UP.** Serving 2133 from a soft master is the
+    worst trade available: paying for pixels that carry no detail. Measured at a 1400-px display
+    size, disc sharpness reads 717 for the old 2133 set and 1896 for a new 1600 set at the same
+    311 KB. Serving near the display size beats serving above it whenever the master is sharp.
+
+# Why three sets and not one
+
+`frame-sequence.ts` picks by viewport aspect. The landscape sets differ only in resolution; the
+portrait set is a different **crop**, because a 1.79 master cover-fitted into a phone's 0.56
+viewport cuts the disc off at both sides — the disc spans 36% of the master's width and the crop
+leaves 31%. So portrait keeps a near-square band that holds the whole star, and the page puts the
+text below it rather than beside it.
+
+# Quality
+
+Measured across q55..q92 at 2200: disc sharpness moves 8822 -> 9111, i.e. **quality barely touches
+sharpness** — it is resolution that carries detail. Quality only buys PSNR on the smooth gradients,
+so it is set where the gradient banding stops being visible and no higher.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[2]
+MASTERS = ROOT / "antaresimages"
+OUT = ROOT / "web" / "public" / "frames"
+COUNT = 13
+
+# The disc, as a fraction of the master. Measured off the frames rather than assumed: it is what
+# decides whether a crop keeps the star whole.
+DISC_X0, DISC_X1 = 0.32, 0.68
+
+# Sizes are driven by what the BROWSER needs, which is three multipliers deep: `object-fit: cover`
+# fits the plate to the viewport, `frame-sequence` scales it again for the pan, and the display
+# multiplies by its pixel ratio. Sizing to the viewport alone — the first attempt — served 1800 px
+# where a 1440-CSS window at DPR 2 and scale 1.4 needed 4032, a 2.24x upscale that threw away
+# exactly the sharpness these masters were re-rendered for. The transform scale is now 1.10 rather
+# than 1.40 (the pan rides on cover's own crop instead of on extra zoom), which drops the
+# requirement to 3168 and puts the full master within 1.15x of native.
+SETS = {
+    # Landscape, full frame. The star sits at 50% of the width and `frame-sequence.ts` translates
+    # it toward the edge, so the frame is NOT cropped — cropping to put the star at 81% of the
+    # frame was the previous pipeline's answer to "too big" and it spent sharpness on the problem
+    # the transform now solves.
+    # Native. No downscale at all: at DPR 2 the browser still asks for more than this, so every
+    # pixel removed here is one the display wanted.
+    "wide": {"width": 2752, "quality": 64, "crop": None},
+    "narrow": {"width": 1900, "quality": 70, "crop": None},
+    # Portrait: a near-square band. 0.917 rather than the viewport's 0.5625 — see the header.
+    # 1408 is the full width of a 0.917 crop of a 1536-tall master, so this is native too. Phones
+    # run at DPR 3, which is where the old 1100 was quietly upscaling worst of the three.
+    "portrait": {"width": 1408, "quality": 70, "crop": 0.917},
+}
+
+
+def crop_to_aspect(im: Image.Image, aspect: float) -> Image.Image:
+    """Centre-crop to `aspect` (w/h), refusing if it would cut into the disc."""
+    w, h = im.size
+    target_w = round(h * aspect)
+    if target_w > w:
+        raise SystemExit(f"aspect {aspect} needs {target_w}px of a {w}px master")
+    x0 = (w - target_w) // 2
+    disc_w = (DISC_X1 - DISC_X0) * w
+    if target_w < disc_w * 1.06:
+        raise SystemExit(
+            f"a {target_w}px crop would cut the disc, which is {disc_w:.0f}px wide. "
+            "Widen the aspect or the star loses its edges."
+        )
+    return im.crop((x0, 0, x0 + target_w, h))
+
+
+def main() -> int:
+    if not MASTERS.is_dir():
+        print(f"masters not found at {MASTERS} — unzip antaresimages.zip first", file=sys.stderr)
+        return 2
+
+    manifest: dict[str, object] = {
+        "_what": (
+            "Generated by web/scripts/build-frames.py from masters that are NOT in this repository. "
+            "No sharpening: the masters carry the detail (measured 9x the old shipped frames' edge "
+            "energy), so the old UnsharpMask step was recovering something that was already there. "
+            "Resolution is near the display size rather than above it, which measured SHARPER at "
+            "equal bytes than the old 2133 set."
+        ),
+        "count": COUNT,
+    }
+    total = 0
+    for name, spec in SETS.items():
+        d = OUT / name
+        d.mkdir(parents=True, exist_ok=True)
+        width, quality, crop = spec["width"], spec["quality"], spec["crop"]
+        size = None
+        bytes_here = 0
+        for i in range(1, COUNT + 1):
+            src = Image.open(MASTERS / f"antares{i}.webp").convert("RGB")
+            im = crop_to_aspect(src, crop) if crop else src
+            h = round(width * im.height / im.width)
+            im = im.resize((width, h), Image.LANCZOS)
+            size = (width, h)
+            path = d / f"{i:02d}.webp"
+            im.save(path, "WEBP", quality=quality, method=6)
+            bytes_here += path.stat().st_size
+        assert size is not None
+        manifest[name] = {
+            "width": size[0],
+            "height": size[1],
+            "aspect": round(size[0] / size[1], 4),
+            "quality": quality,
+            "dir": f"/frames/{name}",
+            "kbPerFrame": round(bytes_here / COUNT / 1024),
+        }
+        total += bytes_here
+        print(f"  {name:<9} {size[0]}x{size[1]}  {bytes_here / COUNT / 1024:6.0f} KB/frame  "
+              f"{bytes_here / 1024 / 1024:5.1f} MB total")
+
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"\n  {total / 1024 / 1024:.1f} MB across {len(SETS)} sets — "
+          "the sequence loads progressively, so only the first frame is on the critical path.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

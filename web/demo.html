@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Antares — scroll sequence, option B</title>
+    <style>
+      :root {
+        --ink: #f4f1ea;
+        --dim: #a8a29a;
+        --ember: #ff6b3d;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: auto; }
+      body {
+        margin: 0;
+        background: #05060a;
+        color: var(--ink);
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* The sequence sits behind everything and never scrolls itself. */
+      #stage {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        z-index: 0;
+        background: #05060a;
+      }
+      #stage img {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+      /* A vignette so text stays readable over the bright side of the disc. */
+      #veil {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, rgba(5, 6, 10, 0.92) 0%, rgba(5, 6, 10, 0.72) 28%, rgba(5, 6, 10, 0) 58%),
+          linear-gradient(0deg, rgba(5, 6, 10, 0.75) 0%, rgba(5, 6, 10, 0) 35%);
+      }
+
+      /* Content scrolls over the fixed stage. */
+      main { position: relative; z-index: 2; }
+      section {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        padding: 0 clamp(24px, 7vw, 120px);
+      }
+      .copy { max-width: 42ch; }
+      h1 {
+        font-size: clamp(38px, 6.4vw, 86px);
+        line-height: 0.98;
+        letter-spacing: -0.03em;
+        margin: 0 0 22px;
+        font-weight: 500;
+      }
+      h2 {
+        font-size: clamp(22px, 3vw, 40px);
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        margin: 0 0 16px;
+        font-weight: 500;
+      }
+      p { font-size: clamp(14px, 1.15vw, 17px); line-height: 1.65; color: var(--dim); margin: 0 0 14px; }
+      .tag {
+        display: inline-block;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--ember);
+        border: 1px solid rgba(255, 107, 61, 0.35);
+        border-radius: 999px;
+        padding: 5px 12px;
+        margin-bottom: 26px;
+      }
+      .fade { opacity: 0; transform: translateY(18px); transition: opacity 0.7s ease, transform 0.7s ease; }
+      .fade.in { opacity: 1; transform: none; }
+
+      /* A readout, so this demo can be judged on numbers and not only on feel. */
+      #hud {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        z-index: 5;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #8c8880;
+        background: rgba(5, 6, 10, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 8px;
+        padding: 9px 12px;
+        white-space: pre;
+        pointer-events: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #stage img { transition: none !important; }
+      }
+      @media (max-width: 820px) {
+        /* Portrait: the star is a band at the top and the text lives under it, because a phone
+           has no room beside a disc that wide. */
+        #veil {
+          background:
+            linear-gradient(0deg, rgba(5, 6, 10, 0.95) 0%, rgba(5, 6, 10, 0.75) 30%, rgba(5, 6, 10, 0) 62%);
+        }
+        section { align-items: flex-end; padding-bottom: 12vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="veil"></div>
+
+    <main>
+      <section>
+        <div class="copy fade">
+          <span class="tag">Testnet · Stellar</span>
+          <h1>The premium is the point.</h1>
+          <p>
+            Antares writes covered calls against a vault of XLM and sells them in a descending-price
+            auction. The premium the auction discovers is paid to depositors, whatever the option
+            does next.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="copy fade">
+          <h2>An auction, not a quote.</h2>
+          <p>
+            The price starts high and falls until somebody takes it. Nobody sets the premium — the
+            first bidder willing to pay does, and the curve is published in the event that opens the
+            round, so anyone can evaluate it without asking us.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="copy fade">
+          <h2>Every round is verifiable.</h2>
+          <p>
+            State can be rebuilt from transaction hashes and events alone and diffed against what
+            the contract reports. That is a test in this repository, not a claim on this page.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="copy fade">
+          <h2>Pause can never hold funds.</h2>
+          <p>
+            The entire exit path is unpausable. Closing a round, requesting and claiming a
+            withdrawal, and every bidder claim all work while the vault is paused — so an admin can
+            stop new risk and can never trap what is already there.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="copy fade">
+          <h2>No oracle state can trap a round.</h2>
+          <p>
+            Past a fixed deadline the round closes with no oracle call at all. A dead feed refunds
+            the bidder in full; a feed that merely aged out resolves the other way. The two are
+            different facts and the contract keeps them apart.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="copy fade">
+          <h2>Nothing here is a yield figure.</h2>
+          <p>
+            This runs on testnet with test XLM. A depositor can win and can also simply keep their
+            capital and the premium — what they cannot do is be told a number we have not measured.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <div id="hud"></div>
+
+    <script type="module">
+      const COUNT = 13;
+
+      // Which set to load. The landscape sets differ only in resolution; portrait is a different
+      // crop, because a 1.79 frame cover-fitted into a phone cuts the disc off at both sides.
+      function pickSet() {
+        const a = innerWidth / innerHeight;
+        if (a < 0.95) return { dir: "portrait", portrait: true };
+        return { dir: innerWidth >= 1250 ? "wide" : "narrow", portrait: false };
+      }
+
+      const set = pickSet();
+      const stage = document.getElementById("stage");
+      const hud = document.getElementById("hud");
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      const imgs = [];
+      const ready = [];
+      let loaded = 0;
+      for (let i = 1; i <= COUNT; i += 1) {
+        const el = document.createElement("img");
+        el.decoding = "async";
+        // Everything is eager in the DEMO so the HUD's "loaded" counter means something and a
+        // fast scroll never shows a gap. The real page loads a sliding window around the current
+        // frame instead — 13 frames is 4.8 MB on the wide set and only the first is on the
+        // critical path.
+        el.src = `./public/frames/${set.dir}/${String(i).padStart(2, "0")}.webp`;
+        el.alt = "";
+        ready[i - 1] = false;
+        el.addEventListener("load", () => { ready[i - 1] = true; loaded += 1; render(); });
+        el.addEventListener("error", () => {
+          // One retry, then leave it unready. `nearestReady` below means an unready frame is
+          // simply never shown — the sequence holds the last frame it actually has instead of
+          // flashing black, which is what a slow network produces and what the first demo did.
+          setTimeout(() => { el.src = `${el.src.split("?")[0]}?retry=1`; }, 400);
+        });
+        stage.appendChild(el);
+        imgs.push(el);
+      }
+
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+      // --- the two motion channels -------------------------------------------------------------
+      //
+      // 13 frames over a six-screen scroll is one frame every half screen. On its own that reads as
+      // a slideshow: long stretches where nothing moves, then a jump. Two things fix it, and they
+      // are independent on purpose — where one is subtle the other carries the motion.
+      //
+      //   1. Adjacent frames CROSS-FADE by the fractional part of the index, so every scrolled
+      //      pixel changes the image even when two frames look alike.
+      //   2. The whole plate TRANSLATES from right of centre toward centre, and eases up in scale
+      //      over the last stretch. That motion exists whether or not the frames differ.
+      //
+      // The previous attempt had channel 1 only, at hard cuts, and the complaint was exactly what
+      // that predicts: "scrolling is smooth but only the edges change".
+
+      // These four decide how much of the master's sharpness survives, which is not obvious and
+      // cost a rebuild to learn. The browser needs `coverWidth x scale x devicePixelRatio` pixels;
+      // at 1440 CSS and DPR 2, scale 1.40 asks for 4032 — more than the 2752 master HAS. So the
+      // scale is small and the pan rides on the crop `object-fit: cover` already performs: a 1.79
+      // plate in a 1.55 viewport is cropped ~16% horizontally before any transform, and that is
+      // free headroom. The HUD prints the resulting upscale factor; keep it under about 1.15.
+      const START_X = set.portrait ? 0 : 0.13; // fraction of viewport width, star right of centre
+      const SCALE_BASE = set.portrait ? 1.04 : 1.08;
+      const SCALE_END = set.portrait ? 1.10 : 1.12; // the explosion beat
+      const BEAT_AT = 0.82; // where the scale starts to open up
+
+      function render() {
+        const max = document.body.scrollHeight - innerHeight;
+        const p = clamp01(max > 0 ? scrollY / max : 0);
+
+        // Frame index, fractional.
+        const f = reduced ? COUNT - 1 : p * (COUNT - 1);
+        const i = Math.min(COUNT - 1, Math.floor(f));
+        const t = reduced ? 0 : f - i;
+
+        // Never show a frame that has not decoded. Walking back to the nearest ready frame keeps
+        // the plate continuous while the rest stream in; showing `i` regardless is what put a
+        // broken-image placeholder on a black screen in the first run.
+        const nearestReady = (k) => {
+          for (let j = k; j >= 0; j -= 1) if (ready[j]) return j;
+          for (let j = k + 1; j < COUNT; j += 1) if (ready[j]) return j;
+          return -1;
+        };
+        const base = nearestReady(i);
+        const next = i + 1 < COUNT && ready[i + 1] ? i + 1 : -1;
+        const blend = base === i && next === i + 1 ? t : 0;
+        for (let k = 0; k < COUNT; k += 1) {
+          const o = k === base ? 1 : k === next ? blend : 0;
+          if (imgs[k].style.opacity !== String(o)) imgs[k].style.opacity = String(o);
+        }
+
+        const beat = clamp01((p - BEAT_AT) / (1 - BEAT_AT));
+        const s = lerp(SCALE_BASE, SCALE_END, beat * beat);
+
+        // The pan is CLAMPED to the headroom the geometry actually has, never to a fixed fraction.
+        // `object-fit: cover` only crops horizontally when the plate is wider than the viewport,
+        // and how much depends on the window: a 1.55-aspect window leaves ~16% of the width, a
+        // 1.75-aspect window leaves ~1%. Asking for 13% on the second one slides the plate off its
+        // own edge. Deriving the limit here means the pan shrinks on wide-short windows instead of
+        // exposing a black strip, and it is why this is clamped rather than scaled up: extra scale
+        // would buy headroom by spending the sharpness the whole rebuild was for.
+        const aspect = (imgs[0].naturalWidth || 16) / (imgs[0].naturalHeight || 9);
+        const plateW = Math.max(innerWidth, innerHeight * aspect) * s;
+        const headroom = Math.max(0, (plateW - innerWidth) / 2);
+        const x = Math.min(START_X * innerWidth, headroom) * (1 - easeOutCubic(p));
+        const tf = `translate(calc(-50% + ${x.toFixed(1)}px), -50%) scale(${s.toFixed(4)})`;
+        for (const el of imgs) if (el.style.transform !== tf) el.style.transform = tf;
+
+        // The number that decides whether any of the source sharpness survives. `object-fit: cover`
+        // fits the plate to the viewport, the transform scales it again, and the display multiplies
+        // by its pixel ratio — so the pixels the GPU actually needs are all three multiplied
+        // together. Serving fewer than that is an upscale, and an upscale is exactly the softness
+        // the master does not have.
+        const srcW = imgs[0].naturalWidth || 0;
+        const coverW = Math.max(innerWidth, innerHeight * (srcW / (imgs[0].naturalHeight || 1)));
+        const needW = coverW * s * devicePixelRatio;
+        const up = srcW ? needW / srcW : 0;
+        hud.textContent =
+          `set      ${set.dir} ${srcW}x${imgs[0].naturalHeight || "?"}\n` +
+          `scroll   ${(p * 100).toFixed(1)}%\n` +
+          `frame    ${(f + 1).toFixed(2)} / ${COUNT}\n` +
+          `shift    ${(x / innerWidth * 100).toFixed(1)}% vw\n` +
+          `scale    ${s.toFixed(3)}\n` +
+          `dpr      ${devicePixelRatio}\n` +
+          `needs    ${needW.toFixed(0)} px  (source ${srcW})\n` +
+          `pan      ${(Math.min(START_X * innerWidth, headroom) / innerWidth * 100).toFixed(1)}% max\n` +
+          `UPSCALE  ${up.toFixed(2)}x ${up > 1.3 ? "<- soft" : "ok"}  (floor ${(coverW * devicePixelRatio / (srcW || 1)).toFixed(2)}x at scale 1)\n` +
+          `loaded   ${loaded}/${COUNT}  showing ${base + 1}`;
+      }
+
+      const easeOutCubic = (x) => 1 - Math.pow(1 - x, 3);
+
+      let ticking = false;
+      function onScroll() {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => { render(); ticking = false; });
+      }
+      addEventListener("scroll", onScroll, { passive: true });
+      addEventListener("resize", onScroll);
+      render();
+
+      // Copy blocks fade in as they arrive.
+      const io = new IntersectionObserver(
+        (entries) => entries.forEach((e) => e.target.classList.toggle("in", e.isIntersecting)),
+        { threshold: 0.35 },
+      );
+      document.querySelectorAll(".fade").forEach((el) => io.observe(el));
+    </script>
+  </body>
+</html>

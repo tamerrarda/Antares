@@ -1,0 +1,21 @@
+{
+  "//": "`DOM` and `resolveJsonModule` are the two departures from the repo's node-side packages, and both are properties of where this code runs rather than preferences. The pages execute in a browser (08-OFFCHAIN \u00a73: 'chain reads via RPC from the client; no backend of record'), and the deployment record is imported as a module because a statically-hosted build has to carry its address at build time \u2014 there is no server to ask at request time.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["lib/**/*.ts", "test/**/*.ts"]
+}
