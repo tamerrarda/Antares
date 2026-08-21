@@ -363,6 +363,20 @@ jobs:
       - name: Build all three contracts
         run: stellar contract build --out-dir target/wasm
 
+      - name: Publish the built wasm, so a hash that differs can be diffed rather than argued about
+        # Added 2026-08-21, because a difference appeared that no existing check could explain: CI
+        # builds `antares_vault.wasm` to a different SHA-256 than a macOS host does, at BYTE-FOR-BYTE
+        # the same size, from the same commit and the same pinned rustc and stellar-cli. The
+        # reproducible-build job below cannot see it — it compares two checkouts on ONE runner at
+        # different path lengths, which proves path-independence and says nothing about hosts. And
+        # host-independence is the property D1's evidence actually rests on: a reviewer who rebuilds
+        # from source is on their own machine, not ours.
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-${{ runner.os }}-${{ runner.arch }}
+          path: target/wasm/*.wasm
+          retention-days: 7
+
       - name: Size check — 64 KB hard, 48 KB warn
         run: |
           set -euo pipefail
