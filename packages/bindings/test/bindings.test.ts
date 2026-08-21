@@ -41,6 +41,34 @@ test("the client exposes every callable entry point, and the constructor as a st
   assert.equal(typeof (Client as unknown as { deploy?: unknown }).deploy, "function", "no static deploy");
 });
 
+test("every path the package points a consumer at is a file that exists", () => {
+  // The failure this catches has no consumer to catch it: nothing in this repository imports
+  // `@antares/bindings` yet — the Next.js app in Phase 7 is the first — so a broken `exports` map
+  // would sit undetected until the day somebody depends on it.
+  //
+  // `types` pointed at `./src/index.ts` until 2026-08-21, matching what `packages/common` does.
+  // The difference that made it wrong HERE is line 667 of the generated source: a TypeScript
+  // **parameter property**, which is not erasable syntax. It is the one package in the repository
+  // whose source cannot be run under `--experimental-strip-types`, so pointing a consumer at that
+  // source hands them a file their pipeline may not be able to transform. `dist/index.d.ts` is a
+  // plain declaration file and the build already produces it.
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+    exports: Record<string, Record<string, string>>;
+  };
+  const entries = Object.entries(pkg.exports).flatMap(([subpath, conditions]) =>
+    Object.entries(conditions).map(([condition, target]) => ({ subpath, condition, target })),
+  );
+  assert.ok(entries.length > 0, "the package exports nothing");
+  for (const { subpath, condition, target } of entries) {
+    assert.ok(
+      existsSync(new URL(`../${target}`, import.meta.url)),
+      `exports["${subpath}"].${condition} points at ${target}, which does not exist. ` +
+        "Run `pnpm -C packages/bindings build` — and if that is the fix, the root `check` script " +
+        "runs build BEFORE typecheck for exactly this reason.",
+    );
+  }
+});
+
 test("the provenance record says which wasm and which generator produced the bindings", () => {
   const prov = JSON.parse(readFileSync(new URL("../GENERATED.json", import.meta.url), "utf8")) as Record<
     string,

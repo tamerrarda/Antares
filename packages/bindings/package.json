@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "GENERATED TypeScript bindings for antares-vault. src/index.ts is machine output — never edit it; run `pnpm -w bindings:write` (09-DEPLOYMENT, IP-5).",
+  "description": "GENERATED TypeScript bindings for antares-vault. src/index.ts is machine output \u2014 never edit it; run `pnpm -w bindings:write` (09-DEPLOYMENT, IP-5).",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
