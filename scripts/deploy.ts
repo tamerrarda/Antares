@@ -905,6 +905,20 @@ const step6: Stage = {
         sorobanSdk: ctx.pins!.sorobanSdk,
         target: "wasm32v1-none",
         node: process.version,
+        // **The host, because the same commit does not produce the same bytes on two of them.**
+        //
+        // Measured 2026-08-21 on this repository: aarch64-apple-darwin and x86_64-unknown-linux-gnu
+        // build `antares_vault.wasm` to the same 65,374 bytes and different SHA-256s. Section by
+        // section, `import`, `export`, `data` and all four custom sections — `contractspecv0`
+        // included — are byte-identical; `type`, `function` and `code` differ, at identical sizes,
+        // because the type table is emitted in a different ORDER and every index into it follows.
+        // The program is the same program; its internal numbering is not.
+        //
+        // So the hash is reproducible against a host, not in the abstract, and a record that names
+        // the commit but not the host tells a reviewer to expect bytes they will not get. The
+        // reproducible-build CI job cannot catch this — it builds twice on ONE runner at different
+        // path lengths, which is a different property.
+        buildHost: `${process.platform}-${process.arch}`,
       },
       assetId: ctx.assetId,
       oracleId: ctx.adapterId,

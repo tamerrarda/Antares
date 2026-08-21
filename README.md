@@ -214,10 +214,22 @@ themselves and a hash not written down at submission cannot be recovered afterwa
 The vault wasm was built at commit `41090520` and the adapter at `18dcef1a` — they were deployed on
 different days and each record names its own. Both used Rust 1.95.0, `soroban-sdk =27.0.6`,
 `stellar-cli 27.1.0` and target `wasm32v1-none`, all pinned in the repository rather than restated
-here. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes; their
-hash matches a local `stellar contract build` at that commit. CI enforces the same property on every
-integration point by building twice in directories of different path lengths, because rustc embeds
-source paths in panic locations.
+here. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes.
+
+**The hash reproduces against a host, and the deployment record names which one.** Measured on
+2026-08-21: `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` build the vault to the same
+65,374 bytes and two different SHA-256s. Section by section they agree everywhere it is possible to
+disagree about meaning — `import`, `export`, `data` and all four custom sections including
+`contractspecv0` are byte-identical, and `stellar contract info interface` returns the same 42
+functions — while `type`, `function` and `code` differ at identical sizes, because the type table is
+emitted in a different order and every index into it follows. Same program, different internal
+numbering.
+
+So reproduce on the host `deployments/*.json` records under `toolchain.buildHost`. On a different
+one, expect the exported surface and the contract spec to match byte for byte and the SHA-256 not
+to. CI's reproducible-build job proves a narrower property than its name suggests: it builds twice
+on one runner at deliberately different path lengths, which shows the output does not depend on
+where the source sits, and says nothing about which machine compiled it.
 
 The full record, including the constructor arguments, the parameters and the toolchain, is in
 [`deployments/testnet.json`](deployments/testnet.json) and
