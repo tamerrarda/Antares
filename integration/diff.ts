@@ -66,8 +66,9 @@ export function diffAgainstEpoch(
   state: ReconstructedState,
   chain: ChainState,
   skipped: readonly string[] = [],
+  undecoded?: Readonly<Record<string, string>>,
 ): Check[] {
-  const { benign, blocking } = classifySkipped(skipped);
+  const { benign, blocking } = classifySkipped(skipped, undecoded);
   const checks: Check[] = [
     mkCheck(
       "events.decoders_complete",

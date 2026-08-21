@@ -247,6 +247,29 @@ export interface EpochUnresolved {
   readonly oracleAnswered: boolean;
 }
 
+/**
+ * The fourth finalization outcome: an auction nobody bid in.
+ *
+ * Registered here beside its three siblings, but it is DEV1's by DEV-PROTOCOL §3's rule — which
+ * splits §10 by the **call path that arrives**. `finalize_round` emits all four, but the lapse
+ * comes through `lazy_finalize` in `vault.rs` while `settled`, `epoch_voided` and
+ * `epoch_unresolved` come through `close_round` in `settle.rs`. That split is why this one was the
+ * last of the four left without a decoder, and it is not a difference an indexer can see.
+ *
+ * It carries no payment, and the contract is why: `lazy_finalize` only lapses a round when
+ * `notional_sold == 0`, so there is no payout to credit, no fee to accrue and no premium to refund.
+ * `pps` is the round's unchanged `last_pps`, and `wclaims` is the withdrawal-queue credit that
+ * **all four** finalization events carry — the field most easily left out, since no on-chain
+ * assertion needs it.
+ */
+export interface EpochLapsed {
+  readonly name: "epoch_lapsed";
+  readonly round: number;
+  readonly notionalOffered: bigint;
+  readonly pps: bigint;
+  readonly wclaims: bigint;
+}
+
 export interface FeeAccrued {
   readonly name: "fee_accrued";
   readonly round: number;
@@ -305,6 +328,7 @@ export type DecodedEvent =
   | Settled
   | EpochVoided
   | EpochUnresolved
+  | EpochLapsed
   | FeeAccrued
   | SettleBounty;
 
@@ -315,11 +339,22 @@ export function hasRound(ev: DecodedEvent): ev is RoundScopedEvent {
   return ev.name !== "fee_claimed";
 }
 
-/** The three terminal outcomes — exactly one of these exists per closed round (I10). */
-export type TerminalEvent = Settled | EpochVoided | EpochUnresolved;
+/**
+ * The four terminal outcomes — exactly one of these exists per closed round (I10).
+ *
+ * `epoch_lapsed` belongs here for the same reason as the other three: a lapsed round is CLOSED —
+ * `finalize_round` sets `phase = Idle` and stamps `last_finalize_time` — it just closed without a
+ * buyer. Leaving it out made `terminalOf` report an empty auction as a round that "has not closed".
+ */
+export type TerminalEvent = Settled | EpochVoided | EpochUnresolved | EpochLapsed;
 
 export function isTerminal(ev: DecodedEvent): ev is TerminalEvent {
-  return ev.name === "settled" || ev.name === "epoch_voided" || ev.name === "epoch_unresolved";
+  return (
+    ev.name === "settled" ||
+    ev.name === "epoch_voided" ||
+    ev.name === "epoch_unresolved" ||
+    ev.name === "epoch_lapsed"
+  );
 }
 
 type Decoder = (ev: RawEvent) => DecodedEvent;
@@ -421,6 +456,16 @@ const DECODERS: Readonly<Record<string, Decoder>> = {
     sharesMinted: asAmount(ev.data, "shares_minted"),
     instant: asBool(field(ev.data, "instant"), "deposited instant"),
   }),
+
+  // The lapse is DEV1's by the call-path rule above, so it sits on this side of the divider.
+  epoch_lapsed: (ev) => ({
+    name: "epoch_lapsed",
+    round: asU32(topic(ev, 1, "round"), "epoch_lapsed round"),
+    notionalOffered: asAmount(ev.data, "notional_offered"),
+    pps: asAmount(ev.data, "pps"),
+    wclaims: asAmount(ev.data, "wclaims"),
+  }),
+
   // -- DEV2's, registered here under this file's own rule ---------------------------------------
 
   settled: (ev) => ({

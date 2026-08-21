@@ -40,6 +40,7 @@ import {
   decodeEvent,
   eventName,
   hasRound,
+  isTerminal,
   type EpochOpened,
   type RawEvent,
 } from "../events.ts";
@@ -571,6 +572,51 @@ test("deposited is round-scoped, so the sweep's roster picks it up", () => {
   const ev = decodeEvent(DEPOSITED);
   assert.ok(hasRound(ev), "a deposit names the round it landed in (§10)");
   assert.ok(decodableEventNames().includes("deposited"));
+});
+
+// -------------------------------------------------------------- epoch_lapsed ----
+//
+// The fourth finalization event, and the last §10 event that moved an amount
+// without a decoder. It is DEV1's by the call-path rule: `finalize_round` emits
+// all four, but the lapse arrives through `lazy_finalize` in `vault.rs` while the
+// other three arrive through `close_round` in `settle.rs` — a split an indexer
+// cannot see and should not have to.
+
+const LAPSED: RawEvent = {
+  topics: ["epoch_lapsed", 9],
+  data: { notional_offered: 1000_0000000n, pps: 10_100_000n, wclaims: 4_000_000n },
+  txHash: "txl",
+  ledger: 77,
+};
+
+test("epoch_lapsed decodes, and carries the wclaims all four finalizations carry", () => {
+  assert.deepEqual(decodeEvent(LAPSED), {
+    name: "epoch_lapsed",
+    round: 9,
+    notionalOffered: 1000_0000000n,
+    pps: 10_100_000n,
+    wclaims: 4_000_000n,
+  });
+});
+
+test("a lapsed round is terminal — it closed, it just closed without a buyer", () => {
+  // Not cosmetic. `terminalOf` reads this predicate to decide whether a round can
+  // enter the evidence record; while the lapse was not terminal, an empty auction
+  // was reported as a round that "has not closed" — on a chain where
+  // `finalize_round` had already set `phase = Idle` and stamped the finalize time.
+  const ev = decodeEvent(LAPSED);
+  assert.ok(isTerminal(ev));
+  assert.ok(hasRound(ev));
+  assert.ok(decodableEventNames().includes("epoch_lapsed"));
+});
+
+test("REJECT: a lapse missing wclaims is refused rather than read as zero", () => {
+  // Zero is a legitimate value here, which is exactly why an absent field must not
+  // become one: the withdrawal queue's credit would silently vanish from a total
+  // that still looked complete.
+  const base = LAPSED.data as Record<string, unknown>;
+  const { wclaims: _dropped, ...without } = base;
+  assert.throws(() => decodeEvent({ ...LAPSED, data: without }), EventDecodeError);
 });
 
 // ------------------------------------------------- the withdrawal half ---------

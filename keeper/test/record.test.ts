@@ -50,6 +50,14 @@ const voided = (round = ROUND): DecodedEvent => ({
   wclaims: 0n,
 });
 
+const lapsed = (round = ROUND): DecodedEvent => ({
+  name: "epoch_lapsed",
+  round,
+  notionalOffered: 5_000_000_000n,
+  pps: 10_000_000n,
+  wclaims: 4_000_000n,
+});
+
 const inputs = (events: readonly Located[]) => ({
   vault: VAULT,
   round: ROUND,
@@ -80,6 +88,17 @@ test("amounts in the fill index are strings", () => {
   const f = fillIndex([at(fill("GA", 9_007_199_254_740_993n, 1n), "tx")]);
   assert.equal(typeof f[0]?.notional, "string");
   assert.equal(f[0]?.notional, "9007199254740993", "the value must survive exactly");
+});
+
+test("an empty auction is a closed round, and reaches the record as one", () => {
+  // The lapse was not in `isTerminal` until 2026-08-21, so this record could not be written at all:
+  // `terminalOf` reported an empty auction as a round that "has not closed", on a chain where
+  // `finalize_round` had already set `phase = Idle`. An auction that clears empty is a data point
+  // about demand (ARCHITECTURE §10), and it is exactly the round a reader wants explained.
+  const r = epochRecord(inputs([at(lapsed(), "tx-lapse")]));
+  assert.equal(r.outcome, "Lapsed");
+  assert.deepEqual(r.fills, [], "nobody bid, so the fill index is empty rather than absent");
+  assert.deepEqual(r.txHashes, ["tx-lapse"]);
 });
 
 test("a round with no terminal event is refused, not written as closed", () => {

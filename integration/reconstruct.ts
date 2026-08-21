@@ -126,18 +126,27 @@ export const SEP41_MIRROR: readonly string[] = ["mint", "burn", "transfer", "app
  * it refuses instead of producing a total that looks complete. DEV-PROTOCOL §3 splits §10 by the
  * emitting module, so each entry names whose it is to register rather than being fixed here.
  */
-export const STATE_AFFECTING_UNDECODED: Readonly<Record<string, string>> = {
-  epoch_lapsed:
-    "DEV2's (epoch). `{notional_offered, pps, wclaims}` — a finalization event carrying `pps` and " +
-    "a withdrawal-queue credit, so a lapsed round silently drifts an indexer that cannot read it. " +
-    "Scenario 2's path; scenario 1 never produces one.",
-};
+export const STATE_AFFECTING_UNDECODED: Readonly<Record<string, string>> = {};
 
-// `withdraw_requested`, `withdraw_claimed`, `pending_redeemed` and `deposit_cancelled` were on this
-// list until 2026-08-20 and are decoded now (dev1@29a33d9), which is why the fold below models them.
+// The list is EMPTY, and that is a measurement rather than a hope: of the 36 events the contract
+// emits, 15 decode, and every one of the remaining 21 is either the SEP-41 mirror above or an
+// admin/lifecycle event that moves no amount. `withdraw_requested`, `withdraw_claimed`,
+// `pending_redeemed` and `deposit_cancelled` came off on 2026-08-20 (dev1@29a33d9); `epoch_lapsed`
+// came off on 2026-08-21, and it was the last. The mechanism stays because §10 can gain an event
+// tomorrow — an unrecognised name still lands in `benign` and gets reported, so putting one back on
+// this list is a deliberate act rather than a discovery made after a total came out wrong.
 
-/** Split a run's skipped names into what §10 says is harmless and what makes a total wrong. */
-export function classifySkipped(skipped: readonly string[]): {
+/**
+ * Split a run's skipped names into what §10 says is harmless and what makes a total wrong.
+ *
+ * `undecoded` is the table, supplied as data so the refusal path can be exercised. With the real
+ * table empty there is no event name left that triggers it, and a mechanism that only runs on the
+ * day somebody forgets to write a decoder is exactly the one that must not be allowed to rot.
+ */
+export function classifySkipped(
+  skipped: readonly string[],
+  undecoded: Readonly<Record<string, string>> = STATE_AFFECTING_UNDECODED,
+): {
   readonly benign: readonly string[];
   readonly blocking: readonly Unmodelled[];
 } {
@@ -146,8 +155,8 @@ export function classifySkipped(skipped: readonly string[]): {
   for (const name of skipped) {
     if (SEP41_MIRROR.includes(name)) {
       benign.push(name);
-    } else if (name in STATE_AFFECTING_UNDECODED) {
-      blocking.push({ name, why: STATE_AFFECTING_UNDECODED[name]! });
+    } else if (name in undecoded) {
+      blocking.push({ name, why: undecoded[name]! });
     } else {
       // Admin and lifecycle events, and anything §10 gained after this was written. Not assumed
       // harmless: an unrecognised name is reported so the list above can be extended deliberately.
@@ -181,7 +190,7 @@ export interface ReconstructedState {
   readonly auctionEnd: number;
   readonly expiry: number;
   /** `null` until the round closes; the name of the event that closed it once it has. */
-  readonly closedBy: "settled" | "epoch_voided" | "epoch_unresolved" | null;
+  readonly closedBy: "settled" | "epoch_voided" | "epoch_unresolved" | "epoch_lapsed" | null;
 
   // --- cumulative -------------------------------------------------------------------------------
   readonly sharesOutstanding: bigint;
@@ -434,6 +443,22 @@ export function reconstruct(
           // The premium does not become vault assets on this branch — it becomes a debt to the
           // bidders. Cleared as unsettled and re-entered as a named credit, so it never double-counts.
           liabilities: s.liabilities + e.premiumRefunded + e.wclaims,
+          wclaimsOutstanding: s.wclaimsOutstanding + e.wclaims,
+          unsettledPremium: 0n,
+        };
+        break;
+
+      case "epoch_lapsed":
+        // The empty auction. `lazy_finalize` only takes this branch when `notional_sold == 0`, so
+        // there is no payout, no fee and no premium: the only money that moves is the withdrawal
+        // queue's credit. `unsettledPremium` is cleared for the same reason the siblings clear it —
+        // not because a lapse releases premium, but because a lapsed round never took any, and
+        // leaving a stale figure from an earlier round would be worse than a redundant zero.
+        s = {
+          ...s,
+          closedBy: "epoch_lapsed",
+          lastPps: e.pps,
+          liabilities: s.liabilities + e.wclaims,
           wclaimsOutstanding: s.wclaimsOutstanding + e.wclaims,
           unsettledPremium: 0n,
         };

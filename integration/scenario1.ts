@@ -755,10 +755,13 @@ const stage7b = diffStage(
 
 const stage9 = diffStage(
   "9",
-  "the same diff, after the withdrawal — where §10's gap bites",
-  "expected to REFUSE on events.decoders_complete: withdraw_requested and withdraw_claimed have " +
-    "no decoders, so the share and asset totals no longer have a defined meaning. That refusal IS " +
-    "the finding; the numbers above were taken before it applied.",
+  "the same diff, after the withdrawal — the step the 6a gate ends on",
+  "expected to PASS. This stage used to REFUSE on events.decoders_complete, and the refusal was " +
+    "the finding: withdraw_requested and withdraw_claimed had no decoders, so once shares left the " +
+    "vault the share and asset totals stopped having a defined meaning. Both decode since " +
+    "dev1@29a33d9, and `epoch_lapsed` — the last §10 event that moved an amount without one — " +
+    "since 2026-08-21, so the diff now spans the whole gate rather than stopping before its last " +
+    "step.",
 );
 
 async function diffNow(ctx: Ctx): Promise<Check[]> {

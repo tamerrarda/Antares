@@ -55,6 +55,10 @@ const OUTCOME: Record<TerminalEvent["name"], string> = {
   settled: "Settled",
   epoch_voided: "Voided",
   epoch_unresolved: "Unresolved",
+  // A round that closed with no buyer. It reaches the evidence file like any other outcome: an
+  // empty auction is a data point about demand (ARCHITECTURE §10), and a record that could not
+  // hold one would be silent about exactly the rounds a reader most wants explained.
+  epoch_lapsed: "Lapsed",
 };
 
 /**

@@ -146,8 +146,9 @@ test("fee_accrued and settle_bounty decode, and the bounty names its recipient",
 });
 
 test("exactly one terminal event exists per closed round, and the payments are not terminal", () => {
-  // I10 in the indexer's vocabulary: settled / voided / unresolved partition a round's ending, and
-  // fee_accrued and settle_bounty ride alongside rather than being outcomes of their own.
+  // I10 in the indexer's vocabulary: settled / voided / unresolved / lapsed partition a round's
+  // ending, and fee_accrued and settle_bounty ride alongside rather than being outcomes of their
+  // own. The lapse is asserted with the other three in common.test.ts, where its decoder lives.
   assert.ok(isTerminal(decodeEvent(SETTLED)));
   assert.ok(isTerminal(decodeEvent(VOIDED)));
   assert.ok(isTerminal(decodeEvent(UNRESOLVED)));

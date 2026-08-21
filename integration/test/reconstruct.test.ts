@@ -13,7 +13,14 @@ import { test } from "node:test";
 import { failedIds } from "@antares/common/checks";
 
 import { diffAgainstEpoch, type ChainState } from "../diff.ts";
-import { classifySkipped, DEAD_SHARES, phaseAt, reconstruct, type LocatedEvent } from "../reconstruct.ts";
+import {
+  classifySkipped,
+  DEAD_SHARES,
+  phaseAt,
+  reconstruct,
+  STATE_AFFECTING_UNDECODED,
+  type LocatedEvent,
+} from "../reconstruct.ts";
 import type { DecodedEvent } from "@antares/common/events";
 
 let n = 0;
@@ -210,17 +217,57 @@ test("phase follows the ledger clock across a transition nothing emits", () => {
   assert.equal(phaseAt(reconstruct([]), 1_700_000_999), "Idle", "a vault that never opened is Idle");
 });
 
+test("a lapsed round closes, credits the withdrawal queue, and moves nothing else", () => {
+  // The empty auction. `lazy_finalize` only lapses when `notional_sold == 0`, so a lapse has no
+  // payout, no fee and no premium to place — the withdrawal-queue credit is the only money that
+  // moves, and `phaseAt` must call the vault Idle afterwards or an indexer will show a round that
+  // is still open on a chain that has already moved on.
+  const base = reconstruct([deposit(10_000_000n, 9_999_000n), opened()]);
+  const lapsed = reconstruct(
+    [
+      at({
+        name: "epoch_lapsed",
+        round: 1,
+        notionalOffered: 1_000_000_000n,
+        pps: 10_000_000n,
+        wclaims: 4_000_000n,
+      }),
+    ],
+    [],
+    base,
+  );
+
+  assert.equal(lapsed.closedBy, "epoch_lapsed");
+  assert.equal(lapsed.lastPps, 10_000_000n);
+  assert.equal(lapsed.liabilities, base.liabilities + 4_000_000n);
+  assert.equal(lapsed.wclaimsOutstanding, base.wclaimsOutstanding + 4_000_000n);
+  assert.equal(lapsed.holdings, base.holdings, "a lapse pays nobody, so nothing leaves the vault");
+  assert.equal(lapsed.sharesOutstanding, base.sharesOutstanding);
+  assert.equal(phaseAt(lapsed, 1_700_000_999), "Idle");
+});
+
 // --- the gap that decides whether any of it means anything -----------------------------------------
 
+// A name no §10 event has and none will. The table is passed in as data because the real one is
+// empty as of 2026-08-21, and naming a live event here would mean this test dies on the day
+// somebody writes that event's decoder — the day the rule most needs to still hold.
+const HYPOTHETICAL = { epoch_dissolved: "a finalization event that moves an amount" };
+
 test("§10's SEP-41 mirror is skippable by the spec; a finalization event is not", () => {
-  // `epoch_lapsed` is the last one left: dev1@29a33d9 registered the four vault-side decoders that
-  // used to sit beside it, which is why this test names a different event than it did yesterday.
-  const { benign, blocking } = classifySkipped(["mint", "burn", "transfer", "epoch_lapsed"]);
+  const { benign, blocking } = classifySkipped(["mint", "burn", "transfer", "epoch_dissolved"], HYPOTHETICAL);
   assert.deepEqual([...benign], ["mint", "burn", "transfer"]);
   assert.deepEqual(
     blocking.map((b) => b.name),
-    ["epoch_lapsed"],
+    ["epoch_dissolved"],
   );
+});
+
+test("the real table is empty, and every event that moves an amount is why", () => {
+  // Not a tautology: this is the assertion that turns "we decoded them all" from a claim into a
+  // check. `epoch_lapsed` was the last name on the list and came off on 2026-08-21; if a future
+  // §10 event needs a decoder, putting it back here is the deliberate act the mechanism asks for.
+  assert.deepEqual(Object.keys(STATE_AFFECTING_UNDECODED), []);
+  assert.equal(classifySkipped(["epoch_lapsed"]).blocking.length, 0);
 });
 
 test("the withdrawal half is decodable now, so it no longer blocks a diff", () => {
@@ -285,11 +332,11 @@ test("an unrecognised name is reported rather than assumed harmless", () => {
 });
 
 test("a missing state-affecting decoder refuses the whole diff instead of reporting totals", () => {
-  const s = reconstruct([deposit(10_000_000n, 9_999_000n), opened()], ["epoch_lapsed"]);
-  const checks = diffAgainstEpoch(s, CHAIN, ["epoch_lapsed"]);
+  const s = reconstruct([deposit(10_000_000n, 9_999_000n), opened()], ["epoch_dissolved"]);
+  const checks = diffAgainstEpoch(s, CHAIN, ["epoch_dissolved"], HYPOTHETICAL);
   assert.equal(checks.length, 1, "nothing is compared once a total has no defined meaning");
   assert.deepEqual(failedIds(checks), ["events.decoders_complete"]);
-  assert.match(String(checks[0]!.note), /epoch_lapsed/);
+  assert.match(String(checks[0]!.note), /epoch_dissolved/);
 });
 
 // --- the diff ---------------------------------------------------------------------------------------
