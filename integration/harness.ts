@@ -85,6 +85,15 @@ interface DeploymentRecord {
 interface EpochView {
   readonly round: number;
   readonly phase: readonly string[] | string;
+  /**
+   * Whether the phase above is derived rather than written.
+   *
+   * `views.rs` computes `effective_phase` — *"the phase a mutating call would produce"* — so an
+   * auction that closed with no fills already reads `Idle` here while `State.phase` is still
+   * `Auction` on disk. This flag is the difference, and it is the only handle the lazy finalization
+   * of §5 has: without it a caller cannot tell a round that lapsed from one that is about to.
+   */
+  readonly outcome_pending: boolean;
   readonly notional_offered: bigint;
   readonly notional_sold: bigint;
   readonly premium_collected: bigint;

@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "06-TEST-PLAN §7's harness. Reconstructs vault state from transaction hashes and events ALONE, then diffs it against epoch() — the README's public-verifiability claim, tested rather than asserted.",
+  "description": "06-TEST-PLAN \u00a77's harness. Reconstructs vault state from transaction hashes and events ALONE, then diffs it against epoch() \u2014 the README's public-verifiability claim, tested rather than asserted.",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "scenario1": "node --experimental-strip-types scenario1.ts",
+    "scenario2": "node --experimental-strip-types scenario2.ts",
+    "scenario3": "node --experimental-strip-types scenario3.ts",
+    "scenario4": "node --experimental-strip-types scenario4.ts",
+    "scenario5": "node --experimental-strip-types scenario5.ts",
+    "scenario6": "node --experimental-strip-types scenario6.ts",
     "build": "tsc -p tsconfig.build.json",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "scenario1": "node --experimental-strip-types scenario1.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@antares/common": "workspace:*",
