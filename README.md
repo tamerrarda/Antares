@@ -216,7 +216,7 @@ different days and each record names its own. Both used Rust 1.95.0, `soroban-sd
 `stellar-cli 27.1.0` and target `wasm32v1-none`, all pinned in the repository rather than restated
 here. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes.
 
-**The hash reproduces against a host, and the deployment record names which one.** Measured on
+**The hash reproduces against a host, not against a toolchain.** Measured on
 2026-08-21: `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` build the vault to the same
 65,374 bytes and two different SHA-256s. Section by section they agree everywhere it is possible to
 disagree about meaning — `import`, `export`, `data` and all four custom sections including
@@ -225,11 +225,19 @@ functions — while `type`, `function` and `code` differ at identical sizes, bec
 emitted in a different order and every index into it follows. Same program, different internal
 numbering.
 
-So reproduce on the host `deployments/*.json` records under `toolchain.buildHost`. On a different
-one, expect the exported surface and the contract spec to match byte for byte and the SHA-256 not
-to. CI's reproducible-build job proves a narrower property than its name suggests: it builds twice
-on one runner at deliberately different path lengths, which shows the output does not depend on
-where the source sits, and says nothing about which machine compiled it.
+So reproduce on the host that built the artefact. **Both deployments above were built on
+`aarch64-apple-darwin`**, and they predate the field that records it: their `toolchain` block names
+Rust, `stellar-cli`, `soroban-sdk`, the target and Node, but not the machine — the omission this
+measurement found. That host is stated from the machine that ran the deploy and corroborated by the
+Node version the record does carry; it is not read back out of the record, and that gap is exactly
+what the field closes. `deployments/*.json` carries `toolchain.buildHost` from 2026-08-21 onward;
+for these two the host is named here instead of backfilled, because a record of what happened is
+worth less once it is edited after the fact. On a different host, expect the exported surface and the contract spec to
+match byte for byte and the SHA-256 not to.
+
+CI's reproducible-build job proves a narrower property than its name suggests: it builds twice on
+one runner at deliberately different path lengths, which shows the output does not depend on where
+the source sits, and says nothing about which machine compiled it.
 
 The full record, including the constructor arguments, the parameters and the toolchain, is in
 [`deployments/testnet.json`](deployments/testnet.json) and
