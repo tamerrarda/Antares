@@ -17,9 +17,13 @@
 //!    run has seen and re-hashing it after every call.
 //! 4. **The pause-cannot-trap-funds proof.** Every sequence is replayed with `paused = true`
 //!    injected at an arbitrary point, and every call in I8's set that succeeded in the clean run
-//!    must still succeed in the paused one. That is I8's own wording — *"succeed under
-//!    `paused == true` in every state where they'd succeed unpaused"* — and asserting it needs two
-//!    runs, because "would have succeeded" is not observable from inside one.
+//!    must still succeed in the paused one — **for as long as the two runs are in the same
+//!    state**. That qualifier is I8's own (*"succeed under `paused == true` in every state where
+//!    they'd succeed unpaused"*) and dropping it is not a detail: pause is *meant* to refuse a
+//!    deposit, and the moment it does, the paused run holds shares the clean one does not, so a
+//!    later withdrawal fails for having nothing to withdraw. This target reported that as an I8
+//!    violation twice before the qualifier was written into the code rather than only into the
+//!    prose above it.
 //!
 //! # Why the paused run compares against a recording rather than against a rule
 //!
@@ -478,6 +482,19 @@ fuzz_target!(|input: Input| {
     // is deterministic and every address is generated in the same order.
     let mut b = World::new();
     let at = usize::from(input.pause_at) % input.ops.len();
+    // **Set once the two runs stop being in the same state, and the comparison stops with it.**
+    //
+    // I8 is conditional — *"succeed under `paused == true` IN EVERY STATE WHERE THEY'D SUCCEED
+    // unpaused"* — and pause is allowed, indeed meant, to refuse a deposit. The moment it does,
+    // run B holds shares run A does not, and a later `request_withdraw` fails for having nothing
+    // to withdraw rather than for being paused. Reading that as an I8 violation is what this
+    // target did twice: once on 2026-08-20, diagnosed from the contract side and pinned by two
+    // unit tests, and again on 2026-08-21, because the diagnosis named a file nobody edited.
+    //
+    // The alternative — deciding per call whether it *should* have succeeded — is the second copy
+    // of the contract's preconditions this target was written to avoid. Stopping at divergence
+    // costs coverage past the first blocked deposit and buys an assertion that means what it says.
+    let mut diverged = false;
     for (i, op) in input.ops.iter().enumerate() {
         if i == at {
             b.env.mock_all_auths();
@@ -492,12 +509,18 @@ fuzz_target!(|input: Input| {
         // identical, so a difference there would be non-determinism in the harness rather than a
         // finding — which is why the comparison is guarded on `i >= at` rather than run for the
         // whole sequence.
-        if i >= at && op.in_i8_set() && clean_outcomes[i] && !ok {
+        if i >= at && !diverged && op.in_i8_set() && clean_outcomes[i] && !ok {
             panic!(
                 "I8 violated: {op:?} at index {i} succeeded unpaused and failed with paused = true. \
                  Pause is a deposit-side control and may never stand between someone and money the \
                  contract already owes them."
             );
+        }
+
+        // Any outcome that differs takes the runs apart. It is checked AFTER the assertion so an
+        // I8-set call that pause refused is still reported rather than quietly ending the run.
+        if clean_outcomes[i] != ok {
+            diverged = true;
         }
     }
 

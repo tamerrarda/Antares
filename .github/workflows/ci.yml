@@ -741,6 +741,14 @@ jobs:
         # full workspace build produce the identical SHA-256.
         run: stellar contract build --package antares-vault
 
+      - name: Build the workspace packages the check imports
+        # `generate-bindings.ts` imports `@antares/common/dist/checks.js`, and pnpm links workspace
+        # packages into node_modules as symlinks to their SOURCE — the `dist/` they resolve to only
+        # exists once it is built. The job was written with no `pnpm install` on the measured ground
+        # that the check needs node builtins alone; that measurement was taken on a tree where
+        # `dist/` already existed, and a clean runner is the one place that difference shows.
+        run: pnpm -C packages/common build
+
       - name: Bindings must be the ones the contract implies
         # Six assertions, and the first two are preconditions rather than
         # findings: an unpinned generator or an artefact older than the sources
