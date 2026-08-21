@@ -179,19 +179,30 @@ test("the roster is first-seen order and deduplicated", () => {
 });
 
 test("the roster picks up every address-carrying event without naming them one by one", () => {
-  // Derived from shape rather than from a list, so it grows on its own as events are registered —
-  // which is how `deposited` joins it the day DEV1 registers it, with no edit here.
+  // Derived from shape rather than from a list — across all four field names §10 uses for a party.
   const seen = roster([
     at({ name: "settle_bounty", round: ROUND, to: "GKEEPER", amount: 1n }, "t"),
     at({ name: "fee_claimed", recipient: "GFEE", amount: 1n }, "t"),
     at({ name: "refund_claimed", round: ROUND, bidder: "GBID", amount: 1n }, "t"),
+    at({ name: "deposited", user: "GDEP", round: ROUND, amount: 1n, sharesMinted: 1n, instant: true }, "t"),
   ]);
-  assert.deepEqual(seen.sort(), ["GBID", "GFEE", "GKEEPER"]);
+  assert.deepEqual(seen.sort(), ["GBID", "GDEP", "GFEE", "GKEEPER"]);
 });
 
-test("a roster built only from bidder events is short by every depositor, and visibly so", () => {
-  // `deposited` is DEV1's and unregistered, so depositors are absent today. The count is the
-  // evidence of that rather than an empty result pretending the vault has no users.
+test("the sweep's roster contains the depositors the sweep exists for", () => {
+  // The regression this replaces: `roster` matched `bidder` / `recipient` / `to`, and every
+  // depositor-side event names its party `user`, so registering `deposited` added nobody. A sweep
+  // built on that list bumps bidders' `Fill` entries and never touches a `Shares` entry — passing
+  // over the exact population `restore_position(user)` is there to maintain.
+  const seen = roster([
+    at({ name: "deposited", user: "GDEP", round: ROUND, amount: 1n, sharesMinted: 0n, instant: false }, "t"),
+    at({ name: "withdraw_requested", user: "GWD", round: ROUND, shares: 1n }, "t"),
+    at(fill("GBID", 1n, 1n), "t"),
+  ]);
+  assert.deepEqual(seen, ["GDEP", "GWD", "GBID"], "depositors first, because they were seen first");
+});
+
+test("a settle names nobody, so the roster stays empty rather than inventing a party", () => {
   const seen = roster([at(settled(), "t")]);
-  assert.equal(seen.length, 0, "a settle names nobody; the roster's gap shows in its size");
+  assert.equal(seen.length, 0);
 });

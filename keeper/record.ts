@@ -142,10 +142,16 @@ export function epochRecord(inputs: RoundInputs): EpochEvidence {
  * Every address the vault has seen — the sweep's roster.
  *
  * Derived from whichever events carry one rather than from a named list, so it grows on its own as
- * events are registered. Today that is bidders, through `bid_filled`, `payout_claimed` and
- * `refund_claimed`. **Depositors are the larger half and are not here yet**: `deposited` is DEV1's
- * event and unregistered, so this returns the addresses it can see and the gap is visible in the
- * count rather than hidden by an empty result.
+ * events are registered — but "on its own" is a property of the FIELD NAMES, and that is where this
+ * went wrong. Until 2026-08-21 the match was `bidder` / `recipient` / `to`, and every depositor-side
+ * event names its party `user`: `deposited`, `withdraw_requested`, `withdraw_claimed`,
+ * `pending_redeemed`, `deposit_cancelled`. So registering `deposited` (dev1@29a33d9) did not add a
+ * single depositor here, and could not have — while `sweep.ts` opens by saying the whole feature is
+ * "bumping every known depositor once a month" and `restore_position(user)` re-bumps `Shares`,
+ * `PendingDeposit` and `PendingWithdraw`, which are depositor entries and nobody else's. The sweep
+ * was passing over the exact population it exists for.
+ *
+ * `user` is matched now, which makes the four names above the roster's larger half.
  *
  * Order is first-seen and stable, so a sweep interrupted halfway resumes over the same sequence.
  */
@@ -155,6 +161,7 @@ export function roster(events: readonly Located[]): string[] {
     if (!seen.includes(a)) seen.push(a);
   };
   for (const { event } of events) {
+    if ("user" in event) add(event.user);
     if ("bidder" in event) add(event.bidder);
     if ("recipient" in event) add(event.recipient);
     if ("to" in event) add(event.to);
