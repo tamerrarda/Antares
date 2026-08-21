@@ -448,6 +448,21 @@ const stage5: Stage = {
     if (!wide) return checks;
 
     // Concurrently, from two accounts. Independent sequence numbers is what lets both land in the
+    // **The resource profile's one measurable moment for `bid`, taken here rather than in a script.**
+    //
+    // `scripts/profile-resources.ts` reaches 26 of the vault's 38 entry points and cannot reach
+    // this one: a refused simulation carries no `transactionData`, so a call the vault's resting
+    // state rejects reports nothing at all. `bid` and `close_round` are refused in a resting vault
+    // and are also the two whose cost grows with the round — a Fill written here, a settlement
+    // priced over every Fill there. The only state in which they can be measured is the one this
+    // scenario is standing in, so the measurement is taken where the state exists.
+    const bidCost = await ctx.reader.simulate<unknown>(ctx.vault, "bid", [
+      ctx.addresses.bidderA,
+      a,
+      u32(ctx.opts.maxPremiumBps),
+    ]);
+    ctx.costs.bid = bidCost.cost;
+
     // same ledger; `Promise.allSettled` so one bidder's failure does not hide the other's result.
     const submitted = await Promise.allSettled([
       invokeAsync({
@@ -552,6 +567,14 @@ const stage6: Stage = {
       onTick: (t) => process.stdout.write(`\r  waiting for expiry — ledger clock ${t.closeTime}   `),
     });
     process.stdout.write("\n");
+
+    // The settling `close_round`, simulated an instant before it is submitted — see `Ctx.costs`.
+    // This is the heavier of the two unreachable entry points: its cost is priced over every Fill
+    // the round collected, so measuring it on a round with fills is the only measurement worth
+    // having, and a resting vault refuses the call outright.
+    ctx.costs.closeRound = (
+      await ctx.reader.simulate<unknown>(ctx.vault, "close_round", [ctx.addresses.admin])
+    ).cost;
 
     record(
       ctx,
@@ -798,6 +821,55 @@ async function diffNow(ctx: Ctx): Promise<Check[]> {
   }
 }
 
+/**
+ * The two entry points a standalone profile cannot reach, reported where the state exists.
+ *
+ * `scripts/profile-resources.ts` simulates all 38 of the vault's entry points against the deployed
+ * instance and measures 26. The twelve it misses are refused by a resting vault, and a refused
+ * simulation carries no `transactionData` — the RPC sends no resource data with an error — so they
+ * cannot be profiled from outside a live round. `bid` and `close_round` are in that twelve and are
+ * also the two whose cost is not fixed: `bid` writes a Fill, and `close_round` prices a settlement
+ * over every Fill the round collected. A ceiling measured without them is the ceiling of the cheap
+ * paths, which is the number that reassures and the wrong one.
+ */
+const stage10: Stage = {
+  id: "10",
+  title: "resource ceiling — the two paths whose cost grows with the round",
+  async run(ctx: Ctx): Promise<Check[]> {
+    const limits = await ctx.reader.networkLimits();
+    console.log(`\n  network limits, read live: ${limits.txMaxInstructions.toLocaleString()} instructions\n`);
+    const checks: Check[] = [];
+    for (const [name, cost] of [
+      ["bid", ctx.costs.bid],
+      ["close_round", ctx.costs.closeRound],
+    ] as const) {
+      const pct =
+        cost === null || cost === undefined || limits.txMaxInstructions === 0
+          ? null
+          : (cost.instructions / limits.txMaxInstructions) * 100;
+      if (cost !== null && cost !== undefined) {
+        console.log(
+          `  ${name.padEnd(12)} ${cost.instructions.toLocaleString().padStart(12)} insn  ` +
+            `${cost.diskReadBytes} read B  ${cost.writeBytes} write B  fee ${cost.minResourceFee}`,
+        );
+      }
+      checks.push(
+        mkCheck(
+          `resources.${name}`,
+          `${name} runs inside the network's instruction limit with headroom, on a round with fills`,
+          "<= 50% of the limit",
+          pct === null ? "not measured" : `${pct.toFixed(2)}% of the limit`,
+          pct !== null && pct <= 50,
+          "00-ROADMAP Phase 6 asks for costs 'within limits WITH HEADROOM'. Measured here rather " +
+            "than in the profile script because a resting vault refuses both calls, and a refused " +
+            "simulation reports no resources at all.",
+        ),
+      );
+    }
+    return checks;
+  },
+};
+
 export const STAGES: readonly Stage[] = [
   stage0,
   stage1,
@@ -810,6 +882,7 @@ export const STAGES: readonly Stage[] = [
   stage7b,
   stage8,
   stage9,
+  stage10,
 ];
 
 /** Stages 0–2 only: the state a round could start from, proved before spending eleven minutes. */

@@ -38,6 +38,8 @@ import {
 
 import { RECORD_CAP_TICKS, reachSeconds } from "@antares/common/oracle";
 
+import { networkLimits } from "@antares/common/limits";
+
 // ---------------------------------------------------------------------------------------------
 // Constants owned by the design. Restated only so the profile can build an honest anchor grid; if
 // one disagrees with its document, the document wins.
@@ -155,29 +157,6 @@ class Sim {
   }
 }
 
-/** The limits the network publishes **today**, read live rather than pinned (D-49, D-58). */
-async function liveLimits(
-  server: rpc.Server,
-): Promise<{ txMaxInstructions: number; txMaxDiskReadBytes: number }> {
-  const key = (id: xdr.ConfigSettingId) =>
-    xdr.LedgerKey.configSetting(new xdr.LedgerKeyConfigSetting({ configSettingId: id }));
-  const r = await server.getLedgerEntries(
-    key(xdr.ConfigSettingId.configSettingContractComputeV0()),
-    key(xdr.ConfigSettingId.configSettingContractLedgerCostV0()),
-  );
-  let txMaxInstructions = 0;
-  let txMaxDiskReadBytes = 0;
-  for (const e of r.entries) {
-    const cs = e.val.configSetting();
-    if (cs.switch().name === "configSettingContractComputeV0") {
-      txMaxInstructions = Number(cs.contractCompute().txMaxInstructions().toString());
-    } else if (cs.switch().name === "configSettingContractLedgerCostV0") {
-      txMaxDiskReadBytes = Number(cs.contractLedgerCost().txMaxDiskReadBytes().toString());
-    }
-  }
-  return { txMaxInstructions, txMaxDiskReadBytes };
-}
-
 /**
  * `scValToNative` hands back `bigint` for i128/u64, which `JSON.stringify` refuses outright.
  *
@@ -251,7 +230,7 @@ async function main(): Promise<void> {
   );
   console.log("");
 
-  const limits = await liveLimits(sim.server);
+  const limits = await networkLimits(sim.server);
   console.log(
     `  live limits: txMaxInstructions ${limits.txMaxInstructions}, txMaxDiskReadBytes ${limits.txMaxDiskReadBytes}`,
   );

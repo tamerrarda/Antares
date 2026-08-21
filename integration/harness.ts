@@ -15,7 +15,7 @@ import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antare
 import type { NetworkArgs } from "@antares/common/chain";
 import { isNetworkName, networkConfig, resolveRpcUrl } from "@antares/common/networks";
 
-import { addressOf, makeReader, type Reader } from "./read.ts";
+import { addressOf, makeReader, type Reader, type ResourceCost } from "./read.ts";
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -109,6 +109,15 @@ export interface Ctx {
   readonly addresses: { admin: string; depositor: string; bidderA: string; bidderB: string };
   /** Every transaction this run submitted, so the report is re-derivable from hashes alone. */
   readonly txs: { label: string; hash: string }[];
+  /**
+   * Resource costs for the two entry points a standalone profile cannot reach.
+   *
+   * `scripts/profile-resources.ts` measures 26 of 38 by simulating against the deployed instance;
+   * the twelve it misses are refused in a resting vault, and a refused simulation carries no
+   * `transactionData` at all. `bid` and `close_round` are in that twelve AND are the two whose
+   * cost grows with the round's contents, so they are measured here, where the state exists.
+   */
+  readonly costs: { bid?: ResourceCost | null; closeRound?: ResourceCost | null };
   round?: number;
   openedAt?: number;
   auctionEnd?: number;
@@ -251,6 +260,7 @@ export async function makeCtx(opts: Options): Promise<Ctx | null> {
     createTx: inst.createTx,
     addresses,
     txs: [],
+    costs: {},
   };
 }
 

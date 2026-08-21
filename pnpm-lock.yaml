@@ -73,6 +73,10 @@ importers:
         version: 5.9.3
 
   packages/common:
+    dependencies:
+      '@stellar/stellar-sdk':
+        specifier: ^16.2.0
+        version: 16.2.0
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

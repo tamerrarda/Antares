@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared off-chain seam: the single home for every network, asset and contract address (08-OFFCHAIN §1), plus event decoding, the Check vocabulary every gate reports in, retry and logging.",
+  "description": "Shared off-chain seam: the single home for every network, asset and contract address (08-OFFCHAIN \u00a71), plus event decoding, the Check vocabulary every gate reports in, retry and logging.",
   "exports": {
     ".": {
       "types": "./index.ts",
@@ -40,6 +40,10 @@
     "./logging": {
       "types": "./logging.ts",
       "default": "./dist/logging.js"
+    },
+    "./limits": {
+      "types": "./limits.ts",
+      "default": "./dist/limits.js"
     }
   },
   "files": [
@@ -53,5 +57,8 @@
   "devDependencies": {
     "@types/node": "^22.15.0",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.2.0"
   }
 }

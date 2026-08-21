@@ -19,6 +19,8 @@
 
 import { runStellar, runStellarAsync, buildInvokeArgv, type NetworkArgs } from "@antares/common/chain";
 import { withBackoff } from "@antares/common/retry";
+
+import { networkLimits as readNetworkLimits, type NetworkLimits } from "@antares/common/limits";
 import { createHash } from "node:crypto";
 
 /**
@@ -62,6 +64,14 @@ export interface SimOutcome<T> {
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(Buffer.from(bytes)).digest("hex");
 
 export interface Reader {
+  /**
+   * The network's resource limits, for the two entry points a standalone profile cannot reach.
+   *
+   * The implementation lives in `packages/common/limits.ts` and is imported rather than repeated: the
+   * adapter profile, the vault profile and this harness all need the same ceiling, and three
+   * copies of a number that changes by validator vote is three chances to disagree about it.
+   */
+  networkLimits(): Promise<NetworkLimits>;
   /** Simulate, returning the refusal as a value and the resource cost alongside it. */
   simulate<T>(contractId: string, method: string, args?: readonly unknown[]): Promise<SimOutcome<T>>;
   /** A view call, by simulation. Never signs, never submits. */
@@ -183,6 +193,9 @@ export async function makeReader(net: NetworkArgs, sourceAddress: string): Promi
   };
 
   return {
+    async networkLimits(): Promise<NetworkLimits> {
+      return readNetworkLimits(server);
+    },
     async simulate<T>(contractId: string, method: string, args: readonly unknown[] = []) {
       const tx = new TransactionBuilder(new Account(sourceAddress, "0"), {
         fee: "100",
