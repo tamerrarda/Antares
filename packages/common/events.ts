@@ -588,3 +588,182 @@ export function curveInputs(ev: EpochOpened): {
     auctionDuration,
   };
 }
+
+// =================================================================================================
+// Administrative events
+// =================================================================================================
+//
+// Deliberately a **separate union** from `DecodedEvent`, and the reason is structural rather than
+// tidy. `RoundScopedEvent` is `Exclude<DecodedEvent, FeeClaimed>` and `hasRound` implements it as
+// `name !== "fee_claimed"`. Add `paused` to `DecodedEvent` and that guard starts returning `true`
+// for an event with no round, handing every caller — the keeper, `reconstruct.ts` — a type that
+// claims a field which is not there. The two vocabularies are genuinely different: one is about
+// rounds, the other about the operator. Keeping them apart is what keeps `hasRound` honest.
+//
+// **Only shapes verified against the live contract are decoded.** The spec's §14 table lists more
+// than these, but it also describes `upgraded` as a map `{wasm_hash, app_version}` and the chain
+// emits a positional tuple — measured 2026-08-22 on the testnet instance. A decoder written from
+// the table for an event nobody has produced yet would be a guess that fails the first time it
+// matters, so the rest arrive through `UnrecognisedAdminEvent` and are shown with their raw fields
+// instead of hidden. An operator log that omits an admin action because the reader did not
+// anticipate its shape is worse than one that admits it does not understand it.
+
+/** The full configuration a vault was born with — the only place an events-only reader can learn it. */
+export interface Initialized {
+  readonly name: "initialized";
+  readonly admin: string;
+  readonly asset: string;
+  readonly oracle: string;
+  readonly feeRecipient: string;
+  readonly depositCap: bigint;
+  readonly feeBps: number;
+  readonly allowlistEnabled: boolean;
+  readonly allowlistExpiresAt: number;
+  readonly appVersion: number;
+  readonly paused: boolean;
+}
+
+export interface Paused {
+  readonly name: "paused";
+  readonly by: string;
+}
+
+export interface Unpaused {
+  readonly name: "unpaused";
+  readonly by: string;
+}
+
+export interface AllowedChanged {
+  readonly name: "allowed_changed";
+  readonly bidder: string;
+  readonly allowed: boolean;
+}
+
+export interface Upgraded {
+  readonly name: "upgraded";
+  /** Hex, so it can be compared against a build's own hash by eye. */
+  readonly wasmHash: string;
+  /** The version *before* the upgrade — `migrate` is what moves it. */
+  readonly appVersion: number;
+}
+
+/** Permissionless, not administrative — but it belongs in the same log: somebody did maintenance. */
+export interface PositionRestored {
+  readonly name: "position_restored";
+  readonly user: string;
+}
+
+/** An admin-gated call this build has no verified decoder for. Shown, never swallowed. */
+export interface UnrecognisedAdminEvent {
+  readonly name: string;
+  readonly unrecognised: true;
+  readonly topics: readonly unknown[];
+  readonly data: unknown;
+}
+
+export type AdminEvent =
+  Initialized | Paused | Unpaused | AllowedChanged | Upgraded | PositionRestored | UnrecognisedAdminEvent;
+
+export function isUnrecognised(ev: AdminEvent): ev is UnrecognisedAdminEvent {
+  return "unrecognised" in ev;
+}
+
+/**
+ * Names the contract emits that are neither round events nor operator actions.
+ *
+ * `mint` and `burn` are SEP-41 token events — every deposit and every exit produces one. They are
+ * real and they are not the operator doing anything, so an operator log that listed them would bury
+ * seven admin calls under a hundred share movements.
+ */
+const TOKEN_EVENTS: ReadonlySet<string> = new Set([
+  "mint",
+  "burn",
+  "transfer",
+  "approve",
+  "clawback",
+  "set_authorized",
+]);
+
+export function isTokenEvent(name: string): boolean {
+  return TOKEN_EVENTS.has(name);
+}
+
+function asBytesHex(value: unknown, what: string): string {
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("hex");
+  // `in` already narrows `value`, so no assertion is needed to reach `data`. Shape check first:
+  // scValToNative hands a Buffer-like object back for bytes in some environments and a Uint8Array
+  // in others, and the decoder has to survive both.
+  if (typeof value === "object" && value !== null && "data" in value && Array.isArray(value.data)) {
+    return Buffer.from(value.data).toString("hex");
+  }
+  throw new EventDecodeError(`${what} is not a byte string`);
+}
+
+const ADMIN_DECODERS: Readonly<Record<string, (ev: RawEvent) => AdminEvent>> = {
+  initialized: (ev) => ({
+    name: "initialized",
+    admin: asAddress(field(ev.data, "admin"), "initialized admin"),
+    asset: asAddress(field(ev.data, "asset"), "initialized asset"),
+    oracle: asAddress(field(ev.data, "oracle"), "initialized oracle"),
+    feeRecipient: asAddress(field(ev.data, "fee_recipient"), "initialized fee_recipient"),
+    depositCap: asAmount(ev.data, "deposit_cap"),
+    feeBps: asU32(field(ev.data, "fee_bps"), "fee_bps"),
+    allowlistEnabled: asBool(field(ev.data, "allowlist_enabled"), "allowlist_enabled"),
+    allowlistExpiresAt: Number(asAmount(ev.data, "allowlist_expires_at")),
+    appVersion: asU32(field(ev.data, "app_version"), "app_version"),
+    paused: asBool(field(ev.data, "paused"), "paused"),
+  }),
+
+  paused: (ev) => ({ name: "paused", by: asAddress(field(ev.data, "by"), "paused by") }),
+  unpaused: (ev) => ({ name: "unpaused", by: asAddress(field(ev.data, "by"), "unpaused by") }),
+
+  allowed_changed: (ev) => ({
+    name: "allowed_changed",
+    bidder: asAddress(topic(ev, 1, "allowed_changed bidder"), "allowed_changed bidder"),
+    // The whole payload is the boolean — there is no map to take a field from.
+    allowed: asBool(ev.data, "allowed_changed allowed"),
+  }),
+
+  // Positional, not a map. The §14 table says `{wasm_hash, app_version}`; the chain emits a tuple.
+  upgraded: (ev) => {
+    if (!Array.isArray(ev.data) || ev.data.length < 2) {
+      throw new EventDecodeError("upgraded payload is not a (wasm_hash, app_version) tuple");
+    }
+    return {
+      name: "upgraded",
+      wasmHash: asBytesHex(ev.data[0], "upgraded wasm_hash"),
+      appVersion: asU32(ev.data[1], "upgraded app_version"),
+    };
+  },
+
+  position_restored: (ev) => ({
+    name: "position_restored",
+    user: asAddress(topic(ev, 1, "position_restored user"), "position_restored user"),
+  }),
+};
+
+/** True for a name this module decodes as an administrative event. */
+export function isAdminEventName(name: string): boolean {
+  return name in ADMIN_DECODERS;
+}
+
+/**
+ * Decode an operator-facing event, or admit that it cannot.
+ *
+ * Never throws for an unknown name: the point of the log is completeness, and a name this build
+ * does not know is still an admin action somebody took. It returns the raw fields so the page can
+ * show what happened even when it cannot say it in words.
+ */
+export function decodeAdminEvent(ev: RawEvent): AdminEvent {
+  const name = eventName(ev);
+  const decoder = ADMIN_DECODERS[name];
+  if (decoder === undefined) {
+    return { name, unrecognised: true, topics: ev.topics, data: ev.data };
+  }
+  try {
+    return decoder(ev);
+  } catch {
+    // A shape that changed under us is exactly the case the fallback exists for.
+    return { name, unrecognised: true, topics: ev.topics, data: ev.data };
+  }
+}

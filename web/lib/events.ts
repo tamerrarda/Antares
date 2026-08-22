@@ -13,7 +13,16 @@
  * as a boundary rather than a gap.
  */
 import { rpc, scValToNative, type xdr } from "@stellar/stellar-sdk";
-import { decodeEvent, eventName, type DecodedEvent, type RawEvent } from "@antares/common/events";
+import {
+  decodableEventNames,
+  decodeAdminEvent,
+  decodeEvent,
+  eventName,
+  isTokenEvent,
+  type AdminEvent,
+  type DecodedEvent,
+  type RawEvent,
+} from "@antares/common/events";
 
 import { deployment } from "./deployment.ts";
 import { network } from "./vault.ts";
@@ -25,14 +34,25 @@ export interface VaultEvent {
   readonly at: Date | null;
 }
 
+export interface AdminRecord {
+  readonly decoded: AdminEvent;
+  readonly txHash: string;
+  readonly ledger: number;
+  readonly at: Date | null;
+}
+
 export interface EventPage {
   readonly events: readonly VaultEvent[];
+  /** Operator-facing actions, newest last. Complete: an unknown name still appears. */
+  readonly admin: readonly AdminRecord[];
+  /** Share mints and burns. Counted, not listed — every deposit and exit makes one. */
+  readonly tokenEvents: number;
   /** The oldest ledger the RPC still holds. Anything before it is unreachable, not absent. */
   readonly oldestLedger: number;
   readonly latestLedger: number;
   /** How many ledgers back the node keeps events — measured 120 960 on testnet, i.e. seven days. */
   readonly retentionLedgers: number;
-  /** Event names the RPC returned that this build has no decoder for — admin events, today. */
+  /** Names that reached neither decoder. Empty is the expected state; anything here is a gap. */
   readonly undecoded: readonly string[];
 }
 
@@ -86,7 +106,10 @@ export async function fetchEvents(env: Record<string, string | undefined> = {}):
   const oldest = health.oldestLedger + MARGIN;
 
   const events: VaultEvent[] = [];
+  const admin: AdminRecord[] = [];
   const undecoded = new Set<string>();
+  const roundNames = new Set(decodableEventNames());
+  let tokenEvents = 0;
   let cursor: string | undefined;
 
   // An empty page is not the end. `getEvents` scans FORWARD from `startLedger` and returns at most
@@ -103,22 +126,32 @@ export async function fetchEvents(env: Record<string, string | undefined> = {}):
 
     for (const e of res.events) {
       const raw = toRaw(e);
+      const meta = {
+        txHash: raw.txHash,
+        ledger: raw.ledger,
+        at: raw.ledgerClosedAt === undefined ? null : new Date(raw.ledgerClosedAt),
+      };
+      let name: string;
       try {
-        events.push({
-          decoded: decodeEvent(raw),
-          txHash: raw.txHash,
-          ledger: raw.ledger,
-          at: raw.ledgerClosedAt === undefined ? null : new Date(raw.ledgerClosedAt),
-        });
+        name = eventName(raw);
       } catch {
-        // An event this build cannot decode is collected, not thrown on. The contract emits admin
-        // events the shared decoder does not cover yet, and a history that refuses to render
-        // because it met one is worse than one that renders the rest and names what it skipped.
+        undecoded.add("(unnamed)");
+        continue;
+      }
+
+      // Three vocabularies, sorted here rather than by each page. A round event and an operator
+      // action are different subjects, and share mints are neither — every deposit makes one, so
+      // listing them in an operator log would bury seven admin calls under a hundred transfers.
+      if (isTokenEvent(name)) {
+        tokenEvents += 1;
+      } else if (roundNames.has(name)) {
         try {
-          undecoded.add(eventName(raw));
+          events.push({ decoded: decodeEvent(raw), ...meta });
         } catch {
-          undecoded.add("(unnamed)");
+          undecoded.add(name);
         }
+      } else {
+        admin.push({ decoded: decodeAdminEvent(raw), ...meta });
       }
     }
 
@@ -130,6 +163,8 @@ export async function fetchEvents(env: Record<string, string | undefined> = {}):
 
   return {
     events,
+    admin,
+    tokenEvents,
     oldestLedger: oldest,
     latestLedger: latest.sequence,
     retentionLedgers: health.ledgerRetentionWindow,
