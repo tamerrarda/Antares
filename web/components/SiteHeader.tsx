@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { WalletCorner } from "./WalletCorner.tsx";
+
 /**
  * The four destinations are 08-OFFCHAIN §3's four pages, in the order a depositor meets them.
  *
@@ -33,14 +35,7 @@ export function SiteHeader() {
           </Link>
         ))}
       </nav>
-      <div id="wallet" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <span className="net">
-          <i /> Testnet
-        </span>
-        <button className="connect" type="button">
-          Connect wallet
-        </button>
-      </div>
+      <WalletCorner />
     </header>
   );
 }
