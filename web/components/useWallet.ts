@@ -50,11 +50,19 @@ export function useWallet(): WalletState {
       if (!openModal && localStorage.getItem(REMEMBERED) === null) return;
       const wallet = await import("../lib/wallet.ts");
       if (!(await wallet.available())) {
-        if (openModal) setError("No Stellar wallet was found in this browser.");
+        if (openModal) {
+          setError(
+            "No Stellar wallet answered. Freighter, or another wallet that speaks the same protocol, " +
+              "has to be installed and unlocked in this browser before anything here can be signed. " +
+              "Everything on this page that only reads the chain works without one.",
+          );
+        }
         return;
       }
       // `connect` opens the extension's own approval prompt; `currentAddress` reads a grant that
       // already exists. Only the first is allowed to interrupt somebody who just opened the page.
+      // Both are bounded in `lib/wallet.ts` — a wallet that answers detection and then goes quiet
+      // would otherwise leave this promise, and the button that started it, open forever.
       const got = openModal ? await wallet.connect() : await wallet.currentAddress();
       const passphrase = await wallet.currentNetwork();
       localStorage.setItem(REMEMBERED, "freighter");

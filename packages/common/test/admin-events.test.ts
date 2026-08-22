@@ -17,18 +17,27 @@ import {
   type RawEvent,
 } from "../events.ts";
 
+/*
+ * Addresses are distinctive placeholders, not `G…`/`C…` literals, for two reasons and the second is
+ * the better one. `06-TEST-PLAN §8`'s network-agnostic check keeps real addresses out of TypeScript
+ * except in `packages/common/networks.ts` and `deployments/*.json`, and its own comment says the
+ * exemption is the point of the rule rather than a hole in it. And `asAddress` does not validate the
+ * format anyway — so a placeholder that names *where the value came from* proves more than a real
+ * address would: it shows which input reached which field, which is exactly what these decoders get
+ * wrong when they get anything wrong.
+ */
 const base = { txHash: "abc", ledger: 4258216, ledgerClosedAt: "2026-08-21T12:00:18Z" } as const;
 const raw = (topics: readonly unknown[], data: unknown): RawEvent => ({ ...base, topics, data });
 
 test("paused and unpaused carry who did it", () => {
-  const who = "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ";
+  const who = "address-from-the-by-field";
   assert.deepEqual(decodeAdminEvent(raw(["paused"], { by: who })), { name: "paused", by: who });
   assert.deepEqual(decodeAdminEvent(raw(["unpaused"], { by: who })), { name: "unpaused", by: who });
 });
 
 test("allowed_changed takes its bidder from the topic and its flag from the whole payload", () => {
   // The payload is the boolean itself, not a map with a field in it.
-  const bidder = "GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH";
+  const bidder = "address-from-the-topic";
   assert.deepEqual(decodeAdminEvent(raw(["allowed_changed", bidder], true)), {
     name: "allowed_changed",
     bidder,
@@ -50,10 +59,10 @@ test("upgraded is a positional tuple, not a map", () => {
 test("initialized carries the configuration a vault was born with", () => {
   const out = decodeAdminEvent(
     raw(["initialized"], {
-      admin: "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
-      asset: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-      oracle: "CBYLZC3MMO6HKC6PPPT6P5QDXUJLPXWCWSQKUQQMA324EYV6HJC4O66O",
-      fee_recipient: "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+      admin: "the-admin",
+      asset: "the-asset",
+      oracle: "the-oracle",
+      fee_recipient: "the-fee-recipient",
       deposit_cap: 1_000_000_000_000n,
       fee_bps: 0,
       allowlist_enabled: true,

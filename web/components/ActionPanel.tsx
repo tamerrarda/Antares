@@ -80,6 +80,18 @@ export function ActionPanel({
           ? explain(25)
           : null;
 
+  /**
+   * The field is cleared on a tab change, and that is a correctness fix rather than tidiness.
+   * "0.5" typed as XLM becomes "0.5" read as **shares** the moment the tab flips — the same digits
+   * meaning a different quantity, with a different minimum and a different consequence. Carrying it
+   * over is how somebody exits half a share believing they are depositing half an XLM.
+   */
+  function switchTo(next: "deposit" | "withdraw") {
+    setTab(next);
+    setValue("");
+    clear();
+  }
+
   async function fire(key: string, build: Promise<unknown>, site?: CallSite) {
     const result = await run(key, build, site);
     if (result?.status === "sent") {
@@ -91,40 +103,31 @@ export function ActionPanel({
   const client = wallet.address === null ? null : writeClient(wallet.address, env);
   const who = wallet.address ?? "";
 
-  const cta =
-    wallet.address === null
-      ? `Connect wallet to ${tab}`
-      : wallet.wrongNetwork
-        ? "Switch network first"
-        : busy !== null
-          ? "Waiting for your wallet…"
-          : tab === "deposit"
-            ? "Deposit"
-            : requireIdle
-              ? "Exit now, or not at all"
-              : "Queue an exit";
+  // A button that says "connect wallet" and cannot be pressed is an instruction with nothing behind
+  // it: the reader does what it says, nothing happens, and the page has told them a small lie. When
+  // there is no wallet the primary action IS connecting, so that is what it does.
+  const needsWallet = wallet.address === null;
+  const cta = needsWallet
+    ? wallet.connecting
+      ? "Connecting…"
+      : "Connect wallet"
+    : wallet.wrongNetwork
+      ? "Switch network first"
+      : busy !== null
+        ? "Waiting for your wallet…"
+        : tab === "deposit"
+          ? "Deposit"
+          : requireIdle
+            ? "Exit now, or not at all"
+            : "Queue an exit";
 
   return (
     <div className="card">
       <div className="tabs">
-        <button
-          aria-selected={tab === "deposit"}
-          type="button"
-          onClick={() => {
-            setTab("deposit");
-            clear();
-          }}
-        >
+        <button aria-selected={tab === "deposit"} type="button" onClick={() => switchTo("deposit")}>
           Deposit
         </button>
-        <button
-          aria-selected={tab === "withdraw"}
-          type="button"
-          onClick={() => {
-            setTab("withdraw");
-            clear();
-          }}
-        >
+        <button aria-selected={tab === "withdraw"} type="button" onClick={() => switchTo("withdraw")}>
           Withdraw
         </button>
       </div>
@@ -185,9 +188,17 @@ export function ActionPanel({
           className="cta"
           type="button"
           disabled={
-            !connected || busy !== null || stroops === null || stroops === 0n || localRefusal !== null
+            needsWallet
+              ? wallet.connecting
+              : !connected || busy !== null || stroops === null || stroops === 0n || localRefusal !== null
           }
           onClick={() => {
+            // With no wallet the primary action IS connecting. A button that reads "connect wallet"
+            // and cannot be pressed is an instruction with nothing behind it.
+            if (needsWallet) {
+              void wallet.connect();
+              return;
+            }
             if (client === null || stroops === null) return;
             void (tab === "deposit"
               ? fire("deposit", client.deposit({ from: who, amount: stroops }))
@@ -229,6 +240,18 @@ export function ActionPanel({
         </p>
       </div>
 
+      {/* The wallet's own failures had nowhere to appear: `useWallet` set `error` and no component
+          read it, so "no wallet answered" was a state the page reached and never showed. */}
+      {wallet.error !== null && (
+        <Refusal
+          text={{
+            name: "Wallet",
+            kind: "blocked",
+            title: "No wallet is available to sign with.",
+            body: wallet.error,
+          }}
+        />
+      )}
       {localRefusal !== null && <Refusal text={localRefusal} />}
       {outcome?.status === "refused" && <Refusal text={outcome.refusal} signed={outcome.signed} />}
       {outcome?.status === "sent" && (

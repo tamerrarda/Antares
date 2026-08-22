@@ -179,6 +179,10 @@
       .meta { display: flex; justify-content: space-between; gap: 12px; color: var(--faint); margin-top: 9px; }
       .cta { width: 100%; font: inherit; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #0a0b0f; background: var(--ink); border: 0; padding: 15px; margin-top: 16px; cursor: pointer; }
       .cta:hover { background: #fff; }
+      /* Without this a refused amount leaves a bright, inviting button that does nothing when
+         pressed — the control says "press me" and the page says nothing back. */
+      .cta:disabled { background: transparent; color: var(--faint); border: 1px solid var(--rule-soft); cursor: not-allowed; }
+      .cta:disabled:hover { background: transparent; }
       .note { color: var(--faint); line-height: 1.65; margin: 14px 0 0; }
       .note b { color: var(--dim); font-weight: 400; }
 

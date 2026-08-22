@@ -18,7 +18,8 @@
     "test": "pnpm -r test",
     "check": "pnpm fmt && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm bindings:check",
     "bindings:check": "node --experimental-strip-types scripts/generate-bindings.ts",
-    "bindings:write": "node --experimental-strip-types scripts/generate-bindings.ts --write"
+    "bindings:write": "node --experimental-strip-types scripts/generate-bindings.ts --write",
+    "check:network": "bash scripts/ci/network-agnostic-ts.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

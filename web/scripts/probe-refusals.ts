@@ -24,10 +24,18 @@ import type { CallSite } from "../lib/errors.ts";
 
 import { explain } from "../lib/errors.ts";
 import { submit } from "../lib/tx.ts";
-import { writeClient } from "../lib/vault.ts";
+import { readConfig, vaultClient, writeClient } from "../lib/vault.ts";
 
-/** The deployer, which is public record in `deployments/testnet.json`. No key is used. */
-const WHO = "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ";
+/**
+ * Whose refusals to provoke: the vault's own admin, read from the chain.
+ *
+ * Not a literal. `06-TEST-PLAN §8`'s network-agnostic check keeps addresses out of TypeScript
+ * outside two exempt paths, and this file was violating it. Reading `config().admin` is also the
+ * better answer on its own terms — the admin is the account that deposited, so it is the one whose
+ * position makes "exit a sane number of shares" a meaningful case, and the probe stays correct
+ * against a vault deployed by somebody else.
+ */
+const WHO = (await readConfig(vaultClient(process.env))).admin;
 
 const client = writeClient(WHO, process.env);
 const refuses: Parameters<typeof submit>[1] = {
