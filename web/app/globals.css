@@ -63,6 +63,12 @@
       main { position: relative; z-index: 3; width: 100%; max-width: 1240px; margin: 0 auto; flex: 1; padding: 34px clamp(18px, 3vw, 34px) 70px; }
 
       .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; flex-wrap: wrap; margin-bottom: 26px; }
+      /* The figure that sits opposite the title — a spot price, a round number. Named rather than
+         addressed by position: `:last-child` also matches the title block on every page that has
+         no second column, and on a phone that turned four headings into a heading beside its own
+         subtitle. A rule scoped by position is a rule that fires on the wrong element the moment
+         the markup it assumed stops being universal. */
+      .head .spot { text-align: right; }
       .vault-pick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
       h1 { font-family: var(--display); font-weight: 700; font-size: 33px; letter-spacing: 0.02em; margin: 0; line-height: 1; }
       .tag { border: 1px solid var(--rule); padding: 5px 9px; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; }
@@ -303,8 +309,8 @@
         .head { align-items: flex-start; gap: 12px; }
         /* The spot price was a right-aligned column with a label stacked over it; at this width it
            landed under the phase line looking like an orphaned heading. One line, reading order. */
-        .head > div:last-child { text-align: left !important; display: flex; align-items: baseline; gap: 9px; }
-        .head > div:last-child .k { margin: 0; }
+        .head .spot { text-align: left; display: flex; align-items: baseline; gap: 9px; }
+        .head .spot .k { margin: 0; }
 
         .card > h2 { padding: 12px 14px; }
         .body { padding: 14px; }

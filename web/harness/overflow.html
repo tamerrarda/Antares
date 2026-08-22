@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>overflow</title>
+<style>body{background:#0d0f14;color:#e8e6e1;font:13px ui-monospace,Menlo,monospace;padding:20px}
+table{border-collapse:collapse}td,th{padding:5px 12px;text-align:left;border-bottom:1px solid #262a33}
+.ok{color:#6ee7a8}.bad{color:#ff6b3d;font-weight:700}iframe{position:absolute;left:-9999px;top:0}</style>
+</head><body>
+<h3>Horizontal overflow — measured, not eyeballed</h3>
+<p id="p">running…</p>
+<table id="t"><tr><th>route</th><th>width</th><th>scrollWidth</th><th></th></tr></table>
+<script>
+// A page whose body is wider than its viewport is the one mobile bug invisible in a screenshot
+// taken at the wrong window size — Chrome on macOS will not open a window under 500px, so a
+// `--window-size=375` run is a crop of a 500px layout. An iframe has no such floor.
+//
+// Every route here reads the chain on mount, so each frame is given time to finish before it is
+// measured: a page measured while it still says "reading…" is a page whose real layout was never
+// tested.
+const ROUTES = ["/", "/rounds/", "/claims/", "/positions/", "/compare/", "/operator/"];
+const WIDTHS = [320, 375, 393, 430, 744];
+const SETTLE = 5200;
+const t = document.getElementById("t"), p = document.getElementById("p");
+const queue = [];
+for (const r of ROUTES) for (const w of WIDTHS) queue.push([r, w]);
+let i = 0, bad = 0;
+function next() {
+  if (i >= queue.length) {
+    p.textContent = `${queue.length} combinations checked.`;
+    if (bad === 0) t.insertRow().innerHTML = `<td colspan="4" class="ok">All clean — no page is wider than its viewport.</td>`;
+    document.title = "done";
+    return;
+  }
+  const [route, w] = queue[i++];
+  p.textContent = `${i}/${queue.length}  ${route} @ ${w}`;
+  const f = document.createElement("iframe");
+  f.width = w; f.height = 900; f.src = route;
+  f.onload = () => setTimeout(() => {
+    try {
+      const d = f.contentDocument.documentElement;
+      const over = d.scrollWidth - d.clientWidth;
+      if (over > 0) {
+        bad++;
+        t.insertRow().innerHTML = `<td>${route}</td><td>${w}</td><td>${d.scrollWidth}</td><td class="bad">OVERFLOWS by ${over}px</td>`;
+      }
+    } catch (e) { t.insertRow().innerHTML = `<td>${route}</td><td>${w}</td><td>-</td><td class="bad">${e}</td>`; }
+    f.remove(); next();
+  }, SETTLE);
+  document.body.appendChild(f);
+}
+next();
+</script></body></html>

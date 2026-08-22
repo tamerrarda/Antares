@@ -83,7 +83,7 @@ export default function VaultPage() {
             <span>{face.note}</span>
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
+        <div className="spot">
           <span className="k">Price per share</span>
           <span className="big" style={{ fontSize: 22 }}>
             {(Number(epoch.last_pps) / 1e7).toFixed(5)}

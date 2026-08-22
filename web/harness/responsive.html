@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>responsive</title>
+<style>body{margin:0;background:#14161c;color:#a8a29a;font:12px ui-monospace,Menlo,monospace;padding:16px}
+.row{display:flex;gap:16px;align-items:flex-start}figure{margin:0}
+figcaption{padding:0 0 7px;letter-spacing:.1em}iframe{border:1px solid #333;background:#05060a;display:block}</style>
+</head><body><div class="row" id="row"></div>
+<script>
+// Two modes. `#/route` shows one route across four devices — the responsive question.
+// `#/a,/b,/c` shows several routes at one device — the coverage question. Neither answers the other.
+const SIZES = [["iPhone 13 mini · 375×812",375,812],["iPhone 15 Pro · 393×852",393,852],["iPhone 15 Pro Max · 430×932",430,932],["iPad mini · 744×1000",744,1000]];
+const target = location.hash.slice(1) || "/";
+const many = target.includes(",") ? target.split(",") : null;
+const y = Number(new URLSearchParams(location.search).get("y") || 0);
+const cells = many ? many.map(r => [r, 393, 1000]) : SIZES;
+document.getElementById("row").innerHTML = cells.map(([label,w,h],i) =>
+  `<figure><figcaption>${label}</figcaption>
+     <iframe src="${many ? many[i] : target}" width="${w}" height="${h}" scrolling="no"
+             onload="setTimeout(()=>{try{this.contentWindow.scrollTo(0,${y})}catch(e){}},4200)"></iframe>
+   </figure>`).join("");
+</script></body></html>
