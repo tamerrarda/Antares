@@ -5,18 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Antares — scroll sequence, option B</title>
     <style>
+      /* Departure Mono — Helena Zhang, SIL OFL 1.1. See public/fonts/LICENCE.md for why this
+         rather than VCR OSD Mono, which was fetched first and dropped: VCR's only permission was a
+         distributor's category label, and its 204 glyphs are missing the six Turkish letters this
+         project will eventually need. */
+      @font-face {
+        font-family: "Departure Mono";
+        src:
+          url("./public/fonts/departure-mono.woff2") format("woff2"),
+          url("./public/fonts/departure-mono.woff") format("woff");
+        font-display: swap;
+        font-weight: 400;
+      }
+
+      /* Chakra Petch — Cadson Demak, SIL OFL 1.1. Headings only. Genuinely angular: its corners
+         are cut rather than rounded, which is what the pixel face cannot do at display size
+         without reading as a game title. Two weights, because a heading that sits over the star's
+         bright side needs 700 while one over black holds at 600. */
+      @font-face {
+        font-family: "Chakra Petch";
+        src: url("./public/fonts/chakra-petch-600.woff2") format("woff2");
+        font-weight: 600;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Chakra Petch";
+        src: url("./public/fonts/chakra-petch-700.woff2") format("woff2");
+        font-weight: 700;
+        font-display: swap;
+      }
+
       :root {
         --ink: #f4f1ea;
+        --display: "Chakra Petch", system-ui, sans-serif;
         --dim: #a8a29a;
         --ember: #ff6b3d;
       }
-      * { box-sizing: border-box; }
-      html { scroll-behavior: auto; }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: auto;
+      }
       body {
         margin: 0;
         background: #05060a;
         color: var(--ink);
-        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-family: "Departure Mono", ui-monospace, "SF Mono", Menlo, monospace;
         -webkit-font-smoothing: antialiased;
       }
 
@@ -28,18 +63,35 @@
         z-index: 0;
         background: #05060a;
       }
-      #stage img {
+      /* One transformed layer, not thirteen. The transform used to be written to every image on
+         every scrolled frame and each carried `will-change`, which promotes all thirteen to their
+         own compositor layers and keeps them there. On a phone that is the difference between a
+         scroll that moves and one that fights back. Now the plate moves and the images only cross-
+         fade inside it. */
+      #plate {
         position: absolute;
         top: 50%;
         left: 50%;
         width: 100%;
         height: 100%;
-        object-fit: cover;
         transform-origin: 50% 50%;
-        will-change: transform, opacity;
+        will-change: transform;
+      }
+      #stage img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
         opacity: 0;
       }
       /* A vignette so text stays readable over the bright side of the disc. */
+      /* Two scrims, and which one is used is MEASURED rather than guessed at a breakpoint.
+         The side scrim only works when the star can actually be pushed out of the text column, and
+         whether it can depends on the pan headroom `object-fit: cover` leaves — which is a function
+         of the window's aspect, not its width. At 834x1000 there is none: the plate is the same
+         shape as the viewport, the star sits dead centre and body copy lands on its bright limb.
+         So `render()` sets data-scrim and the floor version takes over wherever the pan cannot. */
       #veil {
         position: fixed;
         inset: 0;
@@ -49,31 +101,97 @@
           linear-gradient(90deg, rgba(5, 6, 10, 0.92) 0%, rgba(5, 6, 10, 0.72) 28%, rgba(5, 6, 10, 0) 58%),
           linear-gradient(0deg, rgba(5, 6, 10, 0.75) 0%, rgba(5, 6, 10, 0) 35%);
       }
+      body[data-scrim="floor"] #veil {
+        background: linear-gradient(
+          0deg,
+          rgba(5, 6, 10, 0.84) 0%,
+          rgba(5, 6, 10, 0.7) 24%,
+          rgba(5, 6, 10, 0.34) 50%,
+          rgba(5, 6, 10, 0) 78%
+        );
+      }
+      body[data-scrim="floor"] section {
+        align-items: flex-end;
+        padding-bottom: 11vh;
+      }
+      body[data-scrim="floor"] .copy {
+        max-width: 62ch;
+      }
 
       /* Content scrolls over the fixed stage. */
-      main { position: relative; z-index: 2; }
+      main {
+        position: relative;
+        z-index: 2;
+      }
       section {
+        /* `svh` is the viewport at its SMALLEST — the address bar showing. `vh` is the largest, so
+           on iOS every section grows and shrinks as the bar hides, the document height moves under
+           the reader mid-gesture and the scroll position gets clamped. `vh` stays as the fallback
+           for engines without `svh`. */
         min-height: 100vh;
+        min-height: 100svh;
         display: flex;
         align-items: center;
         padding: 0 clamp(24px, 7vw, 120px);
       }
-      .copy { max-width: 42ch; }
+      /* The copy carries its own ground. A fixed scrim cannot: the blocks travel the full height
+         of the screen as the page scrolls, so any gradient pinned to the viewport is dark in the
+         wrong place half the time — measured mid-scroll, a paragraph was sitting on the disc's
+         brightest area with the floor scrim two hundred pixels below it. This one moves with the
+         text. It is soft and off-centre rather than a panel, so it reads as the plate being darker
+         behind the words rather than as a box drawn on top of it. */
+      .copy {
+        max-width: 42ch;
+        position: relative;
+        isolation: isolate;
+      }
+      .copy::before {
+        content: "";
+        position: absolute;
+        /* Far larger than the text it darkens, on purpose. A radial gradient still lives in a
+           rectangle, so wherever it is not yet transparent AT THE BOX EDGE you see a straight cut —
+           which is what the first version produced: a visible panel, the exact thing this was meant
+           to avoid. Oversizing the box and reaching full transparency at 62% puts the whole falloff
+           well inside it, so the edge has nothing left to reveal. */
+        inset: -90px -70px -100px -64px;
+        z-index: -1;
+        background: radial-gradient(
+          58% 54% at 34% 50%,
+          rgba(5, 6, 10, 0.92) 0%,
+          rgba(5, 6, 10, 0.78) 30%,
+          rgba(5, 6, 10, 0.4) 47%,
+          transparent 62%
+        );
+      }
+      h1,
+      h2,
+      p {
+        text-shadow: 0 1px 10px rgba(5, 6, 10, 0.7);
+      }
       h1 {
-        font-size: clamp(38px, 6.4vw, 86px);
-        line-height: 0.98;
-        letter-spacing: -0.03em;
+        font-family: var(--display);
+        font-size: clamp(40px, 6.6vw, 88px);
+        line-height: 0.96;
+        /* Chakra Petch is already tightly fitted; the -0.03em that suited the mono closes its
+           cut corners into each other. */
+        letter-spacing: -0.015em;
         margin: 0 0 22px;
-        font-weight: 500;
+        font-weight: 700;
       }
       h2 {
-        font-size: clamp(22px, 3vw, 40px);
-        line-height: 1.1;
-        letter-spacing: -0.02em;
-        margin: 0 0 16px;
-        font-weight: 500;
+        font-family: var(--display);
+        font-size: clamp(24px, 3.2vw, 44px);
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        margin: 0 0 18px;
+        font-weight: 600;
       }
-      p { font-size: clamp(14px, 1.15vw, 17px); line-height: 1.65; color: var(--dim); margin: 0 0 14px; }
+      p {
+        font-size: clamp(14px, 1.15vw, 17px);
+        line-height: 1.65;
+        color: var(--dim);
+        margin: 0 0 14px;
+      }
       .tag {
         display: inline-block;
         font-size: 11px;
@@ -85,8 +203,140 @@
         padding: 5px 12px;
         margin-bottom: 26px;
       }
-      .fade { opacity: 0; transform: translateY(18px); transition: opacity 0.7s ease, transform 0.7s ease; }
-      .fade.in { opacity: 1; transform: none; }
+      /* Short and early. At 0.7s a block spends most of its fade travelling up the screen, so it
+         finishes arriving somewhere above where the reader is looking — "late AND too high" is one
+         symptom, not two. */
+      .fade {
+        opacity: 0;
+        transform: translateY(10px);
+        transition:
+          opacity 0.34s ease,
+          transform 0.34s ease;
+      }
+      .fade.in {
+        opacity: 1;
+        transform: none;
+      }
+
+      /* --- the bar that never leaves ------------------------------------------------------- */
+      header {
+        position: fixed;
+        isolation: isolate;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px clamp(18px, 4vw, 44px);
+        pointer-events: none;
+      }
+      header > * {
+        pointer-events: auto;
+      }
+      /* Content scrolls UNDER a fixed header, which is fine on a tall screen and not on a short
+         one: at 844x390 a headline spends most of its transit behind the brand. A scrim on the bar
+         itself fixes it everywhere rather than only where it was noticed — it is drawn behind the
+         brand and the button, so both stay legible over whatever is passing beneath. */
+      header::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: linear-gradient(
+          180deg,
+          rgba(5, 6, 10, 0.92) 0%,
+          rgba(5, 6, 10, 0.62) 55%,
+          rgba(5, 6, 10, 0) 100%
+        );
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        text-decoration: none;
+        color: var(--ink);
+      }
+      .brand img {
+        width: 34px;
+        height: auto;
+        display: block;
+      }
+      .brand span {
+        /* 22px, not 20 or 17. Departure Mono's README asks for increments of 11px and the font is
+           drawn on a 550-unit em — 550 / 11 = 50 — so only multiples of 11 put its pixels on whole
+           device pixels. At 17px every stem was being resampled, which is what read as thin.
+           Snapping to the grid is most of the weight this needed. */
+        font-size: 22px;
+        letter-spacing: 0.24em;
+        /* The tracking above adds a trailing gap the eye reads as off-centre; pull it back. */
+        margin-right: -0.24em;
+        /* The rest of the weight. A pixel face has one weight and `font-weight: bold` makes the
+           browser SYNTHESISE one by smearing horizontally off-grid — the exact thing the line
+           above just fixed. A one-pixel shadow thickens the stem by a whole pixel instead, which
+           is how the face would have been drawn bold if it had been. */
+        text-shadow: 1px 0 0 currentColor;
+      }
+      /* --- the one action on the page ------------------------------------------------------
+         Transparent body, a full white rule around it. The star passes behind the label rather
+         than under a panel — no second surface between the reader and the artwork — and the whole
+         outline carries the shape instead of four corner marks. 2px because 1px disappears where
+         the plate is brightest; the label and the mark carry a shadow for the same reason, since
+         a plate behind them would put back the surface this treatment exists to remove. */
+      .launch {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font: inherit;
+        font-size: 13px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        text-decoration: none;
+        color: #ffffff;
+        background: transparent;
+        border: 2px solid #ffffff;
+        border-radius: 0;
+        padding: 13px 25px;
+        text-shadow: 0 1px 6px rgba(5, 6, 10, 0.85);
+        transition:
+          background 0.22s ease,
+          color 0.22s ease;
+      }
+      .launch .spark {
+        width: 12px;
+        height: 12px;
+        flex: none;
+        fill: #ffffff;
+        filter: drop-shadow(0 1px 5px rgba(5, 6, 10, 0.85));
+        transition:
+          transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+          fill 0.22s ease;
+      }
+      .launch:hover {
+        background: #ffffff;
+        color: #0a0b0f;
+        text-shadow: none;
+      }
+      .launch:hover .spark {
+        fill: #0a0b0f;
+        filter: none;
+        transform: rotate(90deg);
+      }
+      .launch:active {
+        background: #d6dae4;
+      }
+      .launch:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 4px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .launch,
+        .launch .spark {
+          transition: none;
+        }
+      }
 
       /* A readout, so this demo can be judged on numbers and not only on feel. */
       #hud {
@@ -106,22 +356,166 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
-        #stage img { transition: none !important; }
+        #stage img,
+        #plate {
+          transition: none !important;
+        }
       }
       @media (max-width: 820px) {
-        /* Portrait: the star is a band at the top and the text lives under it, because a phone
-           has no room beside a disc that wide. */
-        #veil {
-          background:
-            linear-gradient(0deg, rgba(5, 6, 10, 0.95) 0%, rgba(5, 6, 10, 0.75) 30%, rgba(5, 6, 10, 0) 62%);
+        /* Portrait: the star is a band at the top and the text lives UNDER it, because a phone has
+           no room beside a disc that wide. So the scrim flips from a left-hand column to a floor —
+           the copy needs a dark ground beneath it, not a dark side. */
+        .copy {
+          max-width: none;
         }
-        section { align-items: flex-end; padding-bottom: 12vh; }
+        /* The same construction as the desktop scrim, not a different one: a radial that reaches
+           full transparency INSIDE its own box, so it ends on every side by fading rather than by
+           being cut. Only the proportions change, because the block does — a wide, short block on
+           a phone against a narrow column on a desktop — so the ellipse is centred and wider and
+           the box is oversized to keep the falloff away from its edges. The `mask` the band needed
+           is gone with the band: a radial does not need one. */
+        /* Light, and the work moves to the letters.
+           A block scrim always has a shape, so the more it does the more it announces itself — and
+           every complaint about this on the phone has been about the shape rather than the
+           darkness. A text-shadow has no shape: it hugs the glyphs, so it cannot show an edge no
+           matter how strong it is. So the panel drops to roughly a third of its opacity and turns
+           into a long, many-stopped falloff that is closer to a haze than a scrim, and the legibility
+           it stops providing is picked up by two shadows on the type itself — one tight enough to
+           hold a letterform against a bright plasma edge, one wide and soft to seat the block. */
+        .copy::before {
+          inset: -110px -96px -120px -90px;
+          background: radial-gradient(
+            100% 100% at 50% 50%,
+            rgba(5, 6, 10, 0.44) 0%,
+            rgba(5, 6, 10, 0.42) 20%,
+            rgba(5, 6, 10, 0.36) 29%,
+            rgba(5, 6, 10, 0.27) 36%,
+            rgba(5, 6, 10, 0.17) 42%,
+            rgba(5, 6, 10, 0.07) 47%,
+            transparent 50%
+          );
+          -webkit-mask-image: none;
+          mask-image: none;
+        }
+        h1,
+        h2,
+        p {
+          text-shadow:
+            0 1px 3px rgba(5, 6, 10, 0.95),
+            0 2px 16px rgba(5, 6, 10, 0.85);
+        }
+        h1 {
+          font-size: clamp(30px, 8.6vw, 44px);
+        }
+        h2 {
+          font-size: clamp(21px, 6.2vw, 32px);
+        }
+        p {
+          font-size: 14px;
+        }
+      }
+
+      /* Phones. The header is the piece that actually breaks first: at 390px the brand and the
+         button together were wider than the viewport, and because the header sets the document's
+         width, EVERYTHING below inherited the overflow — the headline and the body copy ran off
+         the right edge for a reason that had nothing to do with them. Measured in headless Chrome
+         at 390x844 rather than guessed. */
+      @media (max-width: 560px) {
+        header {
+          padding: 13px 16px;
+        }
+        .brand {
+          gap: 9px;
+        }
+        .brand img {
+          width: 24px;
+        }
+        .brand span {
+          font-size: 11px;
+          letter-spacing: 0.18em;
+          margin-right: -0.18em;
+        }
+        .launch {
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          gap: 7px;
+          padding: 10px 14px;
+          border-width: 1px;
+          white-space: nowrap;
+        }
+        .launch .spark {
+          width: 10px;
+          height: 10px;
+        }
+        section {
+          padding-left: 20px;
+          padding-right: 20px;
+        }
+        section:first-child {
+          padding-top: 76px;
+        }
+      }
+
+      /* Short viewports — a phone held sideways is 390px tall, and the desktop type scale plus a
+         100vh section puts the headline straight through the fixed header. Keyed on HEIGHT because
+         that is what is scarce here: an 844x390 window is wide by every width rule and still has
+         no room. Measured at 844x390, where the h1 was colliding with the brand. */
+      @media (max-height: 560px) {
+        section {
+          align-items: flex-end;
+          padding-top: 68px;
+          padding-bottom: 7vh;
+        }
+        h1 {
+          font-size: clamp(22px, 6.4vh, 32px);
+        }
+        h2 {
+          font-size: clamp(18px, 5.4vh, 26px);
+        }
+        p {
+          font-size: 13px;
+          line-height: 1.5;
+        }
+        .tag {
+          margin-bottom: 12px;
+          padding: 4px 10px;
+        }
+        .copy::before {
+          inset: -60px -50px -70px -46px;
+        }
+      }
+
+      /* `overflow-x: hidden` on BOTH html and body is a known way to break scrolling on iOS: it
+         turns the document into a scroll container and the page can end up pinned — which is the
+         symptom reported, stuck at the bottom with no way back up. `clip` forbids the horizontal
+         overflow without creating a scroll container, and it is applied to one element, not two. */
+      body {
+        overflow-x: clip;
       }
     </style>
   </head>
   <body>
-    <div id="stage"></div>
+    <div id="stage"><div id="plate"></div></div>
     <div id="veil"></div>
+
+    <header>
+      <a class="brand" href="/" aria-label="Antares — home">
+        <img src="./public/antares-mark-96.webp" alt="" width="96" height="109" />
+        <span>ANTARES</span>
+      </a>
+      <!-- The app is a separate surface; this landing page never does chain work itself. The
+           href is the seam, and it is deliberately a plain link rather than a router push. -->
+      <a class="launch" href="/app">
+        <!-- The brand mark, drawn rather than loaded: at 12px a raster would be resampled, and
+             this is the one place the star appears at text size. -->
+        <svg class="spark" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 0c.6 6.4 5 10.8 12 12-7 1.2-11.4 5.6-12 12-.6-6.4-5-10.8-12-12 7-1.2 11.4-5.6 12-12z"
+          />
+        </svg>
+        Launch app
+      </a>
+    </header>
 
     <main>
       <section>
@@ -129,9 +523,8 @@
           <span class="tag">Testnet · Stellar</span>
           <h1>The premium is the point.</h1>
           <p>
-            Antares writes covered calls against a vault of XLM and sells them in a descending-price
-            auction. The premium the auction discovers is paid to depositors, whatever the option
-            does next.
+            Antares writes covered calls against a vault of XLM and sells them in a descending-price auction.
+            The premium the auction discovers is paid to depositors, whatever the option does next.
           </p>
         </div>
       </section>
@@ -140,9 +533,9 @@
         <div class="copy fade">
           <h2>An auction, not a quote.</h2>
           <p>
-            The price starts high and falls until somebody takes it. Nobody sets the premium — the
-            first bidder willing to pay does, and the curve is published in the event that opens the
-            round, so anyone can evaluate it without asking us.
+            The price starts high and falls until somebody takes it. Nobody sets the premium — the first
+            bidder willing to pay does, and the curve is published in the event that opens the round, so
+            anyone can evaluate it without asking us.
           </p>
         </div>
       </section>
@@ -151,8 +544,8 @@
         <div class="copy fade">
           <h2>Every round is verifiable.</h2>
           <p>
-            State can be rebuilt from transaction hashes and events alone and diffed against what
-            the contract reports. That is a test in this repository, not a claim on this page.
+            State can be rebuilt from transaction hashes and events alone and diffed against what the contract
+            reports. That is a test in this repository, not a claim on this page.
           </p>
         </div>
       </section>
@@ -161,9 +554,9 @@
         <div class="copy fade">
           <h2>Pause can never hold funds.</h2>
           <p>
-            The entire exit path is unpausable. Closing a round, requesting and claiming a
-            withdrawal, and every bidder claim all work while the vault is paused — so an admin can
-            stop new risk and can never trap what is already there.
+            The entire exit path is unpausable. Closing a round, requesting and claiming a withdrawal, and
+            every bidder claim all work while the vault is paused — so an admin can stop new risk and can
+            never trap what is already there.
           </p>
         </div>
       </section>
@@ -172,9 +565,9 @@
         <div class="copy fade">
           <h2>No oracle state can trap a round.</h2>
           <p>
-            Past a fixed deadline the round closes with no oracle call at all. A dead feed refunds
-            the bidder in full; a feed that merely aged out resolves the other way. The two are
-            different facts and the contract keeps them apart.
+            Past a fixed deadline the round closes with no oracle call at all. A dead feed refunds the bidder
+            in full; a feed that merely aged out resolves the other way. The two are different facts and the
+            contract keeps them apart.
           </p>
         </div>
       </section>
@@ -183,8 +576,8 @@
         <div class="copy fade">
           <h2>Nothing here is a yield figure.</h2>
           <p>
-            This runs on testnet with test XLM. A depositor can win and can also simply keep their
-            capital and the premium — what they cannot do is be told a number we have not measured.
+            This runs on testnet with test XLM. A depositor can win and can also simply keep their capital and
+            the premium — what they cannot do is be told a number we have not measured.
           </p>
         </div>
       </section>
@@ -208,29 +601,78 @@
       const hud = document.getElementById("hud");
       const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+      const plate = document.getElementById("plate");
       const imgs = [];
       const ready = [];
       let loaded = 0;
-      for (let i = 1; i <= COUNT; i += 1) {
+
+      const srcOf = (i) => `./public/frames/${set.dir}/${String(i + 1).padStart(2, "0")}.webp`;
+
+      for (let i = 0; i < COUNT; i += 1) {
         const el = document.createElement("img");
         el.decoding = "async";
-        // Everything is eager in the DEMO so the HUD's "loaded" counter means something and a
-        // fast scroll never shows a gap. The real page loads a sliding window around the current
-        // frame instead — 13 frames is 4.8 MB on the wide set and only the first is on the
-        // critical path.
-        el.src = `./public/frames/${set.dir}/${String(i).padStart(2, "0")}.webp`;
         el.alt = "";
-        ready[i - 1] = false;
-        el.addEventListener("load", () => { ready[i - 1] = true; loaded += 1; render(); });
-        el.addEventListener("error", () => {
-          // One retry, then leave it unready. `nearestReady` below means an unready frame is
-          // simply never shown — the sequence holds the last frame it actually has instead of
-          // flashing black, which is what a slow network produces and what the first demo did.
-          setTimeout(() => { el.src = `${el.src.split("?")[0]}?retry=1`; }, 400);
+        ready[i] = false;
+        el.addEventListener("load", () => {
+          // `load` means the BYTES arrived, not that there are pixels. Painting an undecoded image
+          // decodes it synchronously on the main thread, which at 1408x1535 is the hitch that
+          // showed up as the sequence stuttering mid-scroll. `decode()` does it off the critical
+          // path and the frame is only eligible to be shown once it resolves.
+          el.decode().then(
+            () => {
+              if (!el.getAttribute("src")) return;
+              ready[i] = true;
+              loaded += 1;
+              // Through the rAF throttle, never straight into render(): several frames can finish
+              // in the same tick and each was forcing its own synchronous layout read mid-scroll.
+              onScroll();
+            },
+            () => {},
+          );
         });
-        stage.appendChild(el);
+        el.addEventListener("error", () => {
+          if (el.dataset.retried) return;
+          el.dataset.retried = "1";
+          setTimeout(() => {
+            if (el.src) el.src = `${srcOf(i)}?retry=1`;
+          }, 400);
+        });
+        plate.appendChild(el);
         imgs.push(el);
       }
+
+      /**
+       * Only a window of frames is allowed to exist as decoded pixels.
+       *
+       * Loading all thirteen at once is what made the first scroll on a phone refuse to move: the
+       * portrait set is 1408x1535, which is 8.6 MB of bitmap per frame once decoded, so thirteen
+       * of them is over a hundred megabytes the browser has to produce before it can do anything
+       * else. Two either side is enough to cross-fade and to absorb a fast flick; everything
+       * outside gives its memory back. `src` is removed rather than the element, so the stacking
+       * order never changes and nothing reflows.
+       */
+      const WINDOW = 3;
+      /** The frame actually on screen. It is never evicted, however far the window has moved. */
+      let shownBase = -1;
+      function windowFrames(i) {
+        for (let k = 0; k < COUNT; k += 1) {
+          // Protecting the visible frame is the whole difference between a window that slides and
+          // one that blinks: jump the scrollbar to the middle and the new neighbours have not
+          // downloaded yet, so evicting what is on screen leaves nothing to show. Measured — it
+          // rendered black.
+          const want = Math.abs(k - i) <= WINDOW || k === shownBase;
+          const has = imgs[k].getAttribute("src") !== null;
+          if (want && !has) {
+            imgs[k].setAttribute("src", srcOf(k));
+          } else if (!want && has) {
+            imgs[k].removeAttribute("src");
+            if (ready[k]) loaded -= 1;
+            ready[k] = false;
+            imgs[k].style.opacity = "0";
+          }
+        }
+      }
+      windowFrames(0);
 
       const lerp = (a, b, t) => a + (b - a) * t;
       const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -257,7 +699,7 @@
       // free headroom. The HUD prints the resulting upscale factor; keep it under about 1.15.
       const START_X = set.portrait ? 0 : 0.13; // fraction of viewport width, star right of centre
       const SCALE_BASE = set.portrait ? 1.04 : 1.08;
-      const SCALE_END = set.portrait ? 1.10 : 1.12; // the explosion beat
+      const SCALE_END = set.portrait ? 1.1 : 1.12; // the explosion beat
       const BEAT_AT = 0.82; // where the scale starts to open up
 
       function render() {
@@ -277,12 +719,21 @@
           for (let j = k + 1; j < COUNT; j += 1) if (ready[j]) return j;
           return -1;
         };
+        windowFrames(i);
         const base = nearestReady(i);
+        if (base >= 0) shownBase = base;
         const next = i + 1 < COUNT && ready[i + 1] ? i + 1 : -1;
         const blend = base === i && next === i + 1 ? t : 0;
         for (let k = 0; k < COUNT; k += 1) {
           const o = k === base ? 1 : k === next ? blend : 0;
-          if (imgs[k].style.opacity !== String(o)) imgs[k].style.opacity = String(o);
+          const el = imgs[k];
+          if (el.style.opacity !== String(o)) el.style.opacity = String(o);
+          // Only the two frames actually blending get a compositor layer. Promoting all thirteen
+          // was the first version and it is what made the phone fight the scroll; promoting NONE
+          // was the second, and then every opacity change repainted a full-screen image on the
+          // main thread. Two is the number that is actually on screen.
+          const want = k === base || k === next ? "opacity" : "auto";
+          if (el.style.willChange !== want) el.style.willChange = want;
         }
 
         const beat = clamp01((p - BEAT_AT) / (1 - BEAT_AT));
@@ -299,49 +750,82 @@
         const plateW = Math.max(innerWidth, innerHeight * aspect) * s;
         const headroom = Math.max(0, (plateW - innerWidth) / 2);
         const x = Math.min(START_X * innerWidth, headroom) * (1 - easeOutCubic(p));
+
+        // Below this the star cannot be moved far enough to clear a text column, so the page stops
+        // pretending it can and puts the copy on a dark floor instead. 6% of the viewport is the
+        // point where the shift stops being readable as a shift.
+        const scrim = headroom / innerWidth < 0.06 || set.portrait ? "floor" : "side";
+        if (document.body.dataset.scrim !== scrim) document.body.dataset.scrim = scrim;
         const tf = `translate(calc(-50% + ${x.toFixed(1)}px), -50%) scale(${s.toFixed(4)})`;
-        for (const el of imgs) if (el.style.transform !== tf) el.style.transform = tf;
+        if (plate.style.transform !== tf) plate.style.transform = tf;
 
         // The number that decides whether any of the source sharpness survives. `object-fit: cover`
         // fits the plate to the viewport, the transform scales it again, and the display multiplies
         // by its pixel ratio — so the pixels the GPU actually needs are all three multiplied
         // together. Serving fewer than that is an upscale, and an upscale is exactly the softness
         // the master does not have.
-        const srcW = imgs[0].naturalWidth || 0;
-        const coverW = Math.max(innerWidth, innerHeight * (srcW / (imgs[0].naturalHeight || 1)));
+        const probe = imgs.find((e) => e.naturalWidth > 0) || imgs[0];
+        const srcW = probe.naturalWidth || 0;
+        const coverW = Math.max(innerWidth, innerHeight * (srcW / (probe.naturalHeight || 1)));
         const needW = coverW * s * devicePixelRatio;
         const up = srcW ? needW / srcW : 0;
         hud.textContent =
-          `set      ${set.dir} ${srcW}x${imgs[0].naturalHeight || "?"}\n` +
+          `set      ${set.dir} ${srcW}x${probe.naturalHeight || "?"}  win ${WINDOW}\n` +
           `scroll   ${(p * 100).toFixed(1)}%\n` +
           `frame    ${(f + 1).toFixed(2)} / ${COUNT}\n` +
-          `shift    ${(x / innerWidth * 100).toFixed(1)}% vw\n` +
+          `shift    ${((x / innerWidth) * 100).toFixed(1)}% vw\n` +
           `scale    ${s.toFixed(3)}\n` +
           `dpr      ${devicePixelRatio}\n` +
           `needs    ${needW.toFixed(0)} px  (source ${srcW})\n` +
-          `pan      ${(Math.min(START_X * innerWidth, headroom) / innerWidth * 100).toFixed(1)}% max\n` +
-          `UPSCALE  ${up.toFixed(2)}x ${up > 1.3 ? "<- soft" : "ok"}  (floor ${(coverW * devicePixelRatio / (srcW || 1)).toFixed(2)}x at scale 1)\n` +
-          `loaded   ${loaded}/${COUNT}  showing ${base + 1}`;
+          `pan      ${((Math.min(START_X * innerWidth, headroom) / innerWidth) * 100).toFixed(1)}% max  scrim ${document.body.dataset.scrim}\n` +
+          `UPSCALE  ${up.toFixed(2)}x ${up > 1.3 ? "<- soft" : "ok"}  (floor ${((coverW * devicePixelRatio) / (srcW || 1)).toFixed(2)}x at scale 1)\n` +
+          `loaded   ${loaded}/${COUNT}  showing ${base + 1}\n` +
+          // Whether the page is drawing in Departure Mono or quietly falling through to the
+          // platform's monospace. Worth a line because the failure is invisible by design:
+          // `font-display: swap` renders the fallback and never says it did.
+          `copy     ${fades.filter((e) => e.classList.contains("in")).length}/${fades.length} shown\n` +
+          `font     ${document.fonts.check('16px "Departure Mono"') ? "mono ok" : "mono FALLBACK"}  ` +
+          `${document.fonts.check('700 40px "Chakra Petch"') ? "display ok" : "display FALLBACK"}`;
+
+        revealCopy();
       }
 
       const easeOutCubic = (x) => 1 - Math.pow(1 - x, 3);
+
+      // Copy blocks fade in as they arrive — driven from the same rAF loop as the sequence rather
+      // than from an IntersectionObserver.
+      //
+      // The observer version measured wrong: scrolled to the middle of the page, a block sitting
+      // fully in view at top=174 still read `opacity: 0`, and the block 1650px ABOVE the viewport
+      // still read `in`. The observer had fired once at setup and never again. Whether that is
+      // only a headless-harness limitation was not worth resolving, because the fix removes the
+      // question: whether the copy is visible is now decided by the same measurement that decides
+      // which frame is showing, in the same frame, from numbers this file already has.
+      const fades = [...document.querySelectorAll(".fade")];
+      function revealCopy() {
+        const h = innerHeight;
+        for (const el of fades) {
+          const r = el.getBoundingClientRect();
+          // Visible as soon as it enters the screen at all, and it stays
+          // revealed after leaving upward — a block the reader has already passed should not fade
+          // back out under them on the way down.
+          const seen = r.top < h * 0.96 && r.bottom > 0;
+          if (seen !== el.classList.contains("in")) el.classList.toggle("in", seen);
+        }
+      }
 
       let ticking = false;
       function onScroll() {
         if (ticking) return;
         ticking = true;
-        requestAnimationFrame(() => { render(); ticking = false; });
+        requestAnimationFrame(() => {
+          render();
+          ticking = false;
+        });
       }
       addEventListener("scroll", onScroll, { passive: true });
       addEventListener("resize", onScroll);
       render();
-
-      // Copy blocks fade in as they arrive.
-      const io = new IntersectionObserver(
-        (entries) => entries.forEach((e) => e.target.classList.toggle("in", e.isIntersecting)),
-        { threshold: 0.35 },
-      );
-      document.querySelectorAll(".fade").forEach((el) => io.observe(el));
     </script>
   </body>
 </html>
