@@ -22,6 +22,8 @@ const P = {
 
 let W = "off";
 
+const more = (label, html) => `<details class="more"><summary>${label}</summary>${html}</details>`;
+
 const fmt = (n, d = 0) => n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 // ---- building blocks ---------------------------------------------------------------------------
@@ -54,7 +56,7 @@ const gauge = (openPx, strikePx, nowPx, label) => {
    competitor puts an APY, so it cannot be something the page shows only when the news is good. */
 const recordCard = card(
   "The record",
-  "no yield figure is shown, and there is a reason",
+  "",
   `<div class="body">
      <div class="record">
        <i data-o="lapsed"></i><i data-o="settled"></i><i data-o="lapsed"></i><i data-o="lapsed"></i>
@@ -67,10 +69,14 @@ const recordCard = card(
        <span><s style="background:repeating-linear-gradient(45deg,rgba(244,241,234,0.14) 0 3px,transparent 3px 6px)"></s> 1 annulled, premium refunded</span>
      </div>
      <p class="sub" style="margin-top:16px">
-       An annualised yield from three sold rounds would be a number invented from a sample too small
-       to carry it. What is shown instead is what actually happened, plus the raw premium each round
-       paid — every one of them a transaction you can open in the explorer.
-     </p>
+       </p>
+     ${more(
+       "Why there is no APY here",
+       `<p>An annualised yield from three sold rounds is a number invented from a sample too small to
+           carry it. What is shown instead is what actually happened, plus the raw premium each round
+           paid — every one of them a transaction you can open in the explorer.</p>`,
+     )}
+     
    </div>` +
     stats([
       ["Premium, last 10 rounds", "1,681.8", "XLM — total, raw, unannualised"],
@@ -129,10 +135,8 @@ const position = (pps) => {
         <span class="k">Your position</span>
         <div class="refusal" style="margin:12px 0 0">
           <b>Archived — not lost, and not changed.</b>
-          <p>Nothing touched this entry for long enough that the network archived it, so it cannot be
-             read right now. Your shares and what they are worth are exactly what they were. One call
-             brings it back, it costs a few stroops, and <b style="color:var(--dim)">anyone can make
-             it — it does not have to be you.</b></p>
+          <p>The network archived this entry, so it cannot be read right now. Your shares and their value are
+             unchanged. One call brings it back, and <b style="color:var(--dim)">anyone can make it.</b></p>
           <div class="opts"><button style="border-color:var(--ember);color:var(--ember)">Restore my position</button></div>
         </div>
       </div>
@@ -153,9 +157,8 @@ const position = (pps) => {
    beats a signed transaction that reverts. */
 const netBlock = `<div class="block">
     <b>Your wallet is on Mainnet.</b>
-    <p>This vault exists only on Testnet, and nothing here can be signed until the wallet is switched.
-       Antares has never been deployed to Mainnet — if you find something that claims to be it, it
-       is not.</p>
+    <p>This vault exists only on Testnet. Antares has never been deployed to Mainnet — if you find
+       something that claims to be it, it is not.</p>
   </div>`;
 
 const ctaFor = (verb) =>
@@ -175,10 +178,8 @@ const balanceLine = () => (W === "off" || W === "wrong" ? "Balance —" : "Balan
  */
 const refusal = `<div class="refusal">
     <b>A new round opened before your exit landed.</b>
-    <p><b style="color:var(--dim)">Nothing was taken and nothing changed.</b> You asked to leave only
-       if the window was still open, and it closed first — so the transaction refused instead of
-       queueing you at a price you had not seen. That is the option working, not failing.
-       <code>(WrongPhase)</code></p>
+    <p><b style="color:var(--dim)">Nothing was taken and nothing changed.</b> You asked to leave only if
+       the window was still open, and it closed first. <code>(WrongPhase)</code></p>
     <div class="opts">
       <button>Wait for the next window — about 7 days</button>
       <button>Queue an exit at this round's closing price</button>
@@ -199,17 +200,19 @@ const calendarCard = `<div class="card" style="margin-top:22px">
     <h2><span>Antares cannot notify you</span></h2>
     <div class="body">
       <p class="note" style="margin:0">
-        There is no server watching the chain on your behalf. That would be a backend of record, and
-        this app's first architectural line is that it does not have one — so nothing here can email
-        you, push to you, or know that you exist. What it can do is hand you a file you keep yourself.
+        No server watches the chain for you, so nothing here can remind you. Take a file instead.
       </p>
       <button class="cta" style="background:transparent;color:var(--ink);border:1px solid var(--ink)"
               onclick="downloadIcs()">Add the next window to your calendar</button>
-      <p class="note">
-        <b>Two dates, because the round has two endings.</b> If nobody bids, your window opens at
-        <b>09:00 today</b>; if the option sells, on <b>29 Aug</b>. Which one it is gets decided when
-        the auction closes, so the file carries both and you delete the one that did not happen.
-      </p>
+      ${more(
+        "Why two dates, and why no notifications",
+        `<p>The file carries both endings — <b>09:00 today</b> if nobody bids, <b>29 Aug</b> if the
+            option sells — because which one it is gets decided when the auction closes. Delete the one
+            that did not happen.</p>
+         <p>Push that reaches you with the tab closed needs a server holding subscriptions and watching
+            the chain. That is a backend of record, and this app's first architectural line is that it
+            does not have one.</p>`,
+      )}
     </div>
   </div>`;
 
@@ -260,15 +263,15 @@ const asideInstant = () => `<div class="card">
       <div class="meta"><span>${fmt(P.cap - P.notional)} XLM left under the cap</span></div>
       ${ctaFor("deposit")}
       <p class="note">
-        <b>No round is running, so this becomes shares in the same transaction</b> — nothing is left
-        pending and nothing has to be collected later. Exits pay out immediately too.
+        <b>Becomes shares in the same transaction.</b> Nothing pending, nothing to collect later. Exits pay out immediately too.
       </p>
       <p class="note">
-        The window stays open until somebody opens the next round, and anyone may do that from
-        13:04. If a round opens in the same moment you press this, the deposit becomes a pending one
-        instead and an exit becomes burn-now-claim-later. Nothing is lost either way — the button is
-        not withheld for it, because the contract already made the race harmless.
-      </p>
+        </p>
+      ${more(
+        "If a round opens the moment you press this",
+        `<p>The deposit becomes a pending one and an exit becomes burn-now-claim-later. Nothing is lost
+            either way, which is why the button is not withheld as the window runs down.</p>`,
+      )}
     </div>
     ${W === "wrong" ? netBlock : ""}
     ${W === "refused" ? refusal : ""}
@@ -291,20 +294,22 @@ const STATES = {
            <div>
              <svg class="curve" aria-hidden="true" id="curve"></svg>
              <p class="sub" style="margin-top:14px">
-               The asking price falls in a straight line for 45 minutes and then the round either sold
-               or it did not. The shaded wedge is the only part of it in which buying is profitable —
-               <b style="color:var(--ember)">3 m 54 s of 45</b> — and it is why most rounds go unsold
-               rather than a sign anything is wrong.
+               Only the shaded wedge is worth buying — <b style="color:var(--ember)">3 m 54 s of the 45</b>.
              </p>
+             ${more(
+               "Why most rounds go unsold",
+               `<p>The asking price falls in a straight line and a buyer only acts once it drops below
+                   what the option is worth. At these terms that window is under four minutes, so a
+                   round with no buyer is the ordinary outcome rather than a sign anything is wrong.</p>`,
+             )}
+             
            </div>
            <div class="now-box">
              <span class="k">Buy it now for</span>
              <span class="big">721<small>.4 XLM</small></span>
-             <span class="sub">85.6 bps of the ${fmt(P.notional)} XLM this round covers — still 10 bps
-               above what the option is worth. It becomes worth buying in 1 m 06 s.</span>
+             <span class="sub">85.6 bps of ${fmt(P.notional)} XLM — still 10 bps above fair. Worth buying in <b>1 m 06 s</b>.</span>
              <div style="margin-top:18px"><span class="k">Auction ends in</span><span class="big clock">04:58</span></div>
-             <p class="sub">If nobody buys by then, the round ends with no premium and nothing lost —
-               which is what happened in 6 of the last 10 rounds.</p>
+             <p class="sub">Then it ends with no premium and nothing lost — 6 of the last 10 did.</p>
            </div>
          </div>` +
           stats([
@@ -314,24 +319,20 @@ const STATES = {
             ["Fair value", `${P.fairBps} bps`, "Black-Scholes at σ 33.7%"],
           ]),
       ) +
-      payoffCard("$0.2127", null) +
-      simulatorCard() +
+            simulatorCard("$0.2127") +
       recordCard +
       anyoneCard(
-        { on: false, why: "Available once the round expires — 29 Aug, 08:15. The caller keeps a bounty paid out of the premium, so closing costs the caller a fee and pays them more than it." },
-        { on: false, why: "Available 4 h after this round is closed. There is no keeper with special rights; the project runs one only so the vault does not sit idle when nobody else bothers." },
+        { on: false, why: "From 29 Aug, 08:15 — when the round expires. The caller keeps a bounty out of the premium." },
+        { on: false, why: "4 h after this round is closed. No keeper has special rights here; the project runs one only so the vault does not sit idle." },
       ) +
       configCard,
     aside: () =>
       asidePending(
-        `<b>A round is live, so this does not become shares straight away.</b> It waits as a pending
-         deposit and converts at the price the round ends on. If nobody bids, that is in about
-         <b>5 minutes</b>; if the option sells, on <b>29 Aug</b>. Either way you can take it back
-         before then.`,
+        `<b>Waits as a pending deposit.</b> Converts when the round ends — in about <b>5 minutes</b> if
+         nobody bids, on <b>29 Aug</b> if it sells. Take it back any time before that.`,
         `<div class="nag">
            <b>You have 250 XLM waiting</b>
-           <p>From round 11. It becomes shares the moment this round ends — you do not need to be here
-              for it, but you cannot deposit again until you collect it.</p>
+           <p>From round 11. Becomes shares when this round ends — and you cannot deposit again until you collect it.</p>
            <button>Collect 250 XLM as shares</button>
          </div>`,
       ),
@@ -350,11 +351,15 @@ const STATES = {
            <span class="k">Open for at least</span>
            <span class="big clock" style="font-size:44px">2 h 41 m</span>
            <p class="sub" style="max-width:70ch">
-             <b>That is a floor, not a deadline.</b> 13:04 is the earliest moment anyone is allowed to
-             open the next round — not the moment this window closes. It stays open until somebody
-             actually opens one, which may be minutes later or days later, and the somebody can be you.
-             Nothing here is withheld as the clock runs down.
+             <b>A floor, not a deadline.</b> 13:04 is the earliest anyone may open the next round.
            </p>
+           ${more(
+             "What happens at 13:04",
+             `<p>Nothing, unless somebody acts. The window stays open until a round is actually opened,
+                 which may be minutes later or days later, and the somebody can be you. Nothing on this
+                 page is withheld as the clock runs down.</p>`,
+           )}
+           
          </div>` +
           stats([
             ["Window opened", "09:00", "when round 12 finalised with no buyer"],
@@ -386,21 +391,18 @@ const STATES = {
              <div>
                <span class="k">Premium, already in the vault</span>
                <span class="big">657<small>.7 XLM</small></span>
-               <p class="sub">Paid in full when the option sold. It is yours whatever happens next —
-                 there is no scenario in which the buyer takes it back.</p>
+               <p class="sub">Yours whatever happens next.</p>
              </div>
              <div>
                <span class="k">Expires in</span>
                <span class="big clock">6 d 20 h</span>
-               <p class="sub">29 Aug, 13:04. Nothing can be settled before then, and nothing needs
-                 doing by you until it is.</p>
+               <p class="sub">29 Aug, 13:04. Nothing to do until then.</p>
              </div>
            </div>
            <div style="margin-top:26px">
              <span class="k">Where XLM sits against the strike</span>
              ${gauge(0.2069, 0.2131, 0.2065, "now $0.2065 — below the strike")}
-             <p class="sub">Below the strike the buyer gets nothing and the premium is pure gain.
-               Above it, your gain stops at $0.2131 and the difference is paid out in cash.</p>
+             <p class="sub">Below it the buyer gets nothing. Above it your gain stops at $0.2131.</p>
            </div>
          </div>` +
           stats([
@@ -410,19 +412,17 @@ const STATES = {
             ["Price per share", "1.01220", "up from 1.00437 when the option sold"],
           ]),
       ) +
-      payoffCard("$0.2131", null) +
-      simulatorCard() +
+            simulatorCard("$0.2131") +
       recordCard +
       anyoneCard(
-        { on: false, why: "Available from 29 Aug, 13:04 — the moment the round expires. Whoever calls it keeps a bounty out of the premium; simulated now at <b>1.6 XLM</b> — 0.25% of the premium (<code>settle_bounty_bps</code> 25), and shown from a simulation rather than a formula because the annulment branch pays none." },
-        { on: false, why: "Available 4 h after this round is closed, so not before 29 Aug, 17:04 at the earliest." },
+        { on: false, why: "From 29 Aug, 13:04, when the round expires. Bounty to whoever calls it: <b>1.6 XLM</b>, simulated." },
+        { on: false, why: "4 h after this round closes — 29 Aug, 17:04 at the earliest." },
       ) +
       configCard,
     aside: () =>
       asidePending(
-        `<b>A round is live, so this waits as a pending deposit</b> and converts at the price round 13
-         ends on — <b>29 Aug</b>, since the option has already sold. You can take it back at any point
-         before then, and it earns nothing while it waits.`,
+        `<b>Waits as a pending deposit</b> and converts on <b>29 Aug</b>, when round 13 ends. It earns
+         nothing while it waits.`,
       ),
   },
 
@@ -434,52 +434,42 @@ const STATES = {
     left: () =>
       card(
         "The price feed is not answering",
-        "there is no contract phase for this — but there is an ending, three of them",
+        "three endings, and the contract has already decided all of them",
         `<div class="body">
            <p class="sub" style="margin-top:0;max-width:78ch;font-size:12px;color:var(--dim)">
-             Round 13 expired at 13:04 and cannot be closed yet: settling reads the oracle, and the
-             oracle is not returning a usable price. <b style="color:var(--ink)">Nothing is stuck and
-             nothing is at risk.</b> Within the next 18 h 44 m this round ends in one of exactly three
-             ways, and all three are already decided by the contract.
+             Settling reads the oracle and the oracle is not answering.
+             <b style="color:var(--ink)">Nothing is stuck and nothing is at risk.</b> Within 18 h 44 m
+             this round ends one of three ways.
            </p>
            <ul class="endings">
-             <li><s>1</s><div><b>The feed answers and the round settles normally.</b> Whatever it says
-               at that point is the settlement price, and it is read at expiry, not at the moment of
-               the call — a late close cannot move it.</div></li>
-             <li><s>2</s><div><b>The round is annulled and the premium is refunded to the buyer.</b>
-               Only if the feed can be shown to have been dead at expiry, and only after 12 h. Your
-               collateral is untouched; what you give back is the 657.7 XLM you were paid.</div></li>
-             <li><s>3</s><div><b>It closes unresolved: the premium stays with you and the buyer gets
-               nothing.</b> This is the ending past 21 h, and it is the one that costs the buyer —
-               which is why it is named here and not left out.</div></li>
+             <li><s>1</s><div><b>It settles.</b> The price is read at expiry, not when the call lands, so a late close cannot move it.</div></li>
+             <li><s>2</s><div><b>It is annulled and the buyer gets the premium back.</b> Only after 12 h, and only if the feed was
+   demonstrably dead at expiry. Your collateral is untouched.</div></li>
+             <li><s>3</s><div><b>It closes unresolved — you keep the premium, the buyer gets nothing.</b> The ending past 21 h.</div></li>
            </ul>
          </div>
          <div class="clocks">
            <div>
              <span class="k">Annulment becomes possible</span>
              <v>9 h 44 m</v>
-             <u>12 h after expiry. This is when option 2 <b style="color:var(--dim)">opens</b> — not
-                when anything is promised to happen.</u>
+             <u>12 h after expiry — when option 2 <b style="color:var(--dim)">becomes possible</b>, not when it happens.</u>
            </div>
            <div data-guarantee>
              <span class="k">Closes regardless — guaranteed</span>
              <v>18 h 44 m</v>
-             <u>21 h after expiry. Past this the round can be closed with no oracle call at all.
-                Somebody still has to call it, and anyone can, including you.</u>
+             <u>21 h after expiry. Past this it closes with no oracle call at all — but somebody has to call it, and anyone can.</u>
            </div>
          </div>`,
       ) +
       anyoneCard(
-        { on: true, hot: true, why: "Live now — the round has expired. <b>Simulated this second: it would refuse.</b> The feed is unreachable and the round is not yet 12 h past expiry, so neither the settle branch nor the annul branch can run. The button stays here rather than being hidden, because at 10:04 tomorrow it starts working and nobody should have to find a CLI to press it. Bounty if it settles: 1.6 XLM — 0.25% of the 657.7 XLM premium. If it is annulled: none." },
-        { on: false, why: "Not until this round is closed and a 4 h window has elapsed after that." },
+        { on: true, hot: true, why: "<b>Simulated this second: it would refuse</b> — the feed is unreachable and the round is not yet 12 h past expiry. It starts working at 10:04 tomorrow. Bounty if it settles: 1.6 XLM; if annulled, none." },
+        { on: false, why: "Not until this round closes, plus 4 h." },
       ) +
       recordCard +
       configCard,
     aside: () =>
       asidePending(
-        `<b>Round 13 has not finalised, so this waits as a pending deposit.</b> It converts at whatever
-         price the round ends on — and it converts on all three endings, including the two that pay
-         nothing. You can take it back before then.`,
+        `<b>Waits as a pending deposit.</b> It converts on all three endings, including the two that pay nothing.`,
       ),
   },
 
@@ -497,12 +487,14 @@ const STATES = {
            <span class="big">$0.2205<small> &nbsp;·&nbsp; 3.5% above the $0.2131 strike</small></span>
            ${gauge(0.2069, 0.2131, 0.2205, "closed $0.2205")}
            <p class="sub" style="max-width:78ch;font-size:12px;color:var(--dim);margin-top:18px">
-             <b style="color:var(--ink)">You did not lose money on this round.</b> XLM rose 6.6% over the
-             week and you kept every one of those XLM below $0.2131; what the vault paid out is the part
-             of the rise above it, which is precisely the thing that was sold when the option sold. In
-             dollars the vault went from $17,446 to $18,114 — up 3.8% against XLM's 6.6%. The gap is the
-             cap, and it is the trade.
+             <b style="color:var(--ink)">You did not lose money.</b> XLM rose 6.6% and you kept everything
+             below $0.2131; the vault paid out the part above it.
            </p>
+           ${more(
+             "The same round in dollars",
+             `<p>The vault went from $17,446 to $18,114 — up 3.8% against XLM's 6.6%. That gap is the
+                 cap, and it is exactly what was sold when the option sold.</p>`,
+           )}
          </div>` +
           stats([
             ["Premium kept", "+657.7", "XLM, paid up front on 22 Aug"],
@@ -518,21 +510,19 @@ const STATES = {
            <div>
              <span class="k">If XLM had been below $0.2131</span>
              <b>You would have kept the premium and every share.</b>
-             <p>The buyer walks away and price-per-share rises by the whole 657.7 XLM. This is what
-                happened in round 11, and in 6 of the last 10 rounds nobody bought the option at all.</p>
+             <p>Price-per-share rises by the whole 657.7 XLM — what happened in round 11.</p>
            </div>
            <div data-happened>
              <span class="k">XLM was above $0.2131 — this is what happened</span>
              <b>Your gain stopped at $0.2131 and the excess was paid to the buyer.</b>
-             <p>You still hold your XLM. The vault settled the difference in cash, so nothing was
-                delivered, nothing was sold, and no position was liquidated.</p>
+             <p>Settled in cash. Nothing delivered, nothing sold, nothing liquidated.</p>
            </div>
          </div>`,
       ) +
       recordCard +
       anyoneCard(
-        { on: false, why: "Round 13 is closed. Its close was called at 13:07 by GBZK…7QP2, who collected the 1.6 XLM bounty — not by the project's keeper." },
-        { on: true, why: "Live now: the 4 h window elapsed at 17:07. Opening a round fixes a new strike 3% above the price at that moment and puts the vault up for auction for 45 minutes." },
+        { on: false, why: "Closed at 13:07 by GBZK…7QP2, who took the 1.6 XLM bounty — not by the project's keeper." },
+        { on: true, why: "Live now. Opening a round fixes a new strike 3% above the price at that moment." },
       ) +
       configCard,
     aside: () => asideInstant(),
@@ -551,16 +541,18 @@ const STATES = {
            <span class="k">The result</span>
            <span class="big" style="font-size:26px">Nothing moved.</span>
            <p class="sub" style="max-width:78ch;font-size:12px;color:var(--dim)">
-             The asking price fell from 450 bps to 40 and nobody took it. Your shares are exactly what
-             they were, your XLM never left the vault, and no fee was charged for the attempt. The
-             window opened the moment the auction closed, so deposits and exits are instant right now.
+             Nobody took it. Your shares are unchanged, and the window opened the moment the auction closed —
+             deposits and exits are instant right now.
            </p>
            <p class="sub" style="max-width:78ch">
-             <b>Six of the last ten rounds ended this way</b>, and during counterparty discovery that is
-             the working assumption rather than a malfunction: the vault is looking for someone willing
-             to buy an option on XLM at these terms, and finding out that nobody is — at five different
-             parameter sets at once — is the result the experiment was built to produce.
+             <b>Six of the last ten ended this way.</b>
            </p>
+           ${more(
+             "Why that is the expected case",
+             `<p>The vault is looking for someone willing to buy an option on XLM at these terms.
+                 Finding out that nobody is — at five parameter sets at once — is the result the
+                 experiment was built to produce, not a malfunction.</p>`,
+           )}
          </div>` +
           stats([
             ["Premium", "0 XLM", "no fill, nothing to pay"],
@@ -571,7 +563,7 @@ const STATES = {
       ) +
       recordCard +
       anyoneCard(
-        { on: false, why: "Nothing to close. A round with no fill finalises by itself the first time anyone touches the vault — including your own next deposit." },
+        { on: false, why: "Nothing to close — a round with no fill finalises the first time anyone touches the vault." },
         { on: false, why: "In 2 h 41 m, at 13:04." },
       ) +
       configCard,
@@ -591,16 +583,17 @@ const STATES = {
            <span class="k">The result</span>
            <span class="big" style="font-size:26px">512.4 XLM went back to the buyer.</span>
            <p class="sub" style="max-width:78ch;font-size:12px;color:var(--dim)">
-             The oracle stopped answering before this round expired and could be shown to have been dead
-             at the moment the settlement price was due. The contract will not invent a price and it will
-             not settle at the strike, because either would hand one side a win for somebody else's
-             outage — so the round is undone: the buyer gets the premium back and the vault keeps
-             every XLM it held.
+             The oracle was dead when the settlement price was due. The contract will not invent one, so the
+             round is undone — the buyer gets the premium back and the vault keeps every XLM it held.
            </p>
            <p class="sub" style="max-width:78ch">
-             <b>This is the only outcome in which money leaves the vault without a price ever being
-             agreed</b>, and it is capped at the premium that came in. Your collateral is not part of it.
-           </p>
+             <b>The only outcome where money leaves without a price being agreed</b> — capped at the premium
+             that came in.</p>
+           ${more(
+             "Why not just settle at the strike",
+             `<p>Either invented price hands one side a win for somebody else's outage. Undoing the
+                 round is the only ending that costs neither party anything they earned.</p>`,
+           )}
          </div>` +
           stats([
             ["Premium refunded", "−512.4", "XLM — the whole of it, to the buyer"],
@@ -611,7 +604,7 @@ const STATES = {
       ) +
       recordCard +
       anyoneCard(
-        { on: false, why: "Round 9 is closed. It was annulled by a call from GDX7…M4LC — a bystander, not the project — and the annul branch pays no bounty, which is why nobody was waiting to make it." },
+        { on: false, why: "Annulled by GDX7…M4LC, a bystander. The annul branch pays no bounty." },
         { on: true, why: "Live now. The 4 h window elapsed at 05:12." },
       ) +
       configCard,
@@ -670,20 +663,29 @@ const simRows = () => {
     ) +
     `<div class="body" style="border-top:1px solid var(--rule-soft)">
        <p class="sub" style="margin:0;max-width:88ch">
-         You are credited <b>${credited.toFixed(2)} XLM</b> the moment the option sells. Below the
-         strike that is the whole story. Above it the <b>Worth</b> column stops moving — that flat
-         line is the cap, and it is the thing you sold. Nothing is liquidated and no XLM leaves your
-         share of the vault; the difference is settled in cash.
+         Credited <b>${credited.toFixed(2)} XLM</b> when the option sells. Above the strike the
+         <b>Worth</b> column stops moving — that flat line is the cap.
        </p>
+       ${more(
+         "What the cap actually costs",
+         `<p>Below the strike the premium is the whole story. Above it you keep every XLM you own and
+             the vault settles the difference in cash — nothing is liquidated and no position is
+             closed. The last column is what that trade is worth against simply holding XLM, and it
+             turns negative exactly where the cap begins.</p>`,
+       )}
+       
      </div>`
   );
 };
 
-const simulatorCard = () =>
+const simulatorCard = (strike) =>
   card(
-    "What this round would do to your money",
-    "D-35: no yield figure — this instead",
+    `Your cap this round is ${strike}`,
+    "settled in cash — you keep every XLM you own",
     `<div class="body" style="padding-bottom:14px">
+       <p style="margin:0 0 18px;font-size:14px;line-height:1.55;max-width:70ch">
+         Below ${strike} you keep the premium and every share. Above it your gain stops there.
+       </p>
        <span class="k">If you held</span>
        <div class="field" style="max-width:320px">
          <input value="${fmt(simAmount)}" inputmode="decimal" oninput="resim(this.value)" />
@@ -704,13 +706,12 @@ function payoffCard(strike) {
        <div>
          <span class="k">If XLM is below ${strike} at expiry</span>
          <b>You keep the premium and every share you hold.</b>
-         <p>The buyer walks away. Your price-per-share goes up by whatever the option sold for.</p>
+         <p>The buyer walks away.</p>
        </div>
        <div>
          <span class="k">If XLM is above ${strike} at expiry</span>
          <b>Your gain stops at ${strike}. The excess is paid to the buyer.</b>
-         <p>You still hold your XLM — the vault pays the difference in cash, so nothing is delivered
-            and nothing is sold.</p>
+         <p>Settled in cash — nothing is delivered and nothing is sold.</p>
        </div>
      </div>`,
   );
@@ -759,7 +760,7 @@ function drawCurve() {
     <line class="now" x1="${n(x(NOW))}" y1="${n(TOP)}" x2="${n(x(NOW))}" y2="${n(BOT)}"/>
     <circle cx="${n(x(NOW))}" cy="${n(y(bpsAt(NOW)))}" r="4" fill="#ff6b3d"/>
     <text class="hot" x="${n(x(NOW) - 10)}" y="${n(TOP + 10)}" text-anchor="end">now · ${n(bpsAt(NOW))} bps</text>
-    ${tight ? "" : `<text class="hot" x="${n(x(tCross) - 7)}" y="${n(BOT - 9)}" text-anchor="end">worth buying from 41:06</text>`}
+    ${tight ? "" : `<text class="hot" x="${n(x(tCross) - 7)}" y="${n(BOT - 14)}" text-anchor="end">worth buying from 41:06</text>`}
     <text x="${L}" y="${n(H - 7)}">opened 08:15</text>
     <text x="${n(R)}" y="${n(H - 7)}" text-anchor="end">${tight ? "closes 09:00" : `closes 09:00 · floor ${FLOOR} bps`}</text>
   `;
@@ -842,17 +843,12 @@ const roundsPage = () =>
     "",
     `<div class="body">
        <p class="sub" style="margin-top:0;max-width:82ch;font-size:12px;color:var(--dim)">
-         Nothing here is computed by a server this project runs. Every row is an event the contract
-         emitted, and the last column is the transaction that emitted it — so the table can be
-         rebuilt by anyone with the contract id and no cooperation from us. That is the difference
-         between a published track record and a verifiable one, and it is the reason the outcomes
-         that look bad are on the same page as the ones that do not.
+         Every row is an event the contract emitted, and the last column is the transaction that emitted
+         it — so anyone with the contract id can rebuild this table without us.
        </p>
        <p class="sub" style="max-width:82ch">
-         <b>Six of these ten rounds found no buyer</b>, one was annulled when the price feed died,
-         and of the three that sold, one finished above the strike and cost the vault more than its
-         premium. That is the whole record at these terms, and it is what an annualised yield would
-         have hidden.
+         <b>Six of these ten found no buyer</b>, one was annulled, and of the three that sold, one cost
+         the vault more than its premium. That is the whole record at these terms.
        </p>
      </div>`,
   );
@@ -881,9 +877,7 @@ const claimsPage = () =>
          <span class="sub" style="margin:0">across 2 rounds · nothing here expires</span>
        </div>
        <p class="sub" style="max-width:82ch">
-         Money the protocol owes somebody is never harder to find than the protocol made it. There is
-         no deadline on any of these and no way for them to be swept — a claim is a transaction you
-         send, and it works the same on the day the round closes and a year later.
+         No deadline, and no way for these to be swept. A claim works the same a year later as on the day.
        </p>
      </div>`,
   ) +
@@ -918,20 +912,13 @@ const claimsPage = () =>
     "",
     `<div class="body">
        <p class="sub" style="margin-top:0;max-width:82ch;font-size:12px;color:var(--dim)">
-         Soroban's RPC keeps about <b style="color:var(--ink)">seven days</b> of events — barely one
-         round at these parameters. A page built on events would show a bidder who looked a round
-         late an empty table, which for money owed is not a gap in a feature, it is a lie.
+         Soroban's RPC keeps about <b style="color:var(--ink)">seven days</b> of events — barely one round.
+         A page built on events would show a bidder who looked a round late an empty table.
        </p>
        <ul class="endings">
-         <li><s>1</s><div><b>Reading is the hard part; claiming never is.</b> A claim is a
-           transaction, so an archived entry is restored inside its own footprint automatically. The
-           row above marked <i>archived</i> needs no extra step from you.</div></li>
-         <li><s>2</s><div><b>An archived entry is not an absent one, and the page can tell.</b> It
-           appears in the restore list at simulation — the same mechanism that keeps a dormant
-           depositor's balance from rendering as zero.</div></li>
-         <li><s>3</s><div><b>Recent rounds come from the chain first.</b> The archived evidence index
-           supplies the range for old ones, but a statically-hosted page only sees a newly committed
-           index after a redeploy — so a fill from an hour ago must not have to wait for one.</div></li>
+         <li><s>1</s><div><b>Claiming is never the problem.</b> An archived entry is restored inside the claim's own footprint.</div></li>
+         <li><s>2</s><div><b>An archived entry is not an absent one, and the page can tell.</b> It appears in the restore list at simulation.</div></li>
+         <li><s>3</s><div><b>Recent rounds come from the chain first</b>, so a fill from an hour ago does not wait for a redeploy.</div></li>
        </ul>
      </div>`,
   );
@@ -960,9 +947,8 @@ const positionsPage = () =>
          <span class="sub" style="margin:0">in 3 of 5 vaults · $3,854 at today's price</span>
        </div>
        <p class="sub" style="max-width:82ch">
-         One of your three has an open window right now, which means a deposit or an exit there
-         settles in the same transaction. The other two are inside a live round, so anything you send
-         them waits and converts when the round ends.
+         One of your three has an open window — deposits and exits there settle instantly. The other two
+         are inside a live round.
        </p>
      </div>`,
   ) +
@@ -1000,11 +986,11 @@ const comparePage = () =>
     "instance A is the default; the rest are the experiment",
     `<div class="fleet">
        ${[
-         ["A", "7-day · 3%", "7 days", "up to 3% higher", "The default, and the one meant for mainnet. The shortest commitment that still prices an option anyone would buy.", true],
-         ["B", "7-day · 5%", "7 days", "up to 5% higher", "The same week, but you keep more of a rise. The option is cheaper, so it is bought less often — that is the trade being measured.", false],
-         ["C", "3-day · 2%", "3 days", "up to 2% higher", "Your money is committed for less than half as long, and you give up the gain sooner. Nearest the money of the five.", false],
-         ["D", "14-day · 5%", "14 days", "up to 5% higher", "The longest commitment, and the richest premium for it. Two weeks is a long time to be unable to exit instantly.", false],
-         ["E", "3-day · 3%", "3 days", "up to 3% higher", "Exists to connect the other four: it shares its length with C and its cap with A, so a fill here says which of the two mattered.", false],
+         ["A", "7-day · 3%", "7 days", "up to 3% higher", "The default. The shortest commitment that still prices an option anyone would buy.", true],
+         ["B", "7-day · 5%", "7 days", "up to 5% higher", "The same week, but you keep more of a rise — and the cheaper option sells less often.", false],
+         ["C", "3-day · 2%", "3 days", "up to 2% higher", "Half the commitment, and you give up the gain soonest of the five.", false],
+         ["D", "14-day · 5%", "14 days", "up to 5% higher", "The longest commitment, and the richest premium for it.", false],
+         ["E", "3-day · 3%", "3 days", "up to 3% higher", "Shares its length with C and its cap with A — a fill here says which of the two mattered.", false],
        ]
          .map(
            ([code, name, days, cap, why, def]) => `<div ${def ? "data-default" : ""}>
@@ -1028,16 +1014,14 @@ const comparePage = () =>
        <div>
          <span class="k">How long your money is committed</span>
          <b>The length of one round, plus a window at the end of it.</b>
-         <p>You can queue an exit at any moment; what the length decides is how long you wait for it
-            to pay. Between rounds there is a window of at least four hours in which exits are
-            instant, and it stays open until somebody opens the next round.</p>
+         <p>You can queue an exit at any moment; the length decides how long you wait for it to pay. Between
+            rounds there is a window of at least four hours in which exits are instant.</p>
        </div>
        <div>
          <span class="k">How far XLM can rise before you stop keeping the gain</span>
          <b>The cap, set fresh at the start of every round from the price at that moment.</b>
-         <p>Below it you keep everything and the premium on top. Above it your gain stops there and
-            the vault pays the difference in cash — you still hold every XLM you own, and nothing is
-            delivered or sold.</p>
+         <p>Below it you keep everything and the premium on top. Above it the vault pays the difference in
+            cash — nothing is delivered or sold.</p>
        </div>
      </div>`,
   );
@@ -1104,31 +1088,23 @@ const operatorPage = () =>
     "the part that is enforced rather than promised",
     `<div class="body">
        <ul class="endings">
-         <li><s>—</s><div><b>Take your collateral.</b> No admin call moves a depositor's balance.
-           There is no sweep, no emergency withdrawal and no recipient field that points anywhere but
-           the protocol fee, which ships at zero.</div></li>
-         <li><s>—</s><div><b>Trap it by pausing.</b> <code>close_round</code>,
-           <code>redeem_shares</code> and <code>request_withdraw</code> are unpausable, so a paused
-           vault still finalises rounds and still lets you leave. Pause stops new money coming in,
-           not old money going out.</div></li>
-         <li><s>—</s><div><b>Extend the allowlist, or repoint the price feed.</b> There is no setter
-           for <code>allowlist_expires_at</code>, <code>asset</code> or <code>oracle</code> — any of
-           the three costs a reviewed upgrade that appears in the table above.</div></li>
-         <li><s>—</s><div><b>Set a fee worth having.</b> <code>set_fee_bps</code> is capped at 2,000
-           — 20% of the premium, never of your collateral — by validation the contract enforces on
-           itself.</div></li>
-         <li><s>—</s><div><b>Push the settlement fallback out of reach.</b> <code>unresolved_after</code>
-           is bounded above on-chain as well as below, precisely so a setter cannot move the deadline
-           past the point where it would ever fire.</div></li>
-         <li><s>—</s><div><b>Lose the admin role to a typo.</b> Transfer is two-step: the new address
-           has to accept before it takes effect.</div></li>
+         <li><s>—</s><div><b>Take your collateral.</b> No sweep, no emergency withdrawal, no recipient field but the protocol fee — which ships at zero.</div></li>
+         <li><s>—</s><div><b>Trap it by pausing.</b> <code>close_round</code>, <code>redeem_shares</code> and
+   <code>request_withdraw</code> are unpausable. Pause stops money coming in, not going out.</div></li>
+         <li><s>—</s><div><b>Extend the allowlist, or repoint the price feed.</b> No setter exists for any of the three — each costs a reviewed upgrade.</div></li>
+         <li><s>—</s><div><b>Set a fee worth having.</b> <code>set_fee_bps</code> is capped at 2,000 — 20% of the premium, never of your collateral.</div></li>
+         <li><s>—</s><div><b>Push the settlement fallback out of reach.</b> <code>unresolved_after</code> is bounded above on-chain as well as below.</div></li>
+         <li><s>—</s><div><b>Lose the admin role to a typo.</b> Transfer is two-step.</div></li>
        </ul>
        <p class="sub" style="max-width:82ch;margin-top:20px">
-         The one thing an admin <b>can</b> do that nothing on-chain prevents is ship a bad upgrade.
-         That is stated rather than argued away — it is why v1 is upgradeable and unaudited at the
-         same time, why the roadmap moves the key to a timelocked multisig before mainnet, and why
-         every upgrade shows up in this table with its wasm hash.
-       </p>
+         </p>
+       ${more(
+         "The one thing an admin can do",
+         `<p>Ship a bad upgrade — nothing on-chain prevents it. That is stated rather than argued away:
+             it is why v1 is upgradeable and unaudited at the same time, why the key moves to a
+             timelocked multisig before mainnet, and why every upgrade appears in this table with its
+             wasm hash.</p>`,
+       )}
      </div>`,
   );
 

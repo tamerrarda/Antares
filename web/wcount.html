@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><title>words</title>
+<style>body{background:#0d0f14;color:#e8e6e1;font:13px ui-monospace,Menlo,monospace;padding:20px}
+table{border-collapse:collapse}td,th{padding:5px 14px;text-align:left;border-bottom:1px solid #262a33}
+td.n{text-align:right}.hi{color:#ff6b3d}iframe{position:absolute;left:-9999px;width:1200px;height:3000px}</style>
+</head><body><h3>Words on screen, per page</h3>
+<table id="t"><tr><th>screen</th><th class="n">words</th><th class="n">longest block</th></tr></table>
+<script>
+// "Too much text" is a real critique and a vague one. This turns it into a number that can be
+// compared before and after, and flags the single worst offender per page so the cutting has a
+// target rather than a mood.
+const SCREENS=["auction:on","window:on","active:on","delayed:on","settled:on","lapsed:on","voided:on","rounds","claims","positions","compare","operator"];
+const t=document.getElementById("t");let i=0,total=0;
+function next(){
+  if(i>=SCREENS.length){const r=t.insertRow();r.innerHTML=`<td class="hi">TOTAL</td><td class="n hi">${total}</td><td></td>`;document.title="done";return;}
+  const s=SCREENS[i++],f=document.createElement("iframe");f.src="./app.html#"+s;
+  f.onload=()=>setTimeout(()=>{
+    const d=f.contentDocument, main=d.getElementById("main");
+    const words=(main.innerText||"").trim().split(/\s+/).filter(Boolean).length;
+    let worst=0,worstTxt="";
+    main.querySelectorAll("p,li,div.body>span,td").forEach(el=>{
+      const w=(el.innerText||"").trim().split(/\s+/).filter(Boolean).length;
+      if(w>worst){worst=w;worstTxt=(el.innerText||"").trim().slice(0,44);}
+    });
+    total+=words;
+    const r=t.insertRow();
+    r.innerHTML=`<td>${s}</td><td class="n${words>260?" hi":""}">${words}</td><td class="n">${worst} — ${worstTxt}…</td>`;
+    f.remove();next();
+  },250);
+  document.body.appendChild(f);
+}
+next();
+</script></body></html>

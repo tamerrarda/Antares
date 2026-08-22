@@ -75,6 +75,7 @@
       .grid { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 26px; align-items: start; }
       .card { border: 1px solid var(--rule); background: var(--panel); backdrop-filter: blur(10px); }
       .card + .card { margin-top: 22px; }
+      .card > h2 > span:first-child { max-width: 58ch; }
       .card > h2 { font-family: var(--mono); font-size: 11px; font-weight: 400; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--rule-soft); display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
       .card > h2 em { font-style: normal; color: var(--faint); letter-spacing: 0.08em; text-transform: none; }
       .body { padding: 18px; }
@@ -208,6 +209,25 @@
       .fleet dt { color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 12px; }
       .fleet dd { margin: 4px 0 0; font-size: 14px; }
       .fleet .why { color: var(--faint); line-height: 1.6; margin: 12px 0 18px; }
+
+      /* Progressive disclosure, because "explain everything" and "explain it all at once" are not
+         the same requirement. 08-OFFCHAIN's UX rules are largely ABOUT copy — every error code needs
+         written text, every state needs naming by consequence — so the answer to a wall of prose is
+         not to delete the prose but to stop showing all of it by default. What stays visible is what
+         changes a decision; what folds is the background that justifies it. */
+      details.more { margin-top: 11px; }
+      details.more > summary {
+        list-style: none; cursor: pointer; color: var(--dim);
+        letter-spacing: 0.12em; text-transform: uppercase;
+        display: inline-flex; align-items: center; gap: 8px;
+      }
+      details.more > summary::-webkit-details-marker { display: none; }
+      details.more > summary::after { content: "+"; color: var(--faint); font-size: 13px; }
+      details.more[open] > summary::after { content: "\2212"; }
+      details.more > summary:hover { color: var(--ink); }
+      details.more > summary:hover::after { color: var(--ink); }
+      details.more p { color: var(--faint); line-height: 1.7; margin: 13px 0 0; max-width: 84ch; }
+      details.more p + p { margin-top: 10px; }
 
       .total { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 
