@@ -2,6 +2,7 @@
 
 import { ActionPanel } from "../components/ActionPanel.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
+import { Permissionless } from "../components/Permissionless.tsx";
 import { useVault } from "../components/useVault.ts";
 import { useWallet } from "../components/useWallet.ts";
 import { deployment } from "../lib/deployment.ts";
@@ -293,6 +294,10 @@ export default function VaultPage() {
               </div>
             </div>
           </article>
+
+          {/* Before the operator card on purpose: what anyone can do comes above what only the
+              operator can, because that is the order the trust claim runs in. */}
+          <Permissionless wallet={wallet} bountyAddress={wallet.address ?? config.admin} onDone={reload} />
 
           <article className="card">
             <h2>

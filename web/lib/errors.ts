@@ -50,11 +50,10 @@ const TABLE: Readonly<Record<number, ErrorText>> = {
   2: {
     name: "WrongPhase",
     kind: "working",
-    title: "A new round opened before this landed. Nothing was taken and nothing changed.",
+    title: "That call does not apply while the vault is in this phase.",
     body:
-      "You asked for an action that only makes sense between rounds, and a round started first. The " +
-      "call refused instead of putting you into something you had not seen the terms of. Wait for " +
-      "the next window, or choose the version that queues you at this round's closing price.",
+      "Nothing was taken and nothing changed. A vault moves between an auction, a running round, and " +
+      "the window between rounds; each call belongs to some of those and not to others.",
   },
   3: {
     name: "IdleGapNotElapsed",
@@ -311,6 +310,63 @@ const TABLE: Readonly<Record<number, ErrorText>> = {
 };
 
 /**
+ * Where the call came from.
+ *
+ * One code can be reached from several entry points and mean a different thing at each. `WrongPhase`
+ * is the case that forces this: from `request_withdraw` it means *a round opened before your exit
+ * landed* — which 08-OFFCHAIN §3 requires be said in those words, because that path is the one the
+ * product **recommends** and it works by reverting. From `close_round` the same code means *there is
+ * no round running to close*. A single sentence cannot be true of both, and the generic one in the
+ * table is what is true of neither in particular.
+ */
+export type CallSite = "withdraw" | "close" | "open" | "collect";
+
+const OVERRIDES: Readonly<Record<CallSite, Readonly<Record<number, ErrorText>>>> = {
+  withdraw: {
+    2: {
+      name: "WrongPhase",
+      kind: "working",
+      title: "A new round opened before your exit landed. Nothing was taken and nothing changed.",
+      body:
+        "You asked to leave only if the window was still open, and it closed first — so the call " +
+        "refused instead of queueing you at a price you had not seen. That is the option working, " +
+        "not failing. Wait for the next window, or queue an exit at this round's closing price.",
+    },
+  },
+  close: {
+    2: {
+      name: "WrongPhase",
+      kind: "waiting",
+      title: "There is no round running to close.",
+      body:
+        "The vault is between rounds. This becomes available again once the next round has been " +
+        "opened and has reached its expiry — and from that moment anyone may call it, including you.",
+    },
+  },
+  collect: {
+    // Measured, not assumed: `claim_withdraw` with nothing queued returns 22 — the same code
+    // `redeem_shares` returns for an absent pending deposit. The table's sentence is about a
+    // deposit, and here the thing that is absent is an exit.
+    22: {
+      name: "NothingPending",
+      kind: "absent",
+      title: "You have no queued exit to collect.",
+      body:
+        "Either it was already collected, or the exit you are thinking of has not finalised yet — a " +
+        "queued withdrawal pays out when its round ends, not before.",
+    },
+  },
+  open: {
+    2: {
+      name: "WrongPhase",
+      kind: "waiting",
+      title: "A round is already running.",
+      body: "The next one cannot be opened until this one is closed and the window after it has elapsed.",
+    },
+  },
+};
+
+/**
  * The refusal's own words, or an honest fallback.
  *
  * An unknown code is still not allowed to surface as a number. The contract can grow codes this
@@ -318,7 +374,9 @@ const TABLE: Readonly<Record<number, ErrorText>> = {
  * `output: "export"` creates — and the fallback has to stay useful: name what is known, state the
  * one thing that is always true, and point at the record instead of guessing.
  */
-export function explain(code: number): ErrorText {
+export function explain(code: number, site?: CallSite): ErrorText {
+  const override = site === undefined ? undefined : OVERRIDES[site][code];
+  if (override !== undefined) return override;
   const known = TABLE[code];
   if (known !== undefined) return known;
   return {
@@ -351,16 +409,16 @@ const BY_NAME: ReadonlyMap<string, number> = new Map(
  * a raw host error string containing `#2`, and something unrecognised. The last one still must not
  * surface as a stack trace — 08-OFFCHAIN §3 calls a bare "transaction failed" a defect.
  */
-export function explainMessage(raw: string): ErrorText {
+export function explainMessage(raw: string, site?: CallSite): ErrorText {
   const byName = BY_NAME.get(raw.trim());
-  if (byName !== undefined) return explain(byName);
+  if (byName !== undefined) return explain(byName, site);
 
   for (const [name, code] of BY_NAME) {
-    if (raw.includes(name)) return explain(code);
+    if (raw.includes(name)) return explain(code, site);
   }
 
   const code = /#(\d+)/.exec(raw)?.[1];
-  if (code !== undefined) return explain(Number(code));
+  if (code !== undefined) return explain(Number(code), site);
 
   return {
     name: "Refused",

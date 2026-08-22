@@ -20,6 +20,8 @@
  */
 import type { AssembledTransaction, Result } from "@stellar/stellar-sdk/contract";
 
+import type { CallSite } from "../lib/errors.ts";
+
 import { explain } from "../lib/errors.ts";
 import { submit } from "../lib/tx.ts";
 import { writeClient } from "../lib/vault.ts";
@@ -38,17 +40,30 @@ const refuses: Parameters<typeof submit>[1] = {
 /** Each case returns a differently-parameterised `Result`; the probe only looks at whether it failed. */
 type Call = () => Promise<AssembledTransaction<Result<unknown>>>;
 
-const CASES: ReadonlyArray<readonly [string, Call, number | null]> = [
+/** Label, the call, the code expected (null = a clean simulation), and which entry point it is. */
+const CASES: ReadonlyArray<readonly [string, Call, number | null, CallSite?]> = [
   ["deposit, a sane amount", () => client.deposit({ from: WHO, amount: 50_000_000n }), null],
   ["deposit, below the minimum", () => client.deposit({ from: WHO, amount: 100_000n }), 20],
   ["deposit, past the cap", () => client.deposit({ from: WHO, amount: 20_000_000_000_000n }), 21],
   ["redeem with nothing pending", () => client.redeem_shares({ from: WHO }), 22],
-  ["close a round that is not running", () => client.close_round({ bounty_to: WHO }), 2],
+  ["close a round that is not running", () => client.close_round({ bounty_to: WHO }), 2, "close"],
+  [
+    "exit more shares than you hold",
+    () => client.request_withdraw({ from: WHO, shares: 10n ** 18n, require_idle: true }),
+    25,
+  ],
+  ["cancel a pending deposit that is not there", () => client.cancel_pending_deposit({ from: WHO }), 22],
+  ["collect a queued exit that does not exist", () => client.claim_withdraw({ from: WHO }), 22, "collect"],
+  [
+    "exit a sane number of shares",
+    () => client.request_withdraw({ from: WHO, shares: 1_000_000n, require_idle: true }),
+    null,
+  ],
 ];
 
 let bad = 0;
-for (const [label, build, expected] of CASES) {
-  const out = await submit(build(), refuses);
+for (const [label, build, expected, site] of CASES) {
+  const out = await submit(build(), refuses, site);
   if (out.status === "refused" && out.signed) {
     const verdict = expected === null ? "  ok" : "MISS";
     if (expected !== null) bad += 1;
@@ -56,7 +71,7 @@ for (const [label, build, expected] of CASES) {
     continue;
   }
   if (out.status === "refused") {
-    const want = expected === null ? "a clean simulation" : explain(expected).name;
+    const want = expected === null ? "a clean simulation" : explain(expected, site).name;
     const got = out.refusal.name;
     const verdict = got === want ? "  ok" : "MISS";
     if (got !== want) bad += 1;

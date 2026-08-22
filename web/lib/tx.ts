@@ -13,7 +13,7 @@
  */
 import type { AssembledTransaction, Result } from "@stellar/stellar-sdk/contract";
 
-import { explainMessage, type ErrorText } from "./errors.ts";
+import { explainMessage, type CallSite, type ErrorText } from "./errors.ts";
 
 export type TxOutcome<T> =
   | { readonly status: "sent"; readonly value: T; readonly hash: string }
@@ -42,6 +42,12 @@ export async function submit<T>(
       opts?: unknown,
     ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
   },
+  /**
+   * Which entry point this is, so a code that means different things at different call sites can be
+   * explained as the one it means here. `WrongPhase` from a withdrawal and `WrongPhase` from a close
+   * are the same number and not the same event.
+   */
+  site?: CallSite,
 ): Promise<TxOutcome<T>> {
   let tx: AssembledTransaction<Result<T>>;
   try {
@@ -49,7 +55,7 @@ export async function submit<T>(
   } catch (cause) {
     // Simulation itself threw — the contract trapped rather than returning an error, or the node
     // could not be reached. Either way nothing was signed.
-    return { status: "refused", refusal: explainMessage(message(cause)), signed: false };
+    return { status: "refused", refusal: explainMessage(message(cause), site), signed: false };
   }
 
   // The cheap refusal: the simulation already knows this will not work.
@@ -61,12 +67,12 @@ export async function submit<T>(
   // a refusal this function is supposed to explain into an exception it merely catches.
   const failure = simulationError(tx);
   if (failure !== null) {
-    return { status: "refused", refusal: explainMessage(failure), signed: false };
+    return { status: "refused", refusal: explainMessage(failure, site), signed: false };
   }
 
   const simulated = tx.result;
   if (isResult<T>(simulated) && simulated.isErr()) {
-    return { status: "refused", refusal: explainMessage(simulated.unwrapErr().message), signed: false };
+    return { status: "refused", refusal: explainMessage(simulated.unwrapErr().message, site), signed: false };
   }
 
   try {
@@ -78,7 +84,7 @@ export async function submit<T>(
     // Past this point the wallet was opened. Whether it was declined or the network rejected the
     // envelope, the user knows they were asked — so `signed` records that, and the copy can say
     // "nothing was taken" without also implying nothing happened.
-    return { status: "refused", refusal: explainMessage(message(cause)), signed: true };
+    return { status: "refused", refusal: explainMessage(message(cause), site), signed: true };
   }
 }
 
