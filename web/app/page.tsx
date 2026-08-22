@@ -1,7 +1,9 @@
 "use client";
 
+import { ActionPanel } from "../components/ActionPanel.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
 import { useVault } from "../components/useVault.ts";
+import { useWallet } from "../components/useWallet.ts";
 import { deployment } from "../lib/deployment.ts";
 import { amount, bps, duration, price, when, whenParts } from "../lib/format.ts";
 import { faceOf, windowOpensAt } from "../lib/phase.ts";
@@ -19,7 +21,8 @@ function vaultName(epochSeconds: bigint, otmBps: number): string {
 }
 
 export default function VaultPage() {
-  const { epoch, config, error, now } = useVault();
+  const wallet = useWallet();
+  const { epoch, config, position, error, now, reload } = useVault(wallet.address);
   const d = deployment();
 
   if (error !== null) {
@@ -334,34 +337,15 @@ export default function VaultPage() {
         </section>
 
         <aside>
-          <div className="card">
-            <div className="tabs">
-              <button aria-selected="true" type="button">
-                Deposit
-              </button>
-              <button aria-selected="false" type="button">
-                Withdraw
-              </button>
-            </div>
-            <div className="body">
-              <span className="k">Amount</span>
-              <div className="field">
-                <input placeholder="0.00" inputMode="decimal" />
-                <span>XLM</span>
-              </div>
-              <div className="meta">
-                <span>min {amount(p.min_deposit, 0)} XLM</span>
-                <span>Balance —</span>
-              </div>
-              <button className="cta" type="button">
-                Connect wallet to deposit
-              </button>
-              <p className="note">
-                {face.id === "window"
-                  ? "No round is running, so this becomes shares in the same transaction."
-                  : "A round is live, so this waits as a pending deposit and converts when the round ends."}
-              </p>
-            </div>
+          <ActionPanel
+            epoch={epoch}
+            config={config}
+            wallet={wallet}
+            position={position}
+            liveRound={face.id !== "window"}
+            onDone={reload}
+          />
+          <div className="card" style={{ marginTop: 22 }}>
             <div className="contract">
               <span>Vault contract</span>
               <a

@@ -29,6 +29,7 @@
   },
   "include": [
     "next.config.mjs",
+    "scripts/**/*.ts",
     "lib/**/*.ts",
     "test/**/*.ts",
     "app/**/*.ts",

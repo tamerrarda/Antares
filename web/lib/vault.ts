@@ -43,6 +43,24 @@ export function vaultClient(env: Record<string, string | undefined> = {}): Clien
 }
 
 /**
+ * A client that can write, which is the same client plus an identity.
+ *
+ * Kept separate from `vaultClient` on purpose: every read on this page works for a visitor who has
+ * connected nothing, and a single client carrying a `publicKey` would make that untrue by making
+ * the address a construction-time requirement.
+ */
+export function writeClient(address: string, env: Record<string, string | undefined> = {}): Client {
+  const net = network(env);
+  return new Client({
+    contractId: deployment().vaultId,
+    networkPassphrase: net.networkPassphrase,
+    rpcUrl: resolveRpcUrl(net, env),
+    publicKey: address,
+    allowHttp: false,
+  });
+}
+
+/**
  * `epoch()` — the phase, the round, the strike and expiry, and the live auction curve.
  *
  * §12's `epoch()` reports the **effective** phase, re-deriving a lazy lapse read-only, so the UI

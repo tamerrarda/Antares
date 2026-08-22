@@ -333,6 +333,46 @@ export function explain(code: number): ErrorText {
   };
 }
 
+/**
+ * The same table, reached by the name the contract uses.
+ *
+ * `AssembledTransaction` hands back a `Result` whose error carries a *message* — "WrongPhase" —
+ * not a number, so a lookup keyed only by code would miss every refusal that arrives through the
+ * bindings' own error type. Built once from the table rather than maintained twice.
+ */
+const BY_NAME: ReadonlyMap<string, number> = new Map(
+  Object.entries(TABLE).map(([code, text]) => [text.name, Number(code)]),
+);
+
+/**
+ * Whatever the chain said, turned into something readable.
+ *
+ * Three shapes arrive here and all three are real: the bindings' own `{ message: "WrongPhase" }`,
+ * a raw host error string containing `#2`, and something unrecognised. The last one still must not
+ * surface as a stack trace — 08-OFFCHAIN §3 calls a bare "transaction failed" a defect.
+ */
+export function explainMessage(raw: string): ErrorText {
+  const byName = BY_NAME.get(raw.trim());
+  if (byName !== undefined) return explain(byName);
+
+  for (const [name, code] of BY_NAME) {
+    if (raw.includes(name)) return explain(code);
+  }
+
+  const code = /#(\d+)/.exec(raw)?.[1];
+  if (code !== undefined) return explain(Number(code));
+
+  return {
+    name: "Refused",
+    kind: "blocked",
+    title: "The vault refused this.",
+    body:
+      "The reason did not come back in a form this page recognises, which usually means the failure " +
+      "happened before the contract was reached — a network problem, or a wallet that declined. " +
+      "Nothing was taken and nothing changed.",
+  };
+}
+
 /** Every code this build can explain, for the test that keeps it in step with the bindings. */
 export function knownCodes(): readonly number[] {
   return Object.keys(TABLE).map(Number);

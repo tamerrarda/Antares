@@ -1,13 +1,17 @@
 "use client";
 
-import type { ConfigView, EpochInfo } from "@antares/bindings";
+import type { ConfigView, EpochInfo, Position } from "@antares/bindings";
 import { useEffect, useState } from "react";
 
-import { readConfig, readEpoch, vaultClient } from "../lib/vault.ts";
+import { readConfig, readEpoch, readPosition, vaultClient } from "../lib/vault.ts";
 
 export interface VaultRead {
   readonly epoch: EpochInfo | null;
   readonly config: ConfigView | null;
+  /** Null until a wallet is connected — and null is not the same as an empty position. */
+  readonly position: Position | null;
+  /** Re-read after a write of our own. Nothing else triggers it; see the note on polling. */
+  readonly reload: () => void;
   readonly error: string | null;
   /** Wall clock in unix seconds, ticking, so every countdown on the page moves together. */
   readonly now: number;
@@ -24,10 +28,12 @@ export interface VaultRead {
  * The failure path is a first-class return rather than a thrown promise: a visitor whose RPC is
  * blocked should be told that, not shown an empty vault.
  */
-export function useVault(): VaultRead {
+export function useVault(address: string | null): VaultRead {
   const [epoch, setEpoch] = useState<EpochInfo | null>(null);
   const [config, setConfig] = useState<ConfigView | null>(null);
+  const [position, setPosition] = useState<Position | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
   useEffect(() => {
@@ -41,6 +47,15 @@ export function useVault(): VaultRead {
         if (!live) return;
         setEpoch(e);
         setConfig(c);
+        // The position is read separately and its failure is not the page's failure: a visitor with
+        // no wallet has no position, and an archived entry is a state the panel renders rather than
+        // an error the page reports.
+        if (address !== null) {
+          const pos = await readPosition(client, address).catch(() => null);
+          if (live) setPosition(pos);
+        } else {
+          setPosition(null);
+        }
       } catch (cause) {
         if (!live) return;
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -49,12 +64,12 @@ export function useVault(): VaultRead {
     return () => {
       live = false;
     };
-  }, []);
+  }, [address, nonce]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(id);
   }, []);
 
-  return { epoch, config, error, now };
+  return { epoch, config, position, error, now, reload: () => setNonce((n) => n + 1) };
 }
