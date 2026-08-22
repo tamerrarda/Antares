@@ -23,13 +23,42 @@ function asAmount(value: unknown): bigint | null {
   return typeof value === "bigint" ? value : null;
 }
 
-/** XLM as typed, to stroops. Refuses rather than rounding, because a silent round is a wrong amount. */
-function toStroops(input: string): bigint | null {
-  const t = input.trim();
-  if (!/^\d*\.?\d*$/.test(t) || t === "" || t === ".") return null;
+/**
+ * What the field currently holds, or why it cannot be used.
+ *
+ * The previous version returned `null` for everything it could not parse, which disabled the button
+ * and said nothing. Measured by typing into it: `-5`, `abc`, `1.2.3` and `1,5` all sat in the field
+ * with a dead button and no explanation. The last one is the one that matters — a decimal **comma**
+ * is how most of Europe writes a decimal, so the most likely "invalid" input is somebody typing the
+ * number correctly for their own keyboard.
+ *
+ * So a comma is not an error, it is a separator: normalised and accepted. Everything genuinely
+ * unusable gets a sentence, because a control that refuses without saying why is the same defect as
+ * a transaction that fails without saying why.
+ */
+type Parsed = { readonly stroops: bigint } | { readonly problem: string } | null;
+
+const DECIMALS = 7;
+
+function parseAmount(input: string): Parsed {
+  const raw = input.trim();
+  if (raw === "") return null;
+
+  // A decimal comma is a spelling, not a mistake.
+  const t = raw.replace(",", ".");
+
+  if (t.startsWith("-")) return { problem: "An amount cannot be negative." };
+  if (!/^\d*\.?\d*$/.test(t) || t === ".") {
+    return { problem: "An amount is digits, with at most one decimal point — nothing else." };
+  }
+
   const [whole = "0", frac = ""] = t.split(".");
-  if (frac.length > 7) return null;
-  return BigInt(whole) * SCALE + BigInt(frac.padEnd(7, "0"));
+  if (frac.length > DECIMALS) {
+    return {
+      problem: `XLM has ${DECIMALS} decimal places and that is more, so it could not be sent exactly.`,
+    };
+  }
+  return { stroops: BigInt(whole || "0") * SCALE + BigInt(frac.padEnd(DECIMALS, "0")) };
 }
 
 export function ActionPanel({
@@ -56,7 +85,9 @@ export function ActionPanel({
   const [requireIdle, setRequireIdle] = useState(true);
   const { busy, outcome, run, clear } = useAction(wallet);
 
-  const stroops = toStroops(value);
+  const parsed = parseAmount(value);
+  const stroops = parsed !== null && "stroops" in parsed ? parsed.stroops : null;
+  const malformed = parsed !== null && "problem" in parsed ? parsed.problem : null;
   const connected = wallet.address !== null && !wallet.wrongNetwork;
   const env = { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] };
 
@@ -66,19 +97,26 @@ export function ActionPanel({
    * the two can never say different things about the same rule.
    */
   const localRefusal: ErrorText | null =
-    stroops === null || stroops === 0n
-      ? null
-      : tab === "deposit"
-        ? stroops < epoch.params.min_deposit
-          ? explain(20)
-          : stroops > config.deposit_headroom
-            ? explain(21)
-            : position !== null && position.pending_deposit > 0n
-              ? explain(24)
-              : null
-        : position !== null && stroops > position.shares
-          ? explain(25)
-          : null;
+    malformed !== null
+      ? {
+          name: "Amount",
+          kind: "blocked",
+          title: "That is not an amount this field can send.",
+          body: malformed,
+        }
+      : stroops === null || stroops === 0n
+        ? null
+        : tab === "deposit"
+          ? stroops < epoch.params.min_deposit
+            ? explain(20)
+            : stroops > config.deposit_headroom
+              ? explain(21)
+              : position !== null && position.pending_deposit > 0n
+                ? explain(24)
+                : null
+          : position !== null && stroops > position.shares
+            ? explain(25)
+            : null;
 
   /**
    * The field is cleared on a tab change, and that is a correctness fix rather than tidiness.
@@ -90,6 +128,27 @@ export function ActionPanel({
     setTab(next);
     setValue("");
     clear();
+  }
+
+  /**
+   * What the primary button does, in one place.
+   *
+   * Reached by a click and by Enter in the field — pressing Enter after typing an amount is the
+   * gesture everybody tries first, and before this there was no `<form>` at all, so it did nothing.
+   */
+  function primaryAction() {
+    if (needsWallet) {
+      void wallet.connect();
+      return;
+    }
+    if (client === null || stroops === null) return;
+    void (tab === "deposit"
+      ? fire("deposit", client.deposit({ from: who, amount: stroops }))
+      : fire(
+          "withdraw",
+          client.request_withdraw({ from: who, shares: stroops, require_idle: requireIdle }),
+          "withdraw",
+        ));
   }
 
   async function fire(key: string, build: Promise<unknown>, site?: CallSite) {
@@ -123,21 +182,48 @@ export function ActionPanel({
 
   return (
     <div className="card">
-      <div className="tabs">
-        <button aria-selected={tab === "deposit"} type="button" onClick={() => switchTo("deposit")}>
+      <div className="tabs" role="tablist" aria-label="Deposit or withdraw">
+        {/* `aria-selected` is only meaningful on a `tab`; on a bare button it is an attribute a
+            screen reader can do nothing with. The roles are what make these two behave as a pair. */}
+        <button
+          role="tab"
+          aria-selected={tab === "deposit"}
+          aria-controls="action-fields"
+          type="button"
+          onClick={() => switchTo("deposit")}
+        >
           Deposit
         </button>
-        <button aria-selected={tab === "withdraw"} type="button" onClick={() => switchTo("withdraw")}>
+        <button
+          role="tab"
+          aria-selected={tab === "withdraw"}
+          aria-controls="action-fields"
+          type="button"
+          onClick={() => switchTo("withdraw")}
+        >
           Withdraw
         </button>
       </div>
 
-      <div className="body">
-        <span className="k">{tab === "deposit" ? "Amount" : "Shares"}</span>
+      <form
+        className="body"
+        id="action-fields"
+        onSubmit={(e) => {
+          e.preventDefault();
+          primaryAction();
+        }}
+      >
+        <label className="k" htmlFor="action-amount">
+          {tab === "deposit" ? "Amount" : "Shares"}
+        </label>
         <div className="field">
           <input
+            id="action-amount"
+            type="text"
             placeholder="0.00"
             inputMode="decimal"
+            autoComplete="off"
+            aria-describedby={localRefusal === null ? undefined : "action-problem"}
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
@@ -186,28 +272,12 @@ export function ActionPanel({
 
         <button
           className="cta"
-          type="button"
+          type="submit"
           disabled={
             needsWallet
               ? wallet.connecting
               : !connected || busy !== null || stroops === null || stroops === 0n || localRefusal !== null
           }
-          onClick={() => {
-            // With no wallet the primary action IS connecting. A button that reads "connect wallet"
-            // and cannot be pressed is an instruction with nothing behind it.
-            if (needsWallet) {
-              void wallet.connect();
-              return;
-            }
-            if (client === null || stroops === null) return;
-            void (tab === "deposit"
-              ? fire("deposit", client.deposit({ from: who, amount: stroops }))
-              : fire(
-                  "withdraw",
-                  client.request_withdraw({ from: who, shares: stroops, require_idle: requireIdle }),
-                  "withdraw",
-                ));
-          }}
         >
           {cta}
         </button>
@@ -238,7 +308,7 @@ export function ActionPanel({
             </>
           )}
         </p>
-      </div>
+      </form>
 
       {/* The wallet's own failures had nowhere to appear: `useWallet` set `error` and no component
           read it, so "no wallet answered" was a state the page reached and never showed. */}

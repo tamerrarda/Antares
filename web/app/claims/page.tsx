@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { ChainDown } from "../../components/ChainDown.tsx";
 import { Refusal } from "../../components/Refusal.tsx";
 import { useClaims } from "../../components/useClaims.ts";
 import { useEvents } from "../../components/useEvents.ts";
@@ -134,9 +135,7 @@ export default function ClaimsPage() {
             </h2>
             {error !== null ? (
               <div className="body">
-                <p className="sub" style={{ marginTop: 0 }}>
-                  {error}
-                </p>
+                <ChainDown detail={error} onRetry={reload} />
               </div>
             ) : rows.length === 0 && !loading ? (
               <div className="body">

@@ -1,5 +1,6 @@
 "use client";
 
+import { ChainDown } from "../../components/ChainDown.tsx";
 import { useEvents } from "../../components/useEvents.ts";
 import { deployment } from "../../lib/deployment.ts";
 import { amount, when } from "../../lib/format.ts";
@@ -18,22 +19,11 @@ function Pill({ outcome }: { outcome: Outcome }) {
 }
 
 export default function RoundsPage() {
-  const { page, error } = useEvents();
+  const { page, error, reload } = useEvents();
   const d = deployment();
 
   if (error !== null) {
-    return (
-      <article className="card">
-        <h2>
-          <span>The chain did not answer</span>
-        </h2>
-        <div className="body">
-          <p className="sub" style={{ marginTop: 0 }}>
-            {error}
-          </p>
-        </div>
-      </article>
-    );
+    return <ChainDown detail={error} onRetry={reload} />;
   }
 
   if (page === null) {

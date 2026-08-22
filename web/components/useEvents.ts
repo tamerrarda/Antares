@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { fetchEvents, type EventPage } from "../lib/events.ts";
 
@@ -11,9 +11,10 @@ import { fetchEvents, type EventPage } from "../lib/events.ts";
  * pages and the retention window is seven days of them. That is a few seconds, and it is why this
  * is not on a timer: the history only changes when a round ends.
  */
-export function useEvents(): { page: EventPage | null; error: string | null } {
+export function useEvents(): { page: EventPage | null; error: string | null; reload: () => void } {
   const [page, setPage] = useState<EventPage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -28,7 +29,15 @@ export function useEvents(): { page: EventPage | null; error: string | null } {
     return () => {
       live = false;
     };
-  }, []);
+  }, [nonce]);
 
-  return { page, error };
+  return {
+    page,
+    error,
+    reload: useCallback(() => {
+      setError(null);
+      setPage(null);
+      setNonce((n) => n + 1);
+    }, []),
+  };
 }

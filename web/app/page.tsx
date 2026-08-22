@@ -1,6 +1,7 @@
 "use client";
 
 import { ActionPanel } from "../components/ActionPanel.tsx";
+import { ChainDown } from "../components/ChainDown.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
 import { Permissionless } from "../components/Permissionless.tsx";
 import { useVault } from "../components/useVault.ts";
@@ -27,20 +28,7 @@ export default function VaultPage() {
   const d = deployment();
 
   if (error !== null) {
-    return (
-      <article className="card">
-        <h2>
-          <span>The chain did not answer</span>
-        </h2>
-        <div className="body">
-          <p className="sub" style={{ marginTop: 0 }}>
-            Nothing is wrong with the vault — this page could not reach an RPC node to ask it. The contract is{" "}
-            <code>{d.vaultId}</code> on {d.network} and is readable by anyone with a node.
-          </p>
-          <p className="sub">{error}</p>
-        </div>
-      </article>
-    );
+    return <ChainDown detail={error} onRetry={reload} />;
   }
 
   if (epoch === null || config === null) {

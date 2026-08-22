@@ -2,6 +2,7 @@
 
 import { isUnrecognised, type AdminEvent } from "@antares/common/events";
 
+import { ChainDown } from "../../components/ChainDown.tsx";
 import { useEvents } from "../../components/useEvents.ts";
 import { useVault } from "../../components/useVault.ts";
 import { deployment } from "../../lib/deployment.ts";
@@ -62,7 +63,7 @@ const CANNOT = [
 ] as const;
 
 export default function OperatorPage() {
-  const { page, error } = useEvents();
+  const { page, error, reload } = useEvents();
   const { config } = useVault(null);
   const d = deployment();
 
@@ -123,9 +124,7 @@ export default function OperatorPage() {
         </h2>
         {error !== null ? (
           <div className="body">
-            <p className="sub" style={{ marginTop: 0 }}>
-              {error}
-            </p>
+            <ChainDown detail={error} onRetry={reload} />
           </div>
         ) : page === null ? (
           <div className="body">
