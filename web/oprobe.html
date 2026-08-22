@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><title>probe</title>
+<style>body{background:#0d0f14;color:#e8e6e1;font:12px ui-monospace,Menlo,monospace;padding:18px}
+li{margin:5px 0}b{color:#ff6b3d}iframe{position:absolute;left:-9999px}</style></head><body>
+<h3 id="h">…</h3><ul id="o"></ul>
+<script>
+// oprobe.html#<screen>@<width> — e.g. #positions@320. Answers "which element", where ocheck.html
+// only answers "whether". Keep both: the second question is not worth asking until the first says yes.
+const [SCREEN,WIDTH]=(location.hash.slice(1)||"positions@320").split("@");
+document.getElementById("h").textContent=`${SCREEN} @ ${WIDTH} — what is actually too wide`;
+const f=document.createElement("iframe");f.width=Number(WIDTH);f.height=1400;f.src="./app.html#"+SCREEN;
+f.onload=()=>setTimeout(()=>{
+  const d=f.contentDocument,W=d.documentElement.clientWidth,out=[];
+  d.querySelectorAll("*").forEach(el=>{
+    const r=el.getBoundingClientRect();
+    // Elements inside their own scroll container are allowed to be wider than the viewport; only
+    // the ones that push the DOCUMENT count, and those are what this filter keeps.
+    let sc=false; for(let a=el.parentElement;a;a=a.parentElement){const o=f.contentWindow.getComputedStyle(a).overflowX;if(o==="auto"||o==="scroll"||o==="hidden"){sc=true;break;}}
+    if(!sc&&(r.right>W+1||r.width>W+1)){
+      // report only the deepest offenders: an ancestor is wide because a descendant is
+      if(![...el.children].some(c=>{const q=c.getBoundingClientRect();return q.right>W+1||q.width>W+1;}))
+        out.push(`${el.tagName.toLowerCase()}${el.className?"."+String(el.className).split(" ").join("."):""} — w ${Math.round(r.width)} right ${Math.round(r.right)} :: ${(el.textContent||"").trim().slice(0,60)}`);
+    }
+  });
+  document.getElementById("o").innerHTML=out.length?out.map(s=>`<li><b>${s}</b></li>`).join(""):"<li>nothing</li>";
+  document.title="done";
+},400);
+document.body.appendChild(f);
+</script></body></html>

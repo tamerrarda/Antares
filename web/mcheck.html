@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Antares app — responsive check</title>
+    <!--
+      Chrome on macOS refuses to open a window narrower than 500px, so `--window-size=390` gives a
+      390-px CROP of a 500-px layout and every phone bug looks like it is not there. An iframe has no
+      such floor. This cost a wrong answer once already; the harness exists so it cannot again.
+
+      Usage:  mcheck.html#<hash>       e.g. mcheck.html#auction:on   or  mcheck.html#rounds
+    -->
+    <style>
+      body { margin: 0; background: #14161c; color: #a8a29a; font: 12px ui-monospace, Menlo, monospace; padding: 16px; }
+      .row { display: flex; gap: 16px; align-items: flex-start; }
+      figure { margin: 0; }
+      figcaption { padding: 0 0 7px; letter-spacing: .1em; }
+      iframe { border: 1px solid #333; background: #05060a; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="row" id="row"></div>
+    <script>
+      const SIZES = [
+        ["iPhone 13 mini · 375×812", 375, 812],
+        ["iPhone 15 Pro · 393×852", 393, 852],
+        ["iPhone 15 Pro Max · 430×932", 430, 932],
+        ["iPad mini · 744×1000", 744, 1000],
+      ];
+      // Two modes. One hash → that screen across four devices, which is the responsive question.
+      // Several comma-separated hashes → one device across several screens, which is the coverage
+      // question. Both are needed and neither answers the other.
+      const target = location.hash.slice(1) || "auction:on";
+      const many = target.includes(",") ? target.split(",") : null;
+      const y = Number(new URLSearchParams(location.search).get("y") || 0);
+      const cells = many
+        ? many.map((t) => [t, 393, 1000])
+        : SIZES.map(([label, w, h]) => [label, w, h]);
+      document.getElementById("row").innerHTML = cells
+        .map(
+          ([label, w, h], i) =>
+            `<figure><figcaption>${label}</figcaption>
+               <iframe src="./app.html#${many ? many[i] : target}" width="${w}" height="${h}" scrolling="no"
+                       onload="this.contentWindow.scrollTo(0, ${y})"></iframe>
+             </figure>`,
+        )
+        .join("");
+    </script>
+  </body>
+</html>
