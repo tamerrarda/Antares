@@ -49,6 +49,17 @@ export function vaultClient(env: Record<string, string | undefined> = {}): Clien
  * connected nothing, and a single client carrying a `publicKey` would make that untrue by making
  * the address a construction-time requirement.
  */
+/** A read client for a vault other than the default one — used by the pages that span instances. */
+export function clientFor(contractId: string, env: Record<string, string | undefined> = {}): Client {
+  const net = network(env);
+  return new Client({
+    contractId,
+    networkPassphrase: net.networkPassphrase,
+    rpcUrl: resolveRpcUrl(net, env),
+    allowHttp: false,
+  });
+}
+
 export function writeClient(address: string, env: Record<string, string | undefined> = {}): Client {
   const net = network(env);
   return new Client({

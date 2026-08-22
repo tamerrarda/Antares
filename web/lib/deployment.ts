@@ -34,6 +34,40 @@ export interface Deployment {
   readonly economicallyMeaningless: boolean;
 }
 
+/**
+ * An amount from the record, refused rather than coerced.
+ *
+ * `String(unknown)` turns an object into "[object Object]" and `BigInt` of that throws at a point
+ * far from the cause. A deposit cap is a number in the JSON; anything else is a record this build
+ * should not pretend to understand.
+ */
+function requireAmount(value: unknown, field: string): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isInteger(value)) return BigInt(value);
+  if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
+  throw new DeploymentError(
+    `deployments/testnet.json has a ${field} that is not an integer amount (got ${typeof value}).`,
+  );
+}
+
+/**
+ * One deployed vault, as the record describes it.
+ *
+ * The parameters come from the record rather than the chain because a page needs to *name* a vault
+ * before it reads it — "7-day · 3%" is what a person picks between, and asking five contracts for
+ * their `epoch()` before rendering a menu is five round-trips to draw a label.
+ */
+export interface Instance {
+  readonly vaultId: string;
+  /** `-A`…`-E`, or `-F` for a fast-test profile. Distinguishes the five share tokens (D-52). */
+  readonly tokenSuffix: string;
+  readonly epochDuration: number;
+  readonly strikeBpsOtm: number;
+  readonly minIdleGap: number;
+  readonly depositCap: bigint;
+  readonly economicallyMeaningless: boolean;
+}
+
 class DeploymentError extends Error {}
 
 function requireString(value: unknown, field: string): string {
@@ -52,6 +86,34 @@ function requireString(value: unknown, field: string): string {
  * A missing field here is a build that would otherwise ship pointing at nothing, and the failure
  * would surface as an empty page rather than as the misconfiguration it is.
  */
+/**
+ * Every vault this build knows about — today one, by design N.
+ *
+ * D-47 runs Phase 2 as five concurrent instances differing only in `EpochParams`, and the pages
+ * that compare them iterate this list rather than a hardcoded five. When `deploy.ts` writes five
+ * rows, the comparison shows five with no code change; while it writes one, the pages say so
+ * instead of drawing four vaults that do not exist. Presenting a plan as a product is the specific
+ * failure this avoids.
+ */
+export function instances(): readonly Instance[] {
+  const rows = record.instances as ReadonlyArray<Record<string, unknown>>;
+  return rows.map((row, i) => {
+    const params = row["params"] as Record<string, unknown> | undefined;
+    if (params === undefined) {
+      throw new DeploymentError(`deployments/testnet.json instances[${i}] has no params.`);
+    }
+    return {
+      vaultId: requireString(row["vaultId"], `instances[${i}].vaultId`),
+      tokenSuffix: requireString(row["tokenSuffix"], `instances[${i}].tokenSuffix`),
+      epochDuration: Number(params["epoch_duration"]),
+      strikeBpsOtm: Number(params["strike_bps_otm"]),
+      minIdleGap: Number(params["min_idle_gap"]),
+      depositCap: requireAmount(row["depositCap"], `instances[${i}].depositCap`),
+      economicallyMeaningless: row["economicallyMeaningless"] === true,
+    };
+  });
+}
+
 export function deployment(): Deployment {
   const instances = record.instances as ReadonlyArray<Record<string, unknown>>;
   const instance = instances[0];
