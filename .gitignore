@@ -3,6 +3,8 @@ target/
 node_modules/
 .env
 .env.*
+# ...except the documented template, which is the only record of what a build needs.
+!.env.example
 
 # `/plan`, not `plan/`. In the three development worktrees `plan` is a *symlink*
 # to the shared plan repository, and a pattern ending in `/` matches directories
@@ -89,3 +91,9 @@ deployments/environment-*-dryrun.json
 # reproducible, so the sources are archive material rather than build input.
 /antaresimage*.zip
 /antaresimage*/
+
+# Next.js: `.next/` is the intermediate build, `out/` the static export. Both are outputs of
+# `next build` and neither is a source of anything.
+web/.next/
+web/out/
+web/next-env.d.ts

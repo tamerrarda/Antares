@@ -20,6 +20,14 @@ export default tseslint.config(
     ignores: [
       // Generated, vendored, or another language.
       "**/dist/**",
+      // Next.js build output. `out/` is the static export and `.next/` its intermediate form; both
+      // are machine-written bundles that would be reported against code nobody typed.
+      "web/.next/**",
+      "web/out/**",
+      // The design draft: one hand-written page that renders seven contract states from a mock, kept
+      // as reference while the real pages are ported off it. It is not in any tsconfig because it is
+      // not part of the app, and it gets deleted when the port finishes.
+      "web/app-draft.js",
       "**/node_modules/**",
       "target/**",
       "contracts/**",
@@ -62,6 +70,13 @@ export default tseslint.config(
       // A deliberately-ignored binding is written with a leading underscore.
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
+  },
+  {
+    // `.mjs` config files run in Node, and `no-undef` — which typescript-eslint switches off for
+    // `.ts` because the compiler already answers the question — has no such knowledge here. Only
+    // the globals actually used are declared, so a genuine typo in one of these still fails.
+    files: ["**/*.mjs"],
+    languageOptions: { globals: { process: "readonly" } },
   },
   {
     files: ["**/test/**/*.ts"],

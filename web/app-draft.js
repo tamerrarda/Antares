@@ -14,10 +14,17 @@
  */
 
 const P = {
-  epochDays: 7, otmBps: 300, auctionSec: 2700,
-  startBps: 450, floorBps: 40, fairBps: 75.6,
-  idleGapH: 4, oracleDeadH: 12, unresolvedH: 21,
-  notional: 84320, cap: 100000,
+  epochDays: 7,
+  otmBps: 300,
+  auctionSec: 2700,
+  startBps: 450,
+  floorBps: 40,
+  fairBps: 75.6,
+  idleGapH: 4,
+  oracleDeadH: 12,
+  unresolvedH: 21,
+  notional: 84320,
+  cap: 100000,
 };
 
 let W = "off";
@@ -32,14 +39,18 @@ const card = (title, note, inner) =>
 
 const stats = (rows) =>
   `<div class="stats">${rows
-    .map(([k, v, u, hot]) => `<div><span class="k">${k}</span><v${hot ? ' class="hot"' : ""}>${v}</v><u>${u}</u></div>`)
+    .map(
+      ([k, v, u, hot]) =>
+        `<div><span class="k">${k}</span><v${hot ? ' class="hot"' : ""}>${v}</v><u>${u}</u></div>`,
+    )
     .join("")}</div>`;
 
 /* Where the price sits against the strike. The number pair states the fact; the bar is what makes
    "capped, not lost" legible without reading a sentence — and that distinction is the one a
    covered-call product most often fails to communicate. */
 const gauge = (openPx, strikePx, nowPx, label) => {
-  const lo = openPx * 0.96, hi = openPx * 1.1;
+  const lo = openPx * 0.96,
+    hi = openPx * 1.1;
   const at = (v) => ((v - lo) / (hi - lo)) * 100;
   const here = Math.min(88, Math.max(12, at(nowPx)));
   return `<div class="gauge">
@@ -220,14 +231,31 @@ const calendarCard = `<div class="card" style="margin-top:22px">
    a substitute for a notification. Times are UTC, which is what `Z` means here. */
 function downloadIcs() {
   const ev = (uid, stamp, title, desc) =>
-    ["BEGIN:VEVENT", `UID:${uid}@antares`, `DTSTAMP:${stamp}`, `DTSTART:${stamp}`,
-     `SUMMARY:${title}`, `DESCRIPTION:${desc}`, "END:VEVENT"].join("\r\n");
+    [
+      "BEGIN:VEVENT",
+      `UID:${uid}@antares`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${stamp}`,
+      `SUMMARY:${title}`,
+      `DESCRIPTION:${desc}`,
+      "END:VEVENT",
+    ].join("\r\n");
   const ics = [
-    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Antares//Vault//EN",
-    ev("r12-lapse", "20260822T090000Z", "Antares — your window may be open (7-day 3% vault)",
-       "If round 12 found no buyer it finalised at 09:00 and deposits and exits are instant now. Delete this if the option sold."),
-    ev("r12-expiry", "20260829T081500Z", "Antares — round 12 expires (7-day 3% vault)",
-       "If the option sold, the round expires now and anyone can close it for a bounty. Delete this if nobody bid."),
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Antares//Vault//EN",
+    ev(
+      "r12-lapse",
+      "20260822T090000Z",
+      "Antares — your window may be open (7-day 3% vault)",
+      "If round 12 found no buyer it finalised at 09:00 and deposits and exits are instant now. Delete this if the option sold.",
+    ),
+    ev(
+      "r12-expiry",
+      "20260829T081500Z",
+      "Antares — round 12 expires (7-day 3% vault)",
+      "If the option sold, the round expires now and anyone can close it for a bounty. Delete this if nobody bid.",
+    ),
     "END:VCALENDAR",
   ].join("\r\n");
   const a = document.createElement("a");
@@ -319,11 +347,17 @@ const STATES = {
             ["Fair value", `${P.fairBps} bps`, "Black-Scholes at σ 33.7%"],
           ]),
       ) +
-            simulatorCard("$0.2127") +
+      simulatorCard("$0.2127") +
       recordCard +
       anyoneCard(
-        { on: false, why: "From 29 Aug, 08:15 — when the round expires. The caller keeps a bounty out of the premium." },
-        { on: false, why: "4 h after this round is closed. No keeper has special rights here; the project runs one only so the vault does not sit idle." },
+        {
+          on: false,
+          why: "From 29 Aug, 08:15 — when the round expires. The caller keeps a bounty out of the premium.",
+        },
+        {
+          on: false,
+          why: "4 h after this round is closed. No keeper has special rights here; the project runs one only so the vault does not sit idle.",
+        },
       ) +
       configCard,
     aside: () =>
@@ -370,8 +404,14 @@ const STATES = {
       ) +
       recordCard +
       anyoneCard(
-        { on: false, why: "Nothing to close — round 12 is finalised. This becomes available again once the next round has expired." },
-        { on: false, why: "In 2 h 41 m. Opening a round reads the oracle, fixes the strike 3% above the price at that moment, and puts the whole vault balance up for auction for 45 minutes. Anyone may call it and nobody is paid to." },
+        {
+          on: false,
+          why: "Nothing to close — round 12 is finalised. This becomes available again once the next round has expired.",
+        },
+        {
+          on: false,
+          why: "In 2 h 41 m. Opening a round reads the oracle, fixes the strike 3% above the price at that moment, and puts the whole vault balance up for auction for 45 minutes. Anyone may call it and nobody is paid to.",
+        },
       ) +
       configCard,
     aside: () => asideInstant(),
@@ -412,10 +452,13 @@ const STATES = {
             ["Price per share", "1.01220", "up from 1.00437 when the option sold"],
           ]),
       ) +
-            simulatorCard("$0.2131") +
+      simulatorCard("$0.2131") +
       recordCard +
       anyoneCard(
-        { on: false, why: "From 29 Aug, 13:04, when the round expires. Bounty to whoever calls it: <b>1.6 XLM</b>, simulated." },
+        {
+          on: false,
+          why: "From 29 Aug, 13:04, when the round expires. Bounty to whoever calls it: <b>1.6 XLM</b>, simulated.",
+        },
         { on: false, why: "4 h after this round closes — 29 Aug, 17:04 at the earliest." },
       ) +
       configCard,
@@ -462,7 +505,11 @@ const STATES = {
          </div>`,
       ) +
       anyoneCard(
-        { on: true, hot: true, why: "<b>Simulated this second: it would refuse</b> — the feed is unreachable and the round is not yet 12 h past expiry. It starts working at 10:04 tomorrow. Bounty if it settles: 1.6 XLM; if annulled, none." },
+        {
+          on: true,
+          hot: true,
+          why: "<b>Simulated this second: it would refuse</b> — the feed is unreachable and the round is not yet 12 h past expiry. It starts working at 10:04 tomorrow. Bounty if it settles: 1.6 XLM; if annulled, none.",
+        },
         { on: false, why: "Not until this round closes, plus 4 h." },
       ) +
       recordCard +
@@ -521,7 +568,10 @@ const STATES = {
       ) +
       recordCard +
       anyoneCard(
-        { on: false, why: "Closed at 13:07 by GBZK…7QP2, who took the 1.6 XLM bounty — not by the project's keeper." },
+        {
+          on: false,
+          why: "Closed at 13:07 by GBZK…7QP2, who took the 1.6 XLM bounty — not by the project's keeper.",
+        },
         { on: true, why: "Live now. Opening a round fixes a new strike 3% above the price at that moment." },
       ) +
       configCard,
@@ -563,7 +613,10 @@ const STATES = {
       ) +
       recordCard +
       anyoneCard(
-        { on: false, why: "Nothing to close — a round with no fill finalises the first time anyone touches the vault." },
+        {
+          on: false,
+          why: "Nothing to close — a round with no fill finalises the first time anyone touches the vault.",
+        },
         { on: false, why: "In 2 h 41 m, at 13:04." },
       ) +
       configCard,
@@ -624,7 +677,9 @@ const STATES = {
 let simAmount = 1000;
 
 function simulate(amount) {
-  const OPEN = 0.2065, STRIKE = 0.2127, PREM_BPS = 85.6;
+  const OPEN = 0.2065,
+    STRIKE = 0.2127,
+    PREM_BPS = 85.6;
   const credited = amount * (PREM_BPS / 10000);
   const rows = [-10, 0, 3, 6, 10].map((pct) => {
     const close = OPEN * (1 + pct / 100);
@@ -734,15 +789,23 @@ function payoffCard(strike) {
 function drawCurve() {
   const el = document.getElementById("curve");
   if (!el) return;
-  const START = P.startBps, FLOOR = P.floorBps, FAIR = P.fairBps, T = P.auctionSec, NOW = 2400;
+  const START = P.startBps,
+    FLOOR = P.floorBps,
+    FAIR = P.fairBps,
+    T = P.auctionSec,
+    NOW = 2400;
   const bpsAt = (t) => START - ((START - FLOOR) * t) / T;
   const tCross = ((START - FAIR) * T) / (START - FLOOR);
-  const W = Math.max(280, el.clientWidth), H = W < 470 ? 200 : 262;
+  const W = Math.max(280, el.clientWidth),
+    H = W < 470 ? 200 : 262;
   // Below ~470 px there is not room for both the long labels and the line they annotate. The two
   // that go are the two the card's caption already carries in prose, so nothing is lost that the
   // reader cannot find one line lower.
   const tight = W < 470;
-  const L = 6, R = W - (tight ? 34 : 64), TOP = tight ? 26 : 34, BOT = H - (tight ? 24 : 30);
+  const L = 6,
+    R = W - (tight ? 34 : 64),
+    TOP = tight ? 26 : 34,
+    BOT = H - (tight ? 24 : 30);
   const x = (t) => L + (t / T) * (R - L);
   const y = (b) => BOT - (b / (START * 1.04)) * (BOT - TOP);
   const n = (v) => Math.round(v * 10) / 10;
@@ -867,7 +930,10 @@ const CLAIMS = [
 ];
 
 const claimsPage = () =>
-  pageHead("Claims", "What the vaults owe you as a buyer — payouts from settled rounds and refunds from annulled ones") +
+  pageHead(
+    "Claims",
+    "What the vaults owe you as a buyer — payouts from settled rounds and refunds from annulled ones",
+  ) +
   card(
     "Unclaimed",
     "shown whether the round is recent or not",
@@ -901,7 +967,9 @@ const claimsPage = () =>
         state === "claimable" ? `<b>${owed} XLM</b>` : `<span class="muted">${owed} XLM</span>`,
         state === "claimable"
           ? `<button class="mini">${o === "void" ? "Claim refund" : "Claim payout"}</button>${
-              archived ? `<div class="muted" style="margin-top:7px">archived — restored by the claim itself</div>` : ""
+              archived
+                ? `<div class="muted" style="margin-top:7px">archived — restored by the claim itself</div>`
+                : ""
             }`
           : `<span class="muted">${state}</span>`,
       ]),
@@ -929,8 +997,24 @@ const claimsPage = () =>
  * ranking of the five against each other.
  */
 const FLEET = [
-  ["A", "7-day · 3%", "12,500.000", "12,652.5", "Your window is open", "open now — anyone may close it from 13:04", true],
-  ["B", "7-day · 5%", "4,000.000", "4,000.0", "The option is for sale", "if nobody bids, in about 12 m", false],
+  [
+    "A",
+    "7-day · 3%",
+    "12,500.000",
+    "12,652.5",
+    "Your window is open",
+    "open now — anyone may close it from 13:04",
+    true,
+  ],
+  [
+    "B",
+    "7-day · 5%",
+    "4,000.000",
+    "4,000.0",
+    "The option is for sale",
+    "if nobody bids, in about 12 m",
+    false,
+  ],
   ["C", "3-day · 2%", null, null, "Sold — running", "26 Aug, then 4 h later", false],
   ["D", "14-day · 5%", "2,000.000", "2,014.8", "Sold — running", "29 Aug, then 4 h later", false],
   ["E", "3-day · 3%", null, null, "Your window is open", "open now", false],
@@ -980,17 +1064,55 @@ const positionsPage = () =>
  * choosing between five options.
  */
 const comparePage = () =>
-  pageHead("Five vaults, one experiment", "They differ in two things only. Everything else — the code, the oracle, the auction — is identical.") +
+  pageHead(
+    "Five vaults, one experiment",
+    "They differ in two things only. Everything else — the code, the oracle, the auction — is identical.",
+  ) +
   card(
     "How they differ",
     "instance A is the default; the rest are the experiment",
     `<div class="fleet">
        ${[
-         ["A", "7-day · 3%", "7 days", "up to 3% higher", "The default. The shortest commitment that still prices an option anyone would buy.", true],
-         ["B", "7-day · 5%", "7 days", "up to 5% higher", "The same week, but you keep more of a rise — and the cheaper option sells less often.", false],
-         ["C", "3-day · 2%", "3 days", "up to 2% higher", "Half the commitment, and you give up the gain soonest of the five.", false],
-         ["D", "14-day · 5%", "14 days", "up to 5% higher", "The longest commitment, and the richest premium for it.", false],
-         ["E", "3-day · 3%", "3 days", "up to 3% higher", "Shares its length with C and its cap with A — a fill here says which of the two mattered.", false],
+         [
+           "A",
+           "7-day · 3%",
+           "7 days",
+           "up to 3% higher",
+           "The default. The shortest commitment that still prices an option anyone would buy.",
+           true,
+         ],
+         [
+           "B",
+           "7-day · 5%",
+           "7 days",
+           "up to 5% higher",
+           "The same week, but you keep more of a rise — and the cheaper option sells less often.",
+           false,
+         ],
+         [
+           "C",
+           "3-day · 2%",
+           "3 days",
+           "up to 2% higher",
+           "Half the commitment, and you give up the gain soonest of the five.",
+           false,
+         ],
+         [
+           "D",
+           "14-day · 5%",
+           "14 days",
+           "up to 5% higher",
+           "The longest commitment, and the richest premium for it.",
+           false,
+         ],
+         [
+           "E",
+           "3-day · 3%",
+           "3 days",
+           "up to 3% higher",
+           "Shares its length with C and its cap with A — a fill here says which of the two mattered.",
+           false,
+         ],
        ]
          .map(
            ([code, name, days, cap, why, def]) => `<div ${def ? "data-default" : ""}>
@@ -1044,7 +1166,12 @@ const OPS = [
   ["2 Oct 08:01", "migrated", "app_version 1 → 2", "d91c…7a03"],
   ["2 Oct 08:00", "upgraded", "wasm 7b5f…a80f2 → 9c21…44e7", "6b02…e918"],
   ["14 Sep 15:40", "unpaused", "deposits and new rounds resume", "af31…5c26"],
-  ["14 Sep 11:05", "paused", "during the feed outage of round 21 — exits stayed open throughout", "22e7…b840"],
+  [
+    "14 Sep 11:05",
+    "paused",
+    "during the feed outage of round 21 — exits stayed open throughout",
+    "22e7…b840",
+  ],
   ["3 Sep 09:22", "cap_changed", "deposit cap 50,000 → 100,000 XLM", "70da…19f5"],
   ["20 Aug 23:14", "allowlist_toggled", "enabled — the 30-day window starts", "c4b8…2e71"],
   ["20 Aug 23:11", "initialized", "deployed with its full configuration", "7556…1e68"],
@@ -1111,7 +1238,13 @@ const operatorPage = () =>
 // =================================================================================================
 // Router
 // =================================================================================================
-const PAGES = { rounds: roundsPage, claims: claimsPage, positions: positionsPage, compare: comparePage, operator: operatorPage };
+const PAGES = {
+  rounds: roundsPage,
+  claims: claimsPage,
+  positions: positionsPage,
+  compare: comparePage,
+  operator: operatorPage,
+};
 
 function pageHead(title, sub, right = "") {
   return `<div class="head">
@@ -1175,8 +1308,12 @@ function route() {
     if ((onVault && t === "vault") || t === h) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   });
-  document.querySelectorAll("#switcher button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === phaseKey)));
-  document.querySelectorAll("[data-w]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.w === W)));
+  document
+    .querySelectorAll("#switcher button")
+    .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === phaseKey)));
+  document
+    .querySelectorAll("[data-w]")
+    .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.w === W)));
   if (onVault) drawCurve();
 }
 
