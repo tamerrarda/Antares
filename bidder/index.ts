@@ -37,6 +37,17 @@ function stroops(name: string): bigint {
   return value;
 }
 
+/** An optional positive-integer millisecond setting. */
+function optionalMs(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (raw === undefined || raw.length === 0) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive whole number of milliseconds, got ${JSON.stringify(raw)}`);
+  }
+  return value;
+}
+
 function bps(name: string): number {
   const raw = need(name);
   const value = Number(raw);
@@ -91,9 +102,15 @@ async function main(): Promise<void> {
     });
   }
 
+  // The default poll is sized for a real instance, where an auction runs for the better part of an
+  // hour. A fast-test profile can run one for twenty seconds — shorter than the default interval —
+  // so an operator on such an instance has to be able to say so, or the bidder simply never looks
+  // while the window is open.
+  const pollMs = optionalMs("POLL_MS");
   await loop(client, sink, {
     caps,
     strategy,
+    ...(pollMs === undefined ? {} : { pollMs }),
     running: () => running,
     // Ledger time, not this machine's. `runner.ts` says why the two are not interchangeable.
     clock: async () => Number((await server.getLatestLedger()).closeTime ?? 0),

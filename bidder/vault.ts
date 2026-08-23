@@ -179,6 +179,23 @@ export function makeVaultClient(options: VaultClientOptions): BidderVaultClient 
   /** Freshly, every time. An account whose sequence is cached sends one transaction and then stops. */
   const account = () => server.getAccount(me);
 
+  /**
+   * The portfolio total, remembered per round.
+   *
+   * **Measured on testnet 2026-08-23, and it is why this cache exists rather than being an
+   * optimisation.** Totalling the portfolio walks `lookbackRounds + 1` positions, each a separate
+   * simulation, and a pass took **12.8 seconds** end to end on a fast-test instance whose auction
+   * runs for twenty. The bidder never once looked inside the window, and no `POLL_MS` could have
+   * fixed it: the pass duration, not the interval, was the binding constraint.
+   *
+   * What makes the cache sound is that this process is the only thing that moves the number: a
+   * position changes when **we** fill or claim, not when somebody else does. So it is keyed on the
+   * round and dropped after a fill. The gap it leaves is a claim made from another process inside
+   * the same round, which under-counts until the round turns — the direction that fails toward
+   * bidding, and the reason the total is printed on every wait.
+   */
+  let portfolio: { round: number; total: bigint } | null = null;
+
   async function simulateCall(fn: string, args: xdr.ScVal[]): Promise<unknown> {
     const tx = new TransactionBuilder(await account(), { fee, networkPassphrase: passphrase })
       .addOperation(new Contract(vaultId).call(fn, ...args))
@@ -230,6 +247,7 @@ export function makeVaultClient(options: VaultClientOptions): BidderVaultClient 
     },
 
     async openNotional(currentRound: number): Promise<bigint> {
+      if (portfolio?.round === currentRound) return portfolio.total;
       let total = 0n;
       const oldest = Math.max(1, currentRound - lookback);
       for (let r = oldest; r <= currentRound; r += 1) {
@@ -242,6 +260,7 @@ export function makeVaultClient(options: VaultClientOptions): BidderVaultClient 
         // A round this bidder never filled decodes as a zeroed position, not as an absent one.
         total += amount(raw["notional"] ?? 0n, `round ${r} notional`);
       }
+      portfolio = { round: currentRound, total };
       return total;
     },
 
@@ -279,7 +298,11 @@ export function makeVaultClient(options: VaultClientOptions): BidderVaultClient 
       const deadline = Date.now() + timeoutMs;
       for (;;) {
         const got = await server.getTransaction(sent.hash);
-        if (got.status === rpc.Api.GetTransactionStatus.SUCCESS) return sent.hash;
+        if (got.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+          // We just changed our own position, which is the one thing the cache assumes only we do.
+          portfolio = null;
+          return sent.hash;
+        }
         if (got.status === rpc.Api.GetTransactionStatus.FAILED) {
           throw new BidderError(
             (() => {

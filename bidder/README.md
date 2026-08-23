@@ -54,6 +54,7 @@ position size nobody chose.
 | `TARGET_BPS` | the premium, in bps, at or below which it will buy |
 | `MAX_NOTIONAL` | most notional to take in any one round, in stroops |
 | `MAX_PORTFOLIO_NOTIONAL` | most notional to hold across rounds it has not claimed, in stroops |
+| `POLL_MS` | time between passes, in milliseconds. Defaults to 15 000, which is sized for a real instance; a fast-test profile whose auction runs for 20 s needs a smaller one or the bidder never looks while the window is open |
 | `LOG_LEVEL=debug` | prints the reason it is waiting on every pass |
 
 ```sh
