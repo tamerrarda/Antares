@@ -30,6 +30,8 @@ Start with the document written for what you are trying to do.
   project's biggest open question, so it gets a document of its own.
 - **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — accepted risks, open questions, and a record of what
   design review already caught and fixed.
+- **[WALKTHROUGH.md](WALKTHROUGH.md)** — one option cycle end to end, from transaction hashes:
+  what happened, who could have made each call, and the arithmetic to redo it yourself.
 - **[SECURITY_REVIEW.md](SECURITY_REVIEW.md)** — the internal review's own record: what was walked,
   by what method, and what passed. The findings live in KNOWN_ISSUES; this is the half a findings
   list cannot carry.
