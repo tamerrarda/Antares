@@ -78,6 +78,13 @@ RUSTFLAGS="-C link-arg=-Wl,-undefined,dynamic_lookup" \
   cargo +nightly fuzz run --sanitizer=none <target> -- -max_total_time=7200
 ```
 
+**Run them one at a time, or read `slow-unit-*` with suspicion.** The 2026-08-23 long run put all
+three targets on one laptop at once and both `Env`-driven targets saved a `slow-unit` reporting
+`Slowest unit: 220 s` — the same figure in both, which is the tell. Re-executed in isolation
+afterwards they take **84 ms** and **25 ms**. The 220 s was wall clock spent descheduled, not work,
+and a reader who takes it at face value goes looking for a resource bug in a contract whose loops
+are bounded by construction.
+
 libFuzzer prints three `Failed to find function "__sanitizer_*"` warnings at startup under this
 configuration. They are the absent sanitizer runtime announcing itself and are expected; a crash is
 still reported and still written to `fuzz/artifacts/`, only without a symbolized stack.
