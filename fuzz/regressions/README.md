@@ -11,6 +11,35 @@ target. A file leaves only when the behaviour it found is pinned by a test in th
 suite — 06-TEST-PLAN §4: *"every crash becomes a permanent regression unit test"* — and the
 commit that removes it says which test replaced it.
 
+## `fuzz_call_sequence/2026-08-23-i8-pause-injection.bin`
+
+The first long run produced a finding, and it was **not** in the contract.
+
+    I8 violated: CloseRound { bounty_to: 200 } at index 11 succeeded unpaused
+    and failed with paused = true.
+
+I8 is the property that makes holding a pause key safe, and `close_round` is named in its set
+(`docs/INVARIANTS.md` §I8: *"pause blocks exactly three things: `deposit`, `bid`, `open_epoch`"*).
+So the assertion is right to be loud. But `close_round` **cannot** return `Paused`: it does not go
+through `enter()`, and the only pause gates in the tree are `bid`'s and `deposit`'s
+`enter(&env, true)` and `epoch.rs`'s own check. Whatever failed in run B, it was not the pause
+refusing it.
+
+**The injection was assumed state-neutral and is not.** `set_paused` enters through `enter()`, which
+runs `lazy_finalize` **before** the pause check and then commits the state it produced. Inject a
+pause into a vault holding a due lapse and run B finalizes that lapse; run A, which never makes the
+call, still has it to close. A later `close_round` then succeeds in A and fails in B for a state
+reason — and the target's `diverged` guard never fires, because it compares the outcomes of the
+sequence's own ops and the divergence came from the injected call.
+
+The fix is one line and it restores the assumption the comparison rests on: run A calls
+`set_paused(false)` at the same index, so both runs take the identical `enter` → `lazy_finalize` →
+commit step and the only difference left between them is the flag. Verified both ways — this input
+panics without the mirror and passes with it.
+
+That the harness had already been wrong about this twice (below) and had a guard for it is the
+reason this entry spells out *which* divergence the guard cannot see.
+
 ## `fuzz_call_sequence/2026-08-21-long-run.bin`
 
 **Executed on 2026-08-23 against the current contract, and it does not crash.** The file stays
