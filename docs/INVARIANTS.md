@@ -211,6 +211,15 @@ favour, so the inequality is preserved by every operation.
 
 ---
 
+**Verified by.** `assert_i9` in the property harness, run after every state transition the
+suite makes — and guarded against being vacuous, which is the part worth stating. An assertion
+that only fires while the vault is Idle proves nothing in the cases where the guard never
+opens, so the harness counts the checks made **with a real shareholder present** (`i9_backed`)
+and asserts that count is not zero. Measured at 418 of 1 029 Idle checks across the suite.
+
+This line was missing until 2026-08-23, and I9 was the only invariant here without one — the
+runner existed the whole time, which is exactly why a reader could not tell.
+
 ## I10 — Closing a round is a function of history, not of the caller
 
 Once a round is past expiry, **at most one** terminal outcome is ever reachable, and which one it

@@ -248,9 +248,10 @@ property we cannot back.
 
 ## 6. Risks, stated plainly
 
-- **Unaudited, and not yet built.** The design is frozen; the contract is being implemented
-  against it. Every invariant will be asserted by our own tests — necessary, not sufficient.
-  Testnet only.
+- **Unaudited.** The contract is written, it runs on testnet, and every invariant is asserted by
+  our own tests. That is necessary and not sufficient: nobody outside this project has audited it,
+  and the internal review that has been done ([`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)) was done
+  by the people who wrote the thing. Testnet only.
 - **The vault can refuse to sell** at any price you'd accept if the option has drifted into the
   money. You may show up and find nothing to buy.
 - **Upgradeability.** The contract is upgradeable behind an admin key on testnet (a timelocked
