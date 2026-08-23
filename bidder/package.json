@@ -1,0 +1,21 @@
+{
+  "name": "@antares/bidder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-operated reference bidder (08-OFFCHAIN §2). Deliberately naive: it prices nothing, buys at or below a number a human configured, and is labelled self-operated wherever its fills appear.",
+  "scripts": {
+    "start": "node --experimental-strip-types index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@antares/common": "workspace:*",
+    "@stellar/stellar-sdk": "^16.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}
