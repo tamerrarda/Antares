@@ -293,6 +293,53 @@ arrived by the security review, at which point it stops being optional.
 
 ---
 
+### O-7 · The deployed wasm can only be reproduced on the operating system it was built on
+
+The verification story this project tells is the simple one: build the source yourself, hash the
+result, compare it against the contract on chain. Measured 2026-08-23 against commit `f1b551f`,
+that comparison depends on which machine you run it from.
+
+| built on | sha256 | bytes |
+|---|---|---|
+| macOS (the machine that deployed) | `7b5f098b…a4a80f2` | 65 374 |
+| `ubuntu-latest` (GitHub Actions) | `c581795e…1d7428e` | — |
+
+Same commit, same pinned Rust (1.95.0), same pinned `stellar-cli` (27.1.0). The macOS hash is the
+one recorded in `deployments/testnet.json` and in `packages/bindings/GENERATED.json`.
+
+**The interface is identical, and that is what makes this narrow.** On the Linux runner
+`bindings.no_drift` and `bindings.surface` both pass: the bindings generated from the Linux build
+are byte-identical to the committed ones, and every entry point is present. Only the wasm bytes
+differ. Two explanations were tested and one was eliminated — `stellar contract build` was run both
+with and without `--out-dir`, and on macOS both write the same optimized 65 374-byte artefact, so
+this is not the raw-versus-optimized artefact split that `--out-dir` creates.
+
+**What the reproducibility gate does and does not claim.** D-50's CI job builds one commit twice on
+one runner at deliberately different path lengths and asserts the hashes match — because rustc
+embeds source paths in panic locations and `stellar contract build` remaps the cargo registry but
+not the workspace. That is *path* independence, it is a real property, and it passes. Reproducibility
+across operating systems was never asserted. It is worth saying plainly because the job's name does
+not distinguish the two, and a reader will take the wider claim from it.
+
+**Two consequences, and the second is the one that matters.**
+
+The smaller one: `bindings.wasm_recorded` cannot pass in CI while the recorded hash comes from a
+developer's Mac and the runner is Linux. A permanently red check is not a neutral cost — this
+repository's own CI file records three separate times that a check which fails on correct code is
+switched off within the week, and then nothing enforces the row at all.
+
+The larger one: **an auditor is more likely to be on Linux than on macOS.** Anyone who builds this
+source in a container, on a runner, or on their own Linux box will get a hash that does not match
+the deployed contract, and the honest reading of that — absent this note — is that the deployed
+contract is not the published source. It is, and the difference is the host operating system.
+
+**Status: open, with a known fix that has not been applied.** The real remedy is to build releases
+inside a pinned container so the host stops being an input to the hash; then the recorded value is
+host-independent and CI can assert it. The honest interim is to record the build platform alongside
+`rust` and `stellarCli` in the deployment record and in `GENERATED.json`, so a mismatch is
+diagnosable rather than mysterious. Until one of those lands, this note is the thing that stops a
+correct build from looking like a compromised one.
+
 ## Fixed during design review
 
 Kept for the record — these were real and are closed. All were found before any code existed,
