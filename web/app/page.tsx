@@ -3,7 +3,10 @@
 import { ActionPanel } from "../components/ActionPanel.tsx";
 import { ChainDown } from "../components/ChainDown.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
+import { Calendar } from "../components/Calendar.tsx";
 import { Permissionless } from "../components/Permissionless.tsx";
+import { Simulator } from "../components/Simulator.tsx";
+import { TheRecord } from "../components/TheRecord.tsx";
 import { useVault } from "../components/useVault.ts";
 import { useWallet } from "../components/useWallet.ts";
 import { deployment } from "../lib/deployment.ts";
@@ -283,6 +286,15 @@ export default function VaultPage() {
             </div>
           </article>
 
+          {/* Only while a round is live: outside one there is no strike to reason about, and running
+              the table against the PREVIOUS round's strike would describe an option nobody holds. */}
+          {face.id !== "window" && <Simulator epoch={epoch} />}
+
+          {/* The anti-APY card. It reads seven days of events, which is a few seconds — so it is
+              placed after the round's own numbers and renders itself when it is ready rather than
+              holding the page. */}
+          <TheRecord />
+
           {/* Before the operator card on purpose: what anyone can do comes above what only the
               operator can, because that is the order the trust claim runs in. */}
           <Permissionless wallet={wallet} bountyAddress={wallet.address ?? config.admin} onDone={reload} />
@@ -338,6 +350,8 @@ export default function VaultPage() {
             liveRound={face.id !== "window"}
             onDone={reload}
           />
+          <Calendar epoch={epoch} face={face.id} />
+
           <div className="card" style={{ marginTop: 22 }}>
             <div className="contract">
               <span>Vault contract</span>
