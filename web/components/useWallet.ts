@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { network } from "../lib/vault.ts";
 
@@ -23,6 +31,11 @@ const REMEMBERED = "antares.wallet";
 /**
  * Connect, remember, and check the chain — in that order, because the third is the one that matters.
  *
+ * **One state, shared.** This was a hook every consumer called for itself, and each call got its own
+ * copy: the header connected, the deposit panel beside it never found out, and the position stayed
+ * unread until a reload. Found the first time a real wallet approved a real connection. A wallet is
+ * one fact about the page, so it lives in one place and every reader sees the same one.
+ *
  * A wallet on the wrong network does not fail loudly. It signs happily against a contract address
  * that means nothing there, and the transaction fails for a reason that has nothing to do with what
  * the user did. So the passphrase the wallet reports is compared against the one this build was
@@ -32,7 +45,7 @@ const REMEMBERED = "antares.wallet";
  * scope, and this app is a static export whose pages are rendered at build time in Node — a
  * top-level import would fail the build rather than the page.
  */
-export function useWallet(): WalletState {
+function useWalletState(): WalletState {
   const [address, setAddress] = useState<string | null>(null);
   const [walletNetwork, setWalletNetwork] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -101,4 +114,27 @@ export function useWallet(): WalletState {
     connect: () => load(true),
     disconnect,
   };
+}
+
+const WalletContext = createContext<WalletState | null>(null);
+
+export function WalletProvider({ children }: { children: ReactNode }) {
+  return createElement(WalletContext.Provider, { value: useWalletState() }, children);
+}
+
+/**
+ * The connected wallet, as every part of the page sees it.
+ *
+ * Throws rather than falling back to a disconnected default: a component rendered outside the
+ * provider would otherwise show a permanently unconnectable "Connect wallet" button and look like a
+ * wallet bug rather than a wiring one.
+ */
+export function useWallet(): WalletState {
+  const ctx = useContext(WalletContext);
+  if (ctx === null) {
+    throw new Error(
+      "useWallet was called outside <WalletProvider>; wrap the page in it (see app/layout.tsx).",
+    );
+  }
+  return ctx;
 }
