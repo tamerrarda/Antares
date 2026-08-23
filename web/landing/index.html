@@ -12,8 +12,8 @@
       @font-face {
         font-family: "Departure Mono";
         src:
-          url("./public/fonts/departure-mono.woff2") format("woff2"),
-          url("./public/fonts/departure-mono.woff") format("woff");
+          url("./fonts/departure-mono.woff2") format("woff2"),
+          url("./fonts/departure-mono.woff") format("woff");
         font-display: swap;
         font-weight: 400;
       }
@@ -24,13 +24,13 @@
          bright side needs 700 while one over black holds at 600. */
       @font-face {
         font-family: "Chakra Petch";
-        src: url("./public/fonts/chakra-petch-600.woff2") format("woff2");
+        src: url("./fonts/chakra-petch-600.woff2") format("woff2");
         font-weight: 600;
         font-display: swap;
       }
       @font-face {
         font-family: "Chakra Petch";
-        src: url("./public/fonts/chakra-petch-700.woff2") format("woff2");
+        src: url("./fonts/chakra-petch-700.woff2") format("woff2");
         font-weight: 700;
         font-display: swap;
       }
@@ -583,7 +583,12 @@
       </section>
     </main>
 
-    <div id="hud"></div>
+    <!--
+      A readout for tuning the frame sequence, kept because `scripts/build-frames.py` argues from
+      measured numbers and this is where they are read. Off unless asked for: this file stopped
+      being `demo.html` on 2026-08-24 and is now the page a visitor lands on.
+    -->
+    <div id="hud" hidden></div>
 
     <script type="module">
       const COUNT = 13;
@@ -599,6 +604,8 @@
       const set = pickSet();
       const stage = document.getElementById("stage");
       const hud = document.getElementById("hud");
+      // `?hud` turns the readout on. Anything else leaves it as the markup left it: hidden.
+      if (/[?&]hud\b/.test(location.search)) hud.hidden = false;
       const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       const plate = document.getElementById("plate");

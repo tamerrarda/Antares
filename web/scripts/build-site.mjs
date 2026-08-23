@@ -65,9 +65,14 @@ async function main() {
 
   // ---- every local link the landing makes must resolve in the tree we just built ---------------
   const html = await readFile(join(LANDING, "index.html"), "utf8");
-  const links = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
-    .map((m) => m[1])
-    .filter((h) => !/^(https?:|mailto:|#|data:)/.test(h));
+  // Attributes **and** CSS `url(...)`. Checking only attributes is how the landing shipped a
+  // stylesheet pointing at `./public/fonts/...` on 2026-08-24: every `src`/`href` resolved, the
+  // check went green, and the page rendered in fallback fonts. A check blind to a whole class of
+  // reference is worse than none, because it is trusted.
+  const links = [
+    ...[...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => m[1]),
+  ].filter((h) => !/^(https?:|mailto:|#|data:)/.test(h));
 
   const broken = [];
   for (const link of new Set(links)) {
