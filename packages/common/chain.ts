@@ -33,6 +33,33 @@
 
 import { spawn, spawnSync } from "node:child_process";
 
+/**
+ * The numeric contract error out of whatever wrapper it arrived in, or `null`.
+ *
+ * Soroban surfaces a contract error as `Error(Contract, #N)` in the simulation or transaction
+ * result. Parsed rather than matched on a class, because the same code arrives through three paths
+ * — a failed simulation, a failed send, and a thrown host error — and only the number is common to
+ * all three. `null` is itself information: a transport failure is not a contract rejection and must
+ * not be classified as one.
+ *
+ * It lives here rather than beside any one caller because there are three — the keeper, the bidder
+ * and the web — and each needs a **different** disposition for the same code. Sharing the parse and
+ * not the meaning is the split that keeps `WrongPhase` from being benign in one place and an outage
+ * in another by accident.
+ */
+export function contractErrorCode(error: unknown): number | null {
+  const text =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : typeof error === "object" && error !== null
+          ? JSON.stringify(error)
+          : String(error);
+  const m = /Error\(Contract,\s*#(\d+)\)/.exec(text);
+  return m?.[1] === undefined ? null : Number(m[1]);
+}
+
 export class ChainError extends Error {
   constructor(message: string) {
     super(message);
