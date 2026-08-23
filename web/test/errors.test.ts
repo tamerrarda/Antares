@@ -14,7 +14,7 @@ import { Errors } from "@antares/bindings";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { explain, knownCodes } from "../lib/errors.ts";
+import { explain, explainMessage, knownCodes } from "../lib/errors.ts";
 
 const fromContract = Object.keys(Errors)
   .map(Number)
@@ -53,4 +53,44 @@ test("an unrecognised code still produces something a person can read", () => {
   assert.ok(out.title.length > 20 && out.body.length > 60, "the fallback has to say more than the number");
   // The one fact that is true of every refused Soroban transaction, and the one a user most needs.
   assert.match(out.body, /Nothing was taken/);
+});
+
+test("a refusal is recognised however the chain phrases it", () => {
+  // Three shapes arrive in practice and all three are real: the bindings' own error name, a host
+  // error string carrying the numeric code, and a name embedded in a longer message.
+  assert.equal(explainMessage("BelowMinDeposit").name, "BelowMinDeposit");
+  assert.equal(explainMessage("HostError: Error(Contract, #20)").name, "BelowMinDeposit");
+  assert.equal(
+    explainMessage("simulation failed: DepositCapExceeded at ledger 41").name,
+    "DepositCapExceeded",
+  );
+});
+
+test("one code means different things at different call sites, and says so", () => {
+  // `WrongPhase` from a withdrawal is 08-OFFCHAIN §3's sharpest case — the path the product
+  // RECOMMENDS, which works by reverting. From a close it means there is no round to close. A single
+  // sentence cannot be true of both, and the table's generic one is true of neither in particular.
+  const generic = explain(2);
+  const withdrawing = explain(2, "withdraw");
+  const closing = explain(2, "close");
+
+  assert.equal(generic.name, withdrawing.name, "the contract's name never changes");
+  assert.equal(generic.name, closing.name);
+  assert.notEqual(withdrawing.title, closing.title, "but what it means where you are does");
+  assert.match(withdrawing.title, /exit landed/);
+  assert.match(closing.title, /no round running/);
+
+  // And the routing survives the message forms too.
+  assert.match(explainMessage("Error(Contract, #2)", "close").title, /no round running/);
+});
+
+test("NothingPending is about a deposit by default and about an exit when collecting one", () => {
+  // Measured: `claim_withdraw` with nothing queued returns 22 — the same code `redeem_shares`
+  // returns for an absent pending deposit.
+  assert.match(explain(22).title, /pending deposit/);
+  assert.match(explain(22, "collect").title, /queued exit/);
+});
+
+test("a call site with no override falls through to the table rather than inventing text", () => {
+  assert.deepEqual(explain(20, "withdraw"), explain(20));
 });
