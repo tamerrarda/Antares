@@ -23,6 +23,13 @@
         --mono: "Departure Mono", ui-monospace, "SF Mono", Menlo, monospace;
       }
       * { box-sizing: border-box; }
+
+      /* One focus ring for the whole interface.
+         Chrome's default is a blue-and-white double outline: it is visible here, so this is not a
+         fix for an invisible state — it is a fix for a state that looks like it belongs to another
+         page. Ember at this offset reads instantly on the dark plate and matches everything else
+         the interface uses to mean "this is live". */
+      :focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
       body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--void); color: var(--ink); font-family: var(--mono); font-size: 11px; -webkit-font-smoothing: antialiased; }
 
       /* The same universe as the landing, minus its subject: a starfield built from the two
@@ -173,7 +180,12 @@
       .tabs button { font: inherit; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--dim); padding: 15px 0; cursor: pointer; }
       .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ember); }
       .field { border: 1px solid var(--rule); display: flex; align-items: center; padding: 0 14px; margin-top: 9px; }
+      /* The outline is removed from the input and put on the box around it, which is the element a
+         reader perceives as "the field". Removing it and replacing nothing — which is what this rule
+         did until a keyboard walked the page — leaves the one input in the whole interface with no
+         way to tell whether it has focus. */
       .field input { font: inherit; font-size: 22px; background: transparent; border: 0; color: var(--ink); padding: 14px 0; width: 100%; outline: none; }
+      .field:focus-within { border-color: var(--ember); box-shadow: inset 0 0 0 1px var(--ember); }
       .field span { color: var(--dim); letter-spacing: 0.12em; }
       .field button { font: inherit; font-size: 11px; color: var(--ember); background: transparent; border: 1px solid rgba(255,107,61,0.4); padding: 5px 8px; margin-right: 11px; cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase; }
       .meta { display: flex; justify-content: space-between; gap: 12px; color: var(--faint); margin-top: 9px; }
@@ -305,7 +317,16 @@
         .connect { padding: 8px 14px; }
         nav { order: 3; width: 100%; margin: 0; gap: 20px; overflow-x: auto; scrollbar-width: none; }
         nav::-webkit-scrollbar { display: none; }
-        nav a { white-space: nowrap; }
+        /* Tap targets. Measured at 375 px: the nav sat at 28 px tall and every inline link at 14 —
+           under WCAG 2.5.8's 24 px minimum, and well under what a thumb hits accurately. The fix is
+           vertical padding only, so nothing moves horizontally and the desktop layout is untouched. */
+        nav a { white-space: nowrap; padding: 14px 0; }
+        footer li a,
+        .contract a,
+        .tbl a {
+          display: inline-block;
+          padding: 6px 0;
+        }
 
         .banner { padding: 8px 16px; gap: 4px 14px; }
         main { padding: 22px 16px 54px; }
