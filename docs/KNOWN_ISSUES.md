@@ -195,6 +195,26 @@ letting the deadline be derived per round instead of per parameter change.
 
 ---
 
+### A-13 · Anything sent straight to the contract address is gone
+
+The vault never reads its own token balance. Measured 2026-08-23 against the whole contract: zero
+call sites. Every price it computes comes from its own books — `total_assets()` returns
+`state.locked_assets`, and a mint divides by `state.last_pps`, the price written at the last
+settlement.
+
+**That is a defence, and a well-known one.** A vault that priced shares from the tokens actually
+sitting in it can be attacked by sending it some: the balance moves, the price moves with it, and an
+early depositor is inflated or diluted by a transfer nobody accounted for. It is one of the oldest
+attacks on this shape of contract. This design cannot be attacked that way, because a transfer it
+did not record does not exist to it.
+
+**The cost is the same fact read from the other side.** XLM sent directly to the contract address is
+credited to nobody and can be withdrawn by nobody. There is no sweep, no admin path, and no
+accounting route that releases it — the absence of all three is what makes the defence hold. It is
+not stolen and it is not at risk; it stops existing as far as the protocol is concerned.
+
+Deposit with `deposit()`. Anything else is a gift to nobody, and it is permanent.
+
 ## Open questions we cannot close ourselves
 
 ### O-0 · A live competitor already answers this question differently
