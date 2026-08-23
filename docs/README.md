@@ -11,7 +11,7 @@ Start with the document written for what you are trying to do.
 | **Considering depositing XLM** | [DEPOSITOR.md](DEPOSITOR.md) | What the trade is, when you can get your money back, what can go wrong |
 | **A potential counterparty (bidder)** | [BIDDER.md](BIDDER.md) | What you're buying, how to bid, how you get paid, every stated risk |
 | **Evaluating whether to trust this** | [TRUST_MODEL.md](TRUST_MODEL.md) · [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Who can do what to your funds; what we know is wrong or unproven |
-| **Auditing or reviewing the code** | [ARCHITECTURE.md](ARCHITECTURE.md) · [INVARIANTS.md](INVARIANTS.md) · [../SECURITY.md](../SECURITY.md) | The design, the properties that must hold, how to report a finding |
+| **Auditing or reviewing the code** | [ARCHITECTURE.md](ARCHITECTURE.md) · [INVARIANTS.md](INVARIANTS.md) · [SECURITY_REVIEW.md](SECURITY_REVIEW.md) · [../SECURITY.md](../SECURITY.md) | The design, the properties that must hold, what the internal review covered, how to report a finding |
 | **Integrating or building on it** | [ARCHITECTURE.md](ARCHITECTURE.md) | Contract surface, storage model, events |
 | **New to the project** | [../README.md](../README.md) | Why this exists, the roadmap, and its limits |
 
@@ -30,6 +30,9 @@ Start with the document written for what you are trying to do.
   project's biggest open question, so it gets a document of its own.
 - **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — accepted risks, open questions, and a record of what
   design review already caught and fixed.
+- **[SECURITY_REVIEW.md](SECURITY_REVIEW.md)** — the internal review's own record: what was walked,
+  by what method, and what passed. The findings live in KNOWN_ISSUES; this is the half a findings
+  list cannot carry.
 - **[../SECURITY.md](../SECURITY.md)** — how to report a vulnerability.
 
 ## Terms
