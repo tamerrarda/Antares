@@ -32,9 +32,18 @@ fn __constructor(env: Env, admin: Address, asset: Address, oracle: Address, fee_
 // to everyone on a published timestamp, whether or not anyone remembers to open it.
 
 fn open_epoch(env: Env) -> bool;         // permissionless; false = nothing to open yet (any pending finalization still persists)
-fn bid(env: Env, bidder: Address, notional: i128, max_premium_bps: u32) -> i128;  // permissionless
+fn bid(env: Env, bidder: Address, notional: i128, max_premium_bps: u32) -> i128;  // open to anyone, but SIGNED by the bidder
 fn close_round(env: Env, bounty_to: Address) -> RoundOutcome;  // permissionless; the single terminal entry point
 ```
+
+**Two senses of "permissionless", and they are not the same.** `open_epoch` and `close_round` take
+**no authorization at all** — no signature from any particular party, no gatekeeper — which is what
+lets a depositor close their own round when nobody else does. `bid` is open to anyone in the sense
+that no gatekeeper decides who may be a bidder, but it is still **signed by the bidder**, and for
+up to thirty days from construction an allowlist can narrow it further (`allowlist_expires_at`,
+above, after which the gate is inert and no setter can restore it). Marking all three with one word
+was this section's shorthand until 2026-08-24; the preconditions table has always distinguished
+them.
 
 **There is one way to close a round, and the caller does not choose the outcome.** `close_round`
 reads the price feed as it stood at expiry, once, and dispatches: the round **settles** if the feed
