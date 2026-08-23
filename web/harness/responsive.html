@@ -8,7 +8,7 @@ figcaption{padding:0 0 7px;letter-spacing:.1em}iframe{border:1px solid #333;back
 // Two modes. `#/route` shows one route across four devices — the responsive question.
 // `#/a,/b,/c` shows several routes at one device — the coverage question. Neither answers the other.
 const SIZES = [["iPhone 13 mini · 375×812",375,812],["iPhone 15 Pro · 393×852",393,852],["iPhone 15 Pro Max · 430×932",430,932],["iPad mini · 744×1000",744,1000]];
-const target = location.hash.slice(1) || "/";
+const target = location.hash.slice(1) || "/app/";
 const many = target.includes(",") ? target.split(",") : null;
 const y = Number(new URLSearchParams(location.search).get("y") || 0);
 const cells = many ? many.map(r => [r, 393, 1000]) : SIZES;

@@ -500,12 +500,12 @@
 
     <header>
       <a class="brand" href="/" aria-label="Antares — home">
-        <img src="./public/antares-mark-96.webp" alt="" width="96" height="109" />
+        <img src="./antares-mark-96.webp" alt="" width="96" height="109" />
         <span>ANTARES</span>
       </a>
       <!-- The app is a separate surface; this landing page never does chain work itself. The
            href is the seam, and it is deliberately a plain link rather than a router push. -->
-      <a class="launch" href="/app">
+      <a class="launch" href="/app/">
         <!-- The brand mark, drawn rather than loaded: at 12px a raster would be resampled, and
              this is the one place the star appears at text size. -->
         <svg class="spark" viewBox="0 0 24 24" aria-hidden="true">
@@ -606,7 +606,7 @@
       const ready = [];
       let loaded = 0;
 
-      const srcOf = (i) => `./public/frames/${set.dir}/${String(i + 1).padStart(2, "0")}.webp`;
+      const srcOf = (i) => `./frames/${set.dir}/${String(i + 1).padStart(2, "0")}.webp`;
 
       for (let i = 0; i < COUNT; i += 1) {
         const el = document.createElement("img");

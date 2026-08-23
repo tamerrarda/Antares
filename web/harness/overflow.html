@@ -15,7 +15,14 @@ table{border-collapse:collapse}td,th{padding:5px 12px;text-align:left;border-bot
 // Every route here reads the chain on mount, so each frame is given time to finish before it is
 // measured: a page measured while it still says "reading…" is a page whose real layout was never
 // tested.
-const ROUTES = ["/", "/rounds/", "/claims/", "/positions/", "/compare/", "/operator/"];
+// The app is served under `basePath` — see next.config.mjs, and `scripts/build-site.mjs` for
+// why it is one origin. Serve `web/site`, not `web/out`: the pages ask for their CSS at
+// /app/_next/..., so mounting the export at the root renders them unstyled and every
+// measurement below is of a page that never shipped.
+const BASE = "/app";
+const ROUTES = ["/", "/rounds/", "/claims/", "/positions/", "/compare/", "/operator/"].map(
+  (r) => BASE + r,
+);
 const WIDTHS = [320, 375, 393, 430, 744];
 const SETTLE = 5200;
 const t = document.getElementById("t"), p = document.getElementById("p");

@@ -24,10 +24,17 @@ export default tseslint.config(
       // are machine-written bundles that would be reported against code nobody typed.
       "web/.next/**",
       "web/out/**",
+      // The assembled deploy tree — the landing and a copy of `out/` in one directory. Linting it
+      // reports the export's own bundles a second time, under a second path.
+      "web/site/**",
       // The design draft: one hand-written page that renders seven contract states from a mock, kept
       // as reference while the real pages are ported off it. It is not in any tsconfig because it is
       // not part of the app, and it gets deleted when the port finishes.
       "web/app-draft.js",
+      // The web package's own build tooling, which sits outside its tsconfig for the same reason
+      // `build-frames.py` beside it does: these assemble the deployable tree, they are not part of
+      // the app, and typed-linting them would mean pulling build scripts into the app's project.
+      "web/scripts/**",
       "**/node_modules/**",
       "target/**",
       "contracts/**",

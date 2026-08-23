@@ -26,8 +26,26 @@ if (!NETWORK) {
   );
 }
 
+/**
+ * The app lives under `/app` on the same origin as the landing page, and that is a security choice
+ * rather than a layout one.
+ *
+ * Antares' whole posture is "do not trust us, verify". Teaching a user that the app lives on a
+ * *different* host from the site they arrived at is teaching them to accept a domain switch — and
+ * `app-antares.example` then looks exactly as legitimate as the real thing. Same origin means the
+ * domain never changes on the way in, so any domain that does change is wrong. Wallet permissions
+ * are origin-scoped, which pushes the same way.
+ *
+ * Exported here rather than hard-coded at the two call sites that need it: `basePath` rewrites
+ * `<Link>` and `next/image`, but **not** a raw `<img src="/...">`, and both header and footer use
+ * one. `NEXT_PUBLIC_BASE_PATH` is how they reach the same value.
+ */
+const BASE_PATH = "/app";
+
 const config = {
   output: "export",
+  basePath: BASE_PATH,
+  env: { NEXT_PUBLIC_BASE_PATH: BASE_PATH },
   images: { unoptimized: true },
   trailingSlash: true,
   eslint: { ignoreDuringBuilds: true },

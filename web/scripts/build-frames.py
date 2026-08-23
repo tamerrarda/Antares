@@ -3,7 +3,7 @@
 Generate the scroll-sequence frames from the masters in `antaresimages/`.
 
 The masters are archive material and are **not** in the repository (`.gitignore` keeps
-`antaresimage*/` and the zip out). Everything under `web/public/frames/` is produced by this
+`antaresimage*/` and the zip out). Everything under `web/landing/frames/` is produced by this
 script, so the sources are reproducible input rather than build input.
 
 # Sizing was measured, not chosen
@@ -44,7 +44,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 MASTERS = ROOT / "antaresimages"
-OUT = ROOT / "web" / "public" / "frames"
+OUT = ROOT / "web" / "landing" / "frames"
 COUNT = 13
 
 # The disc, as a fraction of the master. Measured off the frames rather than assumed: it is what

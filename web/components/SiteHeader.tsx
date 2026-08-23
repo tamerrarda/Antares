@@ -25,7 +25,12 @@ export function SiteHeader() {
   return (
     <header>
       <Link className="brand" href="/">
-        <img src="/antares-mark-96.webp" alt="" width={26} height={30} />
+        <img
+          src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/antares-mark-96.webp`}
+          alt=""
+          width={26}
+          height={30}
+        />
         <span>ANTARES</span>
       </Link>
       <nav>

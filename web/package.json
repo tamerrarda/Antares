@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "check:responsive": "next build && cp harness/*.html out/ && echo '\\n  serve web/out and open /overflow.html (measures) or /responsive.html#/rounds/ (looks)\\n'"
+    "check:responsive": "next build && node scripts/build-site.mjs && cp harness/*.html site/ && echo '\\n  serve web/site and open /overflow.html (measures) or /responsive.html#/app/rounds/ (looks)\\n'",
+    "site": "node scripts/build-site.mjs"
   },
   "dependencies": {
     "@antares/bindings": "workspace:*",

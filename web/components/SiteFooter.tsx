@@ -21,7 +21,12 @@ export function SiteFooter() {
       <div className="foot-in">
         <div>
           <div className="foot-brand">
-            <img src="/antares-mark-96.webp" alt="" width={22} height={25} />
+            <img
+              src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/antares-mark-96.webp`}
+              alt=""
+              width={22}
+              height={25}
+            />
             <span>ANTARES</span>
           </div>
           <p className="said">

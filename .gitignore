@@ -96,4 +96,6 @@ deployments/environment-*-dryrun.json
 # `next build` and neither is a source of anything.
 web/.next/
 web/out/
+# Assembled by web/scripts/build-site.mjs: the landing and the export in one servable tree.
+web/site/
 web/next-env.d.ts
