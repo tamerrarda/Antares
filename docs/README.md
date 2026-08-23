@@ -32,6 +32,8 @@ Start with the document written for what you are trying to do.
   design review already caught and fixed.
 - **[WALKTHROUGH.md](WALKTHROUGH.md)** — one option cycle end to end, from transaction hashes:
   what happened, who could have made each call, and the arithmetic to redo it yourself.
+- **[RUNBOOK.md](RUNBOOK.md)** — what to do when something is wrong, and what a depositor or bidder
+  can do without waiting for anyone. Four incidents, each with the calls that still work.
 - **[SECURITY_REVIEW.md](SECURITY_REVIEW.md)** — the internal review's own record: what was walked,
   by what method, and what passed. The findings live in KNOWN_ISSUES; this is the half a findings
   list cannot carry.
