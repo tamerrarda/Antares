@@ -14,11 +14,11 @@
  *     Switching on `Idle` alone shows a stale, usually negative countdown at the exact moment the
  *     window opens, in the lapse branch — which is the common one.
  */
-import type { EpochInfo, Phase } from "@antares/bindings";
+import type { EpochInfo, Phase, Position } from "@antares/bindings";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { faceOf, windowOpensAt } from "../lib/phase.ts";
+import { blocksNewDeposit, canRedeemPending, faceOf, queuedExit, windowOpensAt } from "../lib/phase.ts";
 
 const NOW = 1_800_000_000;
 
@@ -123,4 +123,80 @@ test("every face is named by consequence and none of them is an enum", () => {
     assert.doesNotMatch(f.label, /^(Idle|Auction|Active)$/, `"${f.label}" is the enum, not a consequence`);
     assert.ok(f.label.length > 8, `"${f.label}" is too terse to be a sentence about consequence`);
   }
+});
+
+// --- the two rules the panel used to get wrong ---------------------------------------------------
+//
+// Both were found on 2026-08-23 by walking the panel against 02-CONTRACT-SPEC §4 rather than by a
+// failing test, which is the argument for the walk: the panel typechecked, rendered and refused
+// nothing that looked wrong. It offered `redeem_shares` in every phase — reverting with
+// `WrongPhase` in the state a pending deposit is *usually* in — and refused a new deposit whenever
+// one existed at all. Together they produced a screen with no way out: collect first, said the
+// deposit tab; and the collect button could not run.
+
+function positionWith(over: Partial<Position> = {}): Position {
+  return {
+    shares: 0n,
+    share_value: 0n,
+    pending_deposit: 50n,
+    pending_deposit_round: 12,
+    pending_deposit_finalized: false,
+    pending_withdraw_shares: 0n,
+    pending_withdraw_round: 0,
+    withdraw_claimable: 0n,
+    ...over,
+  };
+}
+
+test("collecting a pending deposit is offered in Idle and nowhere else", () => {
+  assert.equal(canRedeemPending(epochWith({ phase: { tag: "Idle", values: undefined } })), true);
+  for (const tag of ["Auction", "Active"] as const) {
+    assert.equal(canRedeemPending(epochWith({ phase: { tag, values: undefined } })), false, tag);
+  }
+});
+
+test("an Idle that still carries a pending outcome can collect — enter() finalizes first", () => {
+  // Excluding it would hide a button that works: `enter()` runs `lazy_finalize` before the
+  // contract's own phase check, so the stored phase is Idle by the time that check runs.
+  const e = epochWith({ phase: { tag: "Idle", values: undefined }, outcome_pending: true });
+  assert.equal(canRedeemPending(e), true);
+});
+
+test("a new deposit is refused only for a pending left over from an OLDER round", () => {
+  const live = epochWith({ phase: { tag: "Auction", values: undefined }, round: 13 });
+  assert.equal(blocksNewDeposit(live, positionWith({ pending_deposit_round: 12 })), true);
+});
+
+test("and not while the vault is Idle, where the deposit redeems the pending first", () => {
+  const idle = epochWith({ phase: { tag: "Idle", values: undefined }, round: 13 });
+  assert.equal(blocksNewDeposit(idle, positionWith({ pending_deposit_round: 12 })), false);
+});
+
+test("and not for a top-up into the round the pending already belongs to", () => {
+  // `deposit` accumulates into it rather than refusing.
+  const live = epochWith({ phase: { tag: "Auction", values: undefined }, round: 13 });
+  assert.equal(blocksNewDeposit(live, positionWith({ pending_deposit_round: 13 })), false);
+});
+
+test("no pending, or no position at all, blocks nothing", () => {
+  const live = epochWith({ phase: { tag: "Auction", values: undefined }, round: 13 });
+  assert.equal(blocksNewDeposit(live, positionWith({ pending_deposit: 0n })), false);
+  assert.equal(blocksNewDeposit(live, null), false);
+});
+
+// --- the half of the queued exit nothing was showing ---------------------------------------------
+
+test("a queued exit that has not finalised is reported, because nothing else shows it", () => {
+  // The shares are already burned and already gone from the balance. Between the request and the
+  // round finalising there is no other signal anywhere that the user is owed anything.
+  assert.equal(queuedExit(positionWith({ pending_withdraw_shares: 40n, withdraw_claimable: 0n })), 40n);
+});
+
+test("once it is claimable it stops being 'waiting', so the two nags never both appear", () => {
+  assert.equal(queuedExit(positionWith({ pending_withdraw_shares: 40n, withdraw_claimable: 7n })), null);
+});
+
+test("no request, no position: nothing to report", () => {
+  assert.equal(queuedExit(positionWith({ pending_withdraw_shares: 0n })), null);
+  assert.equal(queuedExit(null), null);
 });

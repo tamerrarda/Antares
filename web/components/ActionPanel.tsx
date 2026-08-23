@@ -1,6 +1,7 @@
 "use client";
 
 import type { ConfigView, EpochInfo, Position } from "@antares/bindings";
+import { blocksNewDeposit, canRedeemPending, queuedExit } from "../lib/phase.ts";
 import { useState } from "react";
 
 import { explain, type CallSite, type ErrorText } from "../lib/errors.ts";
@@ -96,6 +97,10 @@ export function ActionPanel({
    * costs a glance rather than a wallet prompt. The text is the contract's, from the same table, so
    * the two can never say different things about the same rule.
    */
+  const blockedByPending = blocksNewDeposit(epoch, position);
+  const canRedeem = canRedeemPending(epoch);
+  const waiting = queuedExit(position);
+
   const localRefusal: ErrorText | null =
     malformed !== null
       ? {
@@ -111,7 +116,7 @@ export function ActionPanel({
             ? explain(20)
             : stroops > config.deposit_headroom
               ? explain(21)
-              : position !== null && position.pending_deposit > 0n
+              : blockedByPending
                 ? explain(24)
                 : null
           : position !== null && stroops > position.shares
@@ -346,16 +351,21 @@ export function ActionPanel({
         <div className="nag">
           <b>You have {amount(position.pending_deposit)} XLM waiting</b>
           <p>
-            It becomes shares the moment the current round ends — you do not need to be here for it, but you
-            cannot deposit again until you collect it.
+            {canRedeem
+              ? "The round it was waiting for has ended, so you can turn it into shares now. Nothing " +
+                "does that for you — depositing again would also do it, and so would this button."
+              : "It becomes collectable when the current round ends. It does not turn into shares by " +
+                "itself: you collect it, or your next deposit collects it for you."}
           </p>
-          <button
-            type="button"
-            disabled={!connected || busy !== null}
-            onClick={() => client !== null && void fire("redeem", client.redeem_shares({ from: who }))}
-          >
-            {busy === "redeem" ? "Waiting…" : `Collect ${amount(position.pending_deposit)} XLM as shares`}
-          </button>
+          {canRedeem && (
+            <button
+              type="button"
+              disabled={!connected || busy !== null}
+              onClick={() => client !== null && void fire("redeem", client.redeem_shares({ from: who }))}
+            >
+              {busy === "redeem" ? "Waiting…" : `Collect ${amount(position.pending_deposit)} XLM as shares`}
+            </button>
+          )}
           <button
             type="button"
             style={{
@@ -378,7 +388,21 @@ export function ActionPanel({
         A queued exit leaves no trace in the wallet — `request_withdraw` burns the shares
         immediately — so nothing reminds the user they are owed anything. It gets the same unmissable
         treatment as the pending deposit for exactly that reason.
+
+        **Both halves of it.** Until 2026-08-23 only the claimable half was here, so a depositor who
+        queued an exit during a live round watched their balance drop and saw nothing at all until
+        the round finalized — seven days of that on the mainnet-target instance.
       */}
+      {waiting !== null && (
+        <div className="nag">
+          <b>{amount(waiting)} shares are queued to exit</b>
+          <p>
+            They were burned when you asked, which is why they have left your balance. What they are worth is
+            decided when round {position?.pending_withdraw_round} settles, and you collect it here afterwards.
+            There is no deadline.
+          </p>
+        </div>
+      )}
       {position !== null && position.withdraw_claimable > 0n && (
         <div className="nag">
           <b>{amount(position.withdraw_claimable)} XLM is yours to collect</b>
