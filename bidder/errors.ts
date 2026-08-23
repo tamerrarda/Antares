@@ -22,6 +22,13 @@
 
 import { contractErrorCode } from "@antares/common/chain";
 
+/** The original failure, trimmed, so an `unexpected` verdict is something an operator can act on. */
+function detail(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > 300 ? `${oneLine.slice(0, 300)}…` : oneLine;
+}
+
 /** The codes a bidder can actually be handed, from `contracts/antares-vault/src/errors.rs`. */
 export const CODES = {
   Paused: 1,
@@ -87,7 +94,9 @@ export function classify(error: unknown): Disposition {
     return {
       kind: "unexpected",
       code: null,
-      why: "no contract error code in this failure — it is transport or a bug, not a rejection.",
+      // The message is carried rather than summarised. Reporting only "no code" is what turned a
+      // diagnosable submission rejection into a dead end on testnet, 2026-08-23.
+      why: `no contract error code in this failure — transport or a bug, not a rejection: ${detail(error)}`,
     };
   }
   const benign = BENIGN[code];
@@ -98,5 +107,9 @@ export function classify(error: unknown): Disposition {
   if (blocked !== undefined) return { kind: "blocked", code, why: blocked };
   const mirror = MIRROR_BUG[code];
   if (mirror !== undefined) return { kind: "mirror_bug", code, why: mirror };
-  return { kind: "unexpected", code, why: `contract error ${code} is not one a bid should produce.` };
+  return {
+    kind: "unexpected",
+    code,
+    why: `contract error ${code} is not one a bid should produce: ${detail(error)}`,
+  };
 }

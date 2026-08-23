@@ -13,6 +13,7 @@ import { test } from "node:test";
 import { classify } from "../errors.ts";
 import { pass, type Sink } from "../runner.ts";
 import { flatStrategy, type AuctionView, type RiskCaps } from "../strategy.ts";
+import { diagnosticContractCode } from "../vault.ts";
 import type { AllowlistState, BidderVaultClient } from "../vault.ts";
 
 const XLM = 10_000_000n;
@@ -165,6 +166,28 @@ test("a transport failure is not read as a contract rejection", async () => {
   assert.equal(r.disposition?.code, null);
 });
 
+test("an unexpected verdict carries the failure that caused it", async () => {
+  // Measured on testnet 2026-08-23: a submission rejected before execution stopped the loop with
+  // "no contract error code in this failure" and nothing else, so there was no way to tell a bad
+  // sequence number from a dead RPC. The verdict has to bring the cause with it.
+  const r = await run({ bidError: new Error("send rejected before execution: txBadSeq (status ERROR)") });
+  assert.equal(r.disposition?.kind, "unexpected");
+  assert.match(r.disposition?.why ?? "", /txBadSeq/);
+});
+
+test("an unknown contract code brings its message too, not just its number", () => {
+  const d = classify(new Error("HostError: Error(Contract, #54) VaultWorthless"));
+  assert.equal(d.kind, "unexpected");
+  assert.match(d.why, /VaultWorthless/);
+});
+
+test("a multi-line failure is flattened and bounded, so one refusal cannot flood a log", () => {
+  const noisy = new Error(`boom\n${"x".repeat(1_000)}`);
+  const d = classify(noisy);
+  assert.equal(d.why.includes("\n"), false);
+  assert.ok(d.why.length < 400, `why was ${d.why.length} chars`);
+});
+
 test("an unknown contract code keeps its number, so the report names it", () => {
   const d = classify(refusal(54));
   assert.equal(d.kind, "unexpected");
@@ -197,3 +220,46 @@ export const recordingSink = (): { sink: Sink; lines: string[] } => {
     sink: { debug: push("debug"), info: push("info"), warn: push("warn"), alert: push("alert") },
   };
 };
+
+// --- the diagnostic-event walk, which took two attempts to get right -----------------------------
+
+test("the contract code is recovered from a failed transaction's diagnostic events", () => {
+  // Shapes mimic the SDK's XDR objects: methods, not fields.
+  const sym = { switch: () => ({ name: "scvSymbol" }), error: () => null };
+  const errTopic = {
+    switch: () => ({ name: "scvError" }),
+    error: () => ({ switch: () => ({ name: "sceContract" }), contractCode: () => 2 }),
+  };
+  const event = (topics: unknown[]) => ({
+    event: () => ({ body: () => ({ v0: () => ({ topics: () => topics }) }) }),
+  });
+  assert.equal(diagnosticContractCode({ diagnosticEventsXdr: [event([sym, errTopic])] }), 2);
+});
+
+test("one event with a body variant that throws does not abort the scan", () => {
+  // The regression, exactly. A failed invocation carries around twenty events and not all share a
+  // body variant; a single `try` around the whole walk let the first thrower report "no contract
+  // code" on a transaction that plainly had one.
+  const throwing = {
+    event: () => ({
+      body: () => ({
+        v0: () => {
+          throw new Error("v0 not set");
+        },
+      }),
+    }),
+  };
+  const errTopic = {
+    switch: () => ({ name: "scvError" }),
+    error: () => ({ switch: () => ({ name: "sceContract" }), contractCode: () => 34 }),
+  };
+  const good = {
+    event: () => ({ body: () => ({ v0: () => ({ topics: () => [errTopic] }) }) }),
+  };
+  assert.equal(diagnosticContractCode({ diagnosticEventsXdr: [throwing, good] }), 34);
+});
+
+test("no diagnostic events is not a code of zero", () => {
+  assert.equal(diagnosticContractCode({}), null);
+  assert.equal(diagnosticContractCode({ diagnosticEventsXdr: [] }), null);
+});

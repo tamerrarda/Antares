@@ -56,6 +56,69 @@ function amount(value: unknown, field: string): bigint {
   throw new BidderError(`${field} decoded as ${typeof value}, which is not an integer amount`);
 }
 
+/**
+ * A transaction result union, named rather than stringified.
+ *
+ * **Measured on testnet 2026-08-23.** `JSON.stringify` on one of these produces an object with none
+ * of the fields a reader wants — the union's discriminant is a method, not a property — so a
+ * submission rejected before execution reached the operator as a message with no cause in it, and
+ * `classify` then had nothing to find and called it `unexpected`. A refusal that stops the loop has
+ * to say what refused.
+ */
+function resultName(result: unknown): string {
+  try {
+    const sw = (result as { switch?: () => { name?: string } } | undefined)?.switch?.();
+    return sw?.name ?? "unnamed result";
+  } catch {
+    return "unreadable result";
+  }
+}
+
+/**
+ * The contract error code out of a **failed transaction's** diagnostic events, or `null`.
+ *
+ * **Measured on testnet 2026-08-23, twice.** A bid that simulates cleanly and then lands after
+ * `auction_end` fails at execution with `WrongPhase` — the single most ordinary outcome in a
+ * twenty-second auction, and one the design explicitly accepts, since the header above says the
+ * simulation is a check that the decision *still* applies rather than a promise that it will.
+ *
+ * But the code only travels in the *simulation* error string. The transaction result carries
+ * `txFailed` and nothing else, so `classify` found no code, returned `unexpected`, and the loop
+ * stopped — on a race it is supposed to shrug at. Pulling the code out of the diagnostic events puts
+ * an execution-time rejection back on the same footing as a simulation-time one.
+ *
+ * Written defensively throughout: this walks four levels of XDR union that the SDK types as
+ * optional, and a bidder must not turn a failed bid into a crash while trying to explain it.
+ */
+export function diagnosticContractCode(response: unknown): number | null {
+  const events = (response as { diagnosticEventsXdr?: unknown[] }).diagnosticEventsXdr;
+  if (!Array.isArray(events)) return null;
+  for (const raw of events) {
+    // **Per event, not around the loop.** A failed invocation carries around twenty of these and
+    // not all share a body variant, so `v0()` throws on some — and one coarse `try` around the
+    // whole walk let the first of those abort the scan and report "no contract code" on a
+    // transaction that plainly had one. Measured on testnet 2026-08-23 against a `WrongPhase`
+    // that took two attempts to read.
+    try {
+      const body = (raw as { event: () => { body: () => { v0?: () => { topics: () => unknown[] } } } })
+        .event()
+        .body();
+      const topics = body.v0?.().topics() ?? [];
+      for (const topic of topics) {
+        const t = topic as { switch: () => { name: string }; error: () => unknown };
+        if (t.switch().name !== "scvError") continue;
+        const err = t.error() as { switch: () => { name: string }; contractCode: () => unknown };
+        if (err.switch().name !== "sceContract") continue;
+        const code = Number(err.contractCode());
+        if (Number.isInteger(code)) return code;
+      }
+    } catch {
+      // This event was not one carrying an error. The next one may be.
+    }
+  }
+  return null;
+}
+
 export class BidderError extends Error {
   constructor(message: string) {
     super(message);
@@ -205,7 +268,10 @@ export function makeVaultClient(options: VaultClientOptions): BidderVaultClient 
       prepared.sign(signer);
       const sent = await server.sendTransaction(prepared);
       if (sent.status === "ERROR") {
-        throw new BidderError(`send rejected: ${JSON.stringify(sent.errorResult?.result() ?? sent.status)}`);
+        throw new BidderError(
+          `send rejected before execution: ${resultName(sent.errorResult?.result())} ` +
+            `(status ${sent.status}). Nothing executed, and no premium was charged.`,
+        );
       }
 
       // Step 3 — wait for it to land. A hash accepted into the queue is not yet a fill, and
@@ -216,7 +282,14 @@ export function makeVaultClient(options: VaultClientOptions): BidderVaultClient 
         if (got.status === rpc.Api.GetTransactionStatus.SUCCESS) return sent.hash;
         if (got.status === rpc.Api.GetTransactionStatus.FAILED) {
           throw new BidderError(
-            `transaction ${sent.hash} failed: ${JSON.stringify(got.resultXdr?.result())}`,
+            (() => {
+              const code = diagnosticContractCode(got);
+              const where = `transaction ${sent.hash} failed at execution: ${resultName(got.resultXdr?.result())}`;
+              // Spelled the way a simulation failure spells it, so one classifier reads both.
+              return code === null
+                ? `${where}, and its diagnostic events carry no contract code`
+                : `${where}: Error(Contract, #${code})`;
+            })(),
           );
         }
         if (Date.now() > deadline) {
