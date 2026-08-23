@@ -35,7 +35,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { allPassed, failedIds, mkCheck, renderChecks, type Check } from "@antares/common/checks";
-import { parseVersion, readPins } from "./lib/toolchain.ts";
+import { buildHost, parseVersion, readPins } from "./lib/toolchain.ts";
 import { sha256 } from "./lib/wasm.ts";
 
 /** The one generated file this repository pins. Everything else the generator emits is scaffolding. */
@@ -49,6 +49,12 @@ export interface BindingProvenance {
   readonly wasmSha256: string;
   /** The exact `stellar` CLI that produced them. */
   readonly stellarCli: string;
+  /**
+   * The host that built the wasm — see `buildHost()`, which says why a hash needs one. Optional
+   * because records written before O-7 was measured do not carry it, and the check treats their
+   * absence as the finding rather than assuming a host.
+   */
+  readonly buildHost?: string;
   readonly generatedAt: string;
   /** Callable entry points. The contract's surface is 42, of which one is `__constructor`. */
   readonly methods: number;
@@ -174,6 +180,8 @@ export interface BindingsCheckInput {
   readonly pinnedCli: string;
   /** SHA-256 of the wasm the fresh generation was made from. */
   readonly wasmSha256: string;
+  /** This host, in the same form the provenance records — see `BindingProvenance.buildHost`. */
+  readonly host: string;
   /** Wasm exports, so the surface can be checked rather than assumed. */
   readonly wasmExports: number;
   /** The wasm artefact's own mtime. */
@@ -274,16 +282,40 @@ export function checkBindings(input: BindingsCheckInput): Check[] {
   );
 
   if (input.committedProvenance !== null) {
+    const recorded = input.committedProvenance;
+    // The hash is only comparable to a build from the same host, which is O-7. On a foreign host
+    // this check cannot compare hashes, so it asserts the one thing that still decides whether a
+    // mismatch is diagnosable: that the record says which host it came from. It does not go green
+    // silently — the id is the same, and `what` states which of the two forms ran.
     checks.push(
-      mkCheck(
-        "bindings.wasm_recorded",
-        "the recorded wasm is the one the bindings were generated from",
-        input.wasmSha256,
-        input.committedProvenance.wasmSha256,
-        input.committedProvenance.wasmSha256 === input.wasmSha256,
-        "Recorded so a drift is diagnosable: this says WHICH contract build the committed bindings " +
-          "describe, which is the difference between 'the contract changed' and 'the generator did'.",
-      ),
+      recorded.buildHost === input.host
+        ? mkCheck(
+            "bindings.wasm_recorded",
+            "the recorded wasm is the one the bindings were generated from",
+            input.wasmSha256,
+            recorded.wasmSha256,
+            recorded.wasmSha256 === input.wasmSha256,
+            "Recorded so a drift is diagnosable: this says WHICH contract build the committed " +
+              "bindings describe, which is the difference between 'the contract changed' and 'the " +
+              "generator did'.",
+          )
+        : mkCheck(
+            "bindings.wasm_recorded",
+            `the record names its build host, which is why its hash is not compared on this one ` +
+              `(recorded ${recorded.buildHost ?? "(not recorded)"}, running ${input.host})`,
+            "a recorded buildHost",
+            recorded.buildHost ?? "(not recorded)",
+            typeof recorded.buildHost === "string" && recorded.buildHost.length > 0,
+            `O-7: the host is an input to this hash. Recorded ${recorded.wasmSha256} on ` +
+              `${recorded.buildHost ?? "an unrecorded host"}, built here ${input.wasmSha256} ` +
+              `on ${input.host}. The two are not compared: the same commit compiles into a ` +
+              "different byte order on a different host, so a difference here would not mean " +
+              "drift and an equality would not mean its absence. What still " +
+              "holds the line on this host is `bindings.no_drift`, which compares the committed " +
+              "bindings against a fresh generation from the wasm just built here. A record with " +
+              "no buildHost is the older, undiagnosable kind: regenerate with " +
+              "`pnpm bindings:write`.",
+          ),
     );
   }
 
@@ -330,6 +362,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     localCli,
     pinnedCli: pins.stellarCli,
     wasmSha256: sha256(wasmBytes),
+    host: buildHost(),
     wasmExports: exportedFunctions(wasmBytes).length,
     wasmMtimeMs: statSync(wasmPath).mtimeMs,
     newestSource: newest === null ? null : { path: relative(root, newest.path), mtimeMs: newest.mtimeMs },
@@ -346,6 +379,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     const provenance: BindingProvenance = {
       wasmSha256: sha256(wasmBytes),
       stellarCli: parseVersion(localCli) ?? "(unknown)",
+      buildHost: buildHost(),
       generatedAt: new Date().toISOString(),
       methods: countMethods(regenerated),
       _what:
@@ -354,7 +388,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         "drift. Regenerate with `pnpm bindings:write` and commit the result WITH the contract " +
         "change that caused it. wasmSha256 says which build these describe; stellarCli says which " +
         "generator produced them, because a CLI upgrade and a contract change look identical in " +
-        "the diff and are entirely different problems.",
+        "the diff and are entirely different problems. buildHost says which host built that " +
+        "wasm, because the host is an input to the hash and used to be an invisible one (O-7).",
     };
     writeFileSync(provPath, `${JSON.stringify(provenance, null, 2)}\n`);
     console.log(`wrote ${committedPath} and ${provPath}`);

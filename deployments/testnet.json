@@ -14,7 +14,8 @@
     "stellarCli": "27.1.0",
     "sorobanSdk": "=27.0.6",
     "target": "wasm32v1-none",
-    "node": "v22.18.0"
+    "node": "v22.18.0",
+    "buildHost": "darwin-arm64"
   },
   "assetId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   "oracleId": "CBYLZC3MMO6HKC6PPPT6P5QDXUJLPXWCWSQKUQQMA324EYV6HJC4O66O",

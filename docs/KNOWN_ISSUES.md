@@ -322,10 +322,25 @@ that comparison depends on which machine you run it from.
 | built on | sha256 | bytes |
 |---|---|---|
 | macOS (the machine that deployed) | `7b5f098b…a4a80f2` | 65 374 |
-| `ubuntu-latest` (GitHub Actions) | `c581795e…1d7428e` | — |
+| `ubuntu-latest` (GitHub Actions) | `c581795e…1d7428e` | 65 374 |
 
 Same commit, same pinned Rust (1.95.0), same pinned `stellar-cli` (27.1.0). The macOS hash is the
 one recorded in `deployments/testnet.json` and in `packages/bindings/GENERATED.json`.
+
+**What differs, measured against CI's own artefact.** The Linux binary was downloaded from the
+workflow run that produced it and compared byte for byte with the local one. Every section has the
+same length. `import`, `memory`, `global`, `export`, `data` and all four custom sections — including
+the 19 023-byte `contractspecv0`, which is the entire typed interface — are **byte-identical**. The
+601 strings in each are the same 601 strings. Three sections differ: `type`, `function`, `code`.
+
+The cause is one step behind the first reading of it. The two builds emit **the same 140 functions
+in a different order**: their body sizes match as a multiset and not in sequence, and the
+function-to-type map is a permutation reaching type indices that the type table's own five displaced
+entries never touch. Reordering functions renumbers every call target, which is why 125 of the 140
+bodies differ; it also permutes the type table, because types are interned in first-use order.
+
+This is a linker ordering difference, not a codegen difference, and no compiler flag reaches it —
+which is why the remedy below is a container rather than a build setting.
 
 **The interface is identical, and that is what makes this narrow.** On the Linux runner
 `bindings.no_drift` and `bindings.surface` both pass: the bindings generated from the Linux build
@@ -343,22 +358,37 @@ not distinguish the two, and a reader will take the wider claim from it.
 
 **Two consequences, and the second is the one that matters.**
 
-The smaller one: `bindings.wasm_recorded` cannot pass in CI while the recorded hash comes from a
-developer's Mac and the runner is Linux. A permanently red check is not a neutral cost — this
-repository's own CI file records three separate times that a check which fails on correct code is
-switched off within the week, and then nothing enforces the row at all.
+The smaller one, now closed: `bindings.wasm_recorded` could not pass in CI while the recorded hash
+came from a developer's Mac and the runner was Linux. A permanently red check is not a neutral cost
+— this repository's own CI file records three separate times that a check which fails on correct
+code is switched off within the week, and then nothing enforces the row at all. It ran red for one
+run and was fixed rather than switched off: both records that carry a build hash now carry the host
+that produced it, and the check compares hashes when the host matches and asserts the record names
+its host when it does not. It does not go quiet on a foreign host — it prints both hashes and says
+which of the two forms ran — and `bindings.no_drift`, which compares the committed bindings against
+a fresh generation from the wasm built on that host, is untouched and is what still catches real
+drift there.
 
 The larger one: **an auditor is more likely to be on Linux than on macOS.** Anyone who builds this
 source in a container, on a runner, or on their own Linux box will get a hash that does not match
 the deployed contract, and the honest reading of that — absent this note — is that the deployed
 contract is not the published source. It is, and the difference is the host operating system.
 
-**Status: open, with a known fix that has not been applied.** The real remedy is to build releases
-inside a pinned container so the host stops being an input to the hash; then the recorded value is
-host-independent and CI can assert it. The honest interim is to record the build platform alongside
-`rust` and `stellarCli` in the deployment record and in `GENERATED.json`, so a mismatch is
-diagnosable rather than mysterious. Until one of those lands, this note is the thing that stops a
-correct build from looking like a compromised one.
+**Status: open on the remedy, applied on the interim.** The real fix is to build releases inside a
+pinned container so the host stops being an input to the hash; then the recorded value is
+host-independent and CI can assert it outright. That has not been done. The interim has: `buildHost`
+is recorded beside `rust` and `stellarCli` in the deployment record and in `GENERATED.json`, from
+one definition in `scripts/lib/toolchain.ts` so the two records cannot drift apart on the name. A
+mismatch is now diagnosable rather than mysterious.
+
+`deployments/testnet.json` was written before the field existed, and its value was **backfilled
+rather than inferred**: rebuilding the deployed commit on that same machine on 2026-08-23 produced
+`7b5f098b…a4a80f2` again, byte for byte, which is what identifies the host that deployed it. That
+rebuild is also incidental evidence for the narrower property the CI job does assert — that a build
+is reproducible against a host.
+
+Until the container lands, this note is the thing that stops a correct build from looking like a
+compromised one.
 
 ## Fixed during design review
 

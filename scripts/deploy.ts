@@ -64,7 +64,7 @@ import {
   type RunResult,
 } from "@antares/common/chain";
 import { checkSourceTree, readSourceTree, type SourceTree } from "./lib/provenance.ts";
-import { checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
+import { buildHost, checkToolchain, readPins, type Observed, type Pins } from "./lib/toolchain.ts";
 import { checkAdapterSurface, exportedFunctions, sha256 } from "./lib/wasm.ts";
 import { checkProfile } from "./check-oracle-profile.ts";
 import type { ChainClient, ObservedEvent } from "./verify-deployment.ts";
@@ -907,18 +907,26 @@ const step6: Stage = {
         node: process.version,
         // **The host, because the same commit does not produce the same bytes on two of them.**
         //
-        // Measured 2026-08-21 on this repository: aarch64-apple-darwin and x86_64-unknown-linux-gnu
-        // build `antares_vault.wasm` to the same 65,374 bytes and different SHA-256s. Section by
-        // section, `import`, `export`, `data` and all four custom sections — `contractspecv0`
-        // included — are byte-identical; `type`, `function` and `code` differ, at identical sizes,
-        // because the type table is emitted in a different ORDER and every index into it follows.
-        // The program is the same program; its internal numbering is not.
+        // Measured 2026-08-21 and again against CI's own artefact on 2026-08-23:
+        // aarch64-apple-darwin and x86_64-unknown-linux-gnu build `antares_vault.wasm` to the same
+        // 65,374 bytes and different SHA-256s. Section by section, `import`, `export`, `data` and
+        // all four custom sections — `contractspecv0` included — are byte-identical; `type`,
+        // `function` and `code` differ, at identical sizes.
+        //
+        // The cause is one step further back than "the type table is ordered differently", which
+        // is what the first measurement concluded. The two builds emit the same 140 functions in a
+        // different ORDER: their sizes match as a multiset and not in sequence, and the
+        // function-to-type map is a permutation reaching indices the type table's own five
+        // displaced entries never touch. Reordering functions renumbers every call target, which
+        // is why 125 of the 140 bodies differ, and it permutes the type table too, because types
+        // are interned in first-use order. The program is the same program; its internal
+        // numbering is not.
         //
         // So the hash is reproducible against a host, not in the abstract, and a record that names
         // the commit but not the host tells a reviewer to expect bytes they will not get. The
         // reproducible-build CI job cannot catch this — it builds twice on ONE runner at different
         // path lengths, which is a different property.
-        buildHost: `${process.platform}-${process.arch}`,
+        buildHost: buildHost(),
       },
       assetId: ctx.assetId,
       oracleId: ctx.adapterId,
