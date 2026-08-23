@@ -321,6 +321,21 @@ export default function VaultPage() {
                   {config.fee_bps === 0 ? "nothing is taken" : "of the premium, never of your collateral"}
                 </span>
               </div>
+              {/* The fifth balance somebody can forget, and the last one with no surface anywhere.
+                  It is owed to the fee recipient rather than to a depositor, so it lives beside the
+                  fee that produces it — and it is shown at zero too, because "nothing is owed" is
+                  the fact a reader wants and an absent row does not give them. */}
+              <div>
+                <span className="k">Fee accrued</span>
+                <span className={config.fee_claimable > 0n ? "val hot" : "val"}>
+                  {amount(config.fee_claimable)}
+                </span>
+                <span className="cap">
+                  {config.fee_claimable > 0n
+                    ? "XLM owed to the fee recipient, unclaimed"
+                    : "XLM — nothing has been taken, so nothing is owed"}
+                </span>
+              </div>
               <div>
                 <span className="k">Allowlist</span>
                 <span className="val">{config.allowlist_enabled ? "On" : "Off"}</span>
