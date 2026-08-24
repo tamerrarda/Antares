@@ -237,7 +237,10 @@ class FakeChain implements ChainClient {
   }
 }
 
-const SMOKE = { account: ADMIN, assetId: SAC };
+// The amount is explicit so the round-trip tests below keep testing the arithmetic they were
+// written for. Left off, the amount now comes from the vault's own `min_deposit` — asserted on its
+// own further down, because that default is what a real deploy uses.
+const SMOKE = { account: ADMIN, assetId: SAC, amount: ONE_XLM };
 
 function failed(checks: readonly Check[]): string[] {
   return checks.filter((c) => !c.ok).map((c) => c.id);
@@ -515,6 +518,20 @@ test("a first 1-XLM round trip loses exactly the dead-share floor and passes", a
     DEAD_SHARES,
     "zero would mean the floor was withdrawable",
   );
+});
+
+test("with no amount given, the deposit is the floor the vault is enforcing", async () => {
+  // One XLM was hard-coded until 2026-08-24. It clears the fast-test profile's minimum exactly, so
+  // it worked for every deploy that had ever run — and the first real-parameter deploy answered
+  // `BelowMinDeposit`, because that profile asks ten. The floor is read from the vault now.
+  const state = healthyState();
+  const checks = await verifySmokeRoundTrip(new FakeChain(state), EXPECTED, {
+    account: ADMIN,
+    assetId: SAC,
+  });
+  const trip = checks.find((c) => c.id === "smoke.round_trip_exact")!;
+  const floor = (state.config as { params: { min_deposit: number } }).params.min_deposit;
+  assert.equal(trip.expected, BigInt(floor) - DEAD_SHARES);
 });
 
 test("a LATER deposit round-trips whole, because the floor is charged once", async () => {

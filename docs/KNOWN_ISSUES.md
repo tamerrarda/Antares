@@ -195,7 +195,36 @@ letting the deadline be derived per round instead of per parameter change.
 
 ---
 
+### A-13 · Anything sent straight to the contract address is gone
+
+The vault never reads its own token balance. Measured 2026-08-23 against the whole contract: zero
+call sites. Every price it computes comes from its own books — `total_assets()` returns
+`state.locked_assets`, and a mint divides by `state.last_pps`, the price written at the last
+settlement.
+
+**That is a defence, and a well-known one.** A vault that priced shares from the tokens actually
+sitting in it can be attacked by sending it some: the balance moves, the price moves with it, and an
+early depositor is inflated or diluted by a transfer nobody accounted for. It is one of the oldest
+attacks on this shape of contract. This design cannot be attacked that way, because a transfer it
+did not record does not exist to it.
+
+**The cost is the same fact read from the other side.** XLM sent directly to the contract address is
+credited to nobody and can be withdrawn by nobody. There is no sweep, no admin path, and no
+accounting route that releases it — the absence of all three is what makes the defence hold. It is
+not stolen and it is not at risk; it stops existing as far as the protocol is concerned.
+
+Deposit with `deposit()`. Anything else is a gift to nobody, and it is permanent.
+
 ## Open questions we cannot close ourselves
+
+> **`O-n` here is not `O-n` in the oracle test matrix, and both are cited from code.** This file
+> numbers its open issues O-0…; `04-ORACLE`'s conformance matrix numbers its rows O-1…O-16b. They
+> have overlapped since O-6 — `.github/workflows/ci.yml` cites O-6 meaning Scout, while
+> `test_settle.rs` cites O-6 meaning a matrix row — and O-7 was added on 2026-08-23 without noticing.
+> Citations written since say **`KNOWN_ISSUES O-7`** in full; the older ones do not, and renaming one
+> of the two series is a decision nobody has taken yet. Recorded here rather than left for a reader
+> to trip over.
+
 
 ### O-0 · A live competitor already answers this question differently
 
@@ -292,6 +321,137 @@ alone. OpenZeppelin's Soroban scanner is the designated substitute if the upstre
 arrived by the security review, at which point it stops being optional.
 
 ---
+
+### O-7 · The deployed wasm can only be reproduced on the operating system it was built on
+
+The verification story this project tells is the simple one: build the source yourself, hash the
+result, compare it against the contract on chain. Measured 2026-08-23 against commit `f1b551f`,
+that comparison depends on which machine you run it from.
+
+| built on | sha256 | bytes |
+|---|---|---|
+| macOS (the machine that deployed) | `7b5f098b…a4a80f2` | 65 374 |
+| `ubuntu-latest` (GitHub Actions) | `c581795e…1d7428e` | 65 374 |
+
+Same commit, same pinned Rust (1.95.0), same pinned `stellar-cli` (27.1.0). The macOS hash is the
+one recorded in `deployments/testnet.json` and in `packages/bindings/GENERATED.json`.
+
+**What differs, measured against CI's own artefact.** The Linux binary was downloaded from the
+workflow run that produced it and compared byte for byte with the local one. Every section has the
+same length. `import`, `memory`, `global`, `export`, `data` and all four custom sections — including
+the 19 023-byte `contractspecv0`, which is the entire typed interface — are **byte-identical**. The
+601 strings in each are the same 601 strings. Three sections differ: `type`, `function`, `code`.
+
+The cause is one step behind the first reading of it. The two builds emit **the same 140 functions
+in a different order**: their body sizes match as a multiset and not in sequence, and the
+function-to-type map is a permutation reaching type indices that the type table's own five displaced
+entries never touch. Reordering functions renumbers every call target, which is why 125 of the 140
+bodies differ; it also permutes the type table, because types are interned in first-use order.
+
+This is a linker ordering difference, not a codegen difference, and no compiler flag reaches it —
+which is why the remedy below is a container rather than a build setting.
+
+**The interface is identical, and that is what makes this narrow.** On the Linux runner
+`bindings.no_drift` and `bindings.surface` both pass: the bindings generated from the Linux build
+are byte-identical to the committed ones, and every entry point is present. Only the wasm bytes
+differ. Two explanations were tested and one was eliminated — `stellar contract build` was run both
+with and without `--out-dir`, and on macOS both write the same optimized 65 374-byte artefact, so
+this is not the raw-versus-optimized artefact split that `--out-dir` creates.
+
+**What the reproducibility gate does and does not claim.** D-50's CI job builds one commit twice on
+one runner at deliberately different path lengths and asserts the hashes match — because rustc
+embeds source paths in panic locations and `stellar contract build` remaps the cargo registry but
+not the workspace. That is *path* independence, it is a real property, and it passes. Reproducibility
+across operating systems was never asserted. It is worth saying plainly because the job's name does
+not distinguish the two, and a reader will take the wider claim from it.
+
+**Two consequences, and the second is the one that matters.**
+
+The smaller one, now closed: `bindings.wasm_recorded` could not pass in CI while the recorded hash
+came from a developer's Mac and the runner was Linux. A permanently red check is not a neutral cost
+— this repository's own CI file records three separate times that a check which fails on correct
+code is switched off within the week, and then nothing enforces the row at all. It ran red for one
+run and was fixed rather than switched off: both records that carry a build hash now carry the host
+that produced it, and the check compares hashes when the host matches and asserts the record names
+its host when it does not. It does not go quiet on a foreign host — it prints both hashes and says
+which of the two forms ran — and `bindings.no_drift`, which compares the committed bindings against
+a fresh generation from the wasm built on that host, is untouched and is what still catches real
+drift there.
+
+The larger one: **an auditor is more likely to be on Linux than on macOS.** Anyone who builds this
+source in a container, on a runner, or on their own Linux box will get a hash that does not match
+the deployed contract, and the honest reading of that — absent this note — is that the deployed
+contract is not the published source. It is, and the difference is the host operating system.
+
+**Status: open on the remedy, applied on the interim.** The real fix is to build releases inside a
+pinned container so the host stops being an input to the hash; then the recorded value is
+host-independent and CI can assert it outright. That has not been done. The interim has: `buildHost`
+is recorded beside `rust` and `stellarCli` in the deployment record and in `GENERATED.json`, from
+one definition in `scripts/lib/toolchain.ts` so the two records cannot drift apart on the name. A
+mismatch is now diagnosable rather than mysterious.
+
+`deployments/testnet.json` was written before the field existed, and its value was **backfilled
+rather than inferred**: rebuilding the deployed commit on that same machine on 2026-08-23 produced
+`7b5f098b…a4a80f2` again, byte for byte, which is what identifies the host that deployed it. That
+rebuild is also incidental evidence for the narrower property the CI job does assert — that a build
+is reproducible against a host.
+
+Until the container lands, this note is the thing that stops a correct build from looking like a
+compromised one.
+
+### O-8 · The parameter sets do not currently pass their own gate
+
+Before a vault is deployed, `check-params.ts` refuses a parameter set whose auction band no longer
+brackets what the option is worth. **Run on 2026-08-24 against a series refreshed the same day, all
+five sets in `scripts/instances.json` are refused**, and the shipped instance E fails two gates:
+
+    gate 1  premium_start_bps >= fair(sigma_high)     start 240 bps  vs  246.6
+    gate 2  premium_floor_bps >= fair(sigma_low)/2    floor  15 bps  vs   51.22
+
+The band's **top** is now below fair value. The table was sized around σ ≈ 33.7 %; measured realized
+volatility over 90 days is **103.0 %**.
+
+**The measurement was checked before the conclusion was drawn.** Staleness was the obvious
+explanation and it is the wrong one: refreshing the series made the verdict *stricter*, not looser
+(σ 100.1 % → 103.0 %, and E picked up a second failing gate). Nor is it a bad candle — over the
+window the price ran 0.1475 → 0.2599, a 1.76× range, with two single days moving **+24.2 %** and
+**+21.7 %**. This is a real market, measured correctly.
+
+**So a real-parameter deploy is blocked on a decision, not on a fix.** Moving E's floor from 15 to
+above 51 bps and its start above 247 makes the set coherent — and makes the option dearer at every
+point of the auction, which bears directly on the one question the whole project exists to answer:
+whether an independent bidder shows up at all. The gate cannot make that trade for us. It can only
+refuse to let it be made by accident, which is what it is doing.
+
+**Two smaller things were found underneath it and one is fixed.**
+
+`keeper/series.ts` — the module that produces the very series this gate consumes — **had no
+runner**. It exported `fetchKlines`, `toSeries` and `writeSeries`, was fully tested, and nothing
+outside its own test ever called it: no CLI entry, no npm script, no scheduled workflow. Its own
+header said the artefact was *"written by keeper/series.ts on a schedule"*, and the schedule did not
+exist. The committed series was five days old for exactly the reason the same comment says had been
+solved: *"before that it was fetched by hand, which is how check-params.ts came to refuse all five
+instances on a σ nobody was sampling."* **Fixed on 2026-08-24**: `pnpm --filter @antares/keeper
+series` now refreshes it, and the comment says what is true.
+
+**Still open: nothing re-checks a vault that is already running.** The gate is deploy-time by
+construction, and there is no second look anywhere. The contract cannot provide one — it has no
+notion of fair value at all; `premium_start_bps` and `premium_floor_bps` appear in `auction.rs` only
+to compute the decay and in `epoch.rs` only to be emitted. The keeper measures σ continuously and
+compares it to nothing: `decide.ts` and `runner.ts` contain no reference to the band. So a vault
+deployed while coherent keeps opening rounds after it stops being so, and says nothing.
+
+That drift is **not a safety defect** — I1–I10 hold at any σ, the vault stays solvent, the payout
+stays strictly bounded by the notional, pause still cannot trap anyone. What degrades is the price,
+and the loss is the depositors'. The sharper cost is measurement: fills at a floor far under fair
+value are **arbitrage that looks like demand**, and D-34 counts fills to decide whether this project
+continues. A drifted vault does not merely lose value; it corrupts the number the decision reads.
+
+The smallest honest fix is an alert rather than an action — the same arithmetic `check-params.ts`
+already performs, against numbers the keeper already holds. Acting automatically is a larger
+question and probably the wrong answer: `set_epoch_params` is an admin call, so a self-adjusting
+band would hand the admin key a price lever, which is precisely what `TRUST_MODEL.md` §2 says it
+does not have.
 
 ## Fixed during design review
 

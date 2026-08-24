@@ -684,7 +684,18 @@ export async function verifySmokeRoundTrip(
 ): Promise<Check[]> {
   const checks: Check[] = [];
   const vault = expected.vaultId;
-  const amount = opts.amount ?? ONE_XLM;
+  // The vault's own `min_deposit`, not a constant. One XLM was the default until 2026-08-24 and
+  // clears the fast-test profile's minimum exactly — so it worked for both deploys that had ever
+  // run, and the first real-parameter deploy answered `BelowMinDeposit`: that profile asks ten.
+  // Reading the floor the contract is enforcing makes this correct for any profile, including ones
+  // nobody has written yet.
+  // Coerced rather than compared as read: a `u32`/`i128` boundary decodes as a number on one path
+  // and a bigint on another, and `number > bigint` throws rather than answering.
+  const raw = (await client.read<{ params?: { min_deposit?: unknown } }>(vault, "config")).params
+    ?.min_deposit;
+  const minDeposit =
+    typeof raw === "bigint" || typeof raw === "number" || typeof raw === "string" ? BigInt(raw) : 0n;
+  const amount = opts.amount ?? (minDeposit > ONE_XLM ? minDeposit : ONE_XLM);
 
   const balanceBefore = await client.read<bigint>(opts.assetId, "balance", [opts.account]);
 

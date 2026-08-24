@@ -64,7 +64,14 @@ export interface DeploymentRecord {
    */
   readonly reflectorId?: string;
   readonly instances: readonly DeployedInstance[];
-  /** Appended by `upgrade.ts` step 6. */
+  /**
+   * Reserved for the upgrade script's step 6, and **nothing writes it yet.**
+   *
+   * `upgrade.ts` is Phase 5's remaining tool and does not exist; the 2026-08-21 upgrade drill ran
+   * without it and no record carries this field. It is optional for that reason rather than for a
+   * semantic one, and the comment said "appended by" until 2026-08-23, which named a writer a
+   * reader could not find.
+   */
   readonly history?: readonly Readonly<Record<string, unknown>>[];
 }
 

@@ -1,7 +1,8 @@
 {
   "wasmSha256": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
   "stellarCli": "27.1.0",
-  "generatedAt": "2026-08-20T23:12:00.475Z",
+  "buildHost": "darwin-arm64",
+  "generatedAt": "2026-08-23T11:56:35.228Z",
   "methods": 41,
-  "_what": "GENERATED — do not edit src/index.ts. It is byte-compared against a fresh generation by `pnpm bindings:check`, so a hand edit is indistinguishable from drift and is reported as drift. Regenerate with `pnpm bindings:write` and commit the result WITH the contract change that caused it. wasmSha256 says which build these describe; stellarCli says which generator produced them, because a CLI upgrade and a contract change look identical in the diff and are entirely different problems."
+  "_what": "GENERATED — do not edit src/index.ts. It is byte-compared against a fresh generation by `pnpm bindings:check`, so a hand edit is indistinguishable from drift and is reported as drift. Regenerate with `pnpm bindings:write` and commit the result WITH the contract change that caused it. wasmSha256 says which build these describe; stellarCli says which generator produced them, because a CLI upgrade and a contract change look identical in the diff and are entirely different problems. buildHost says which host built that wasm, because the host is an input to the hash and used to be an invisible one (O-7)."
 }

@@ -28,6 +28,8 @@
  * Everything else is unexpected by construction, and unexpected is the one that should page.
  */
 
+import { contractErrorCode } from "@antares/common/chain";
+
 /** Contract error codes, from `contracts/antares-vault/src/errors.rs`. Only the ones a keeper meets. */
 export const CODES = {
   Paused: 1,
@@ -87,24 +89,12 @@ const FEED_SIGNAL: Record<number, string> = {
 /**
  * Pull a contract error code out of whatever the SDK threw.
  *
- * Soroban surfaces a contract error as `Error(Contract, #N)` in the simulation or transaction
- * result. Parsed rather than matched on a class, because the same code arrives through three paths
- * — a failed simulation, a failed send, and a thrown host error — and only the number is common to
- * all three. Returns `null` when there is no code, which is itself information: a transport failure
- * is not a contract rejection and must not be classified as one.
+ * Moved to `@antares/common/chain` on 2026-08-23, when the bidder became the third caller. The
+ * parse is shared; the disposition below is not, and that is the whole of the split — the same code
+ * is benign to a keeper that lost a permissionless race and a stop signal to a bidder that is not
+ * on the allowlist.
  */
-export function contractErrorCode(error: unknown): number | null {
-  const text =
-    typeof error === "string"
-      ? error
-      : error instanceof Error
-        ? error.message
-        : typeof error === "object" && error !== null
-          ? JSON.stringify(error)
-          : String(error);
-  const m = /Error\(Contract,\s*#(\d+)\)/.exec(text);
-  return m?.[1] === undefined ? null : Number(m[1]);
-}
+export { contractErrorCode };
 
 /** Classify by code. Pure, so every rule above is a unit test rather than an outage. */
 export function classify(error: unknown): Disposition {

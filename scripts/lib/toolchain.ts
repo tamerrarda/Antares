@@ -38,6 +38,19 @@ export class ToolchainError extends Error {
   }
 }
 
+/**
+ * The host a build ran on, as `${process.platform}-${process.arch}`.
+ *
+ * It belongs beside the version pins because it is one: measured on this repository, the same
+ * commit under the same pinned Rust and the same pinned CLI compiles to a different SHA-256 on
+ * macOS than on Linux (KNOWN_ISSUES O-7). Two records carry a build hash — the deployment record and
+ * `packages/bindings/GENERATED.json` — and a hash without its host tells a reviewer to expect
+ * bytes they will not get. One spelling, so the two records cannot drift apart on the name.
+ */
+export function buildHost(): string {
+  return `${process.platform}-${process.arch}`;
+}
+
 export interface Pins {
   /** Exact Rust version, e.g. `1.95.0`. */
   readonly rust: string;

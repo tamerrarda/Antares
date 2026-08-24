@@ -436,12 +436,57 @@ def typescript_declarations_are_unique():
     return out, []
 
 
+def oracle_calls_are_recoverable():
+    """04-ORACLE §3b: the vault never calls the price source in a form that can trap it.
+
+    A cross-contract call that panics propagates and kills the caller. A bare
+    `client.reading(...)` therefore lets an adapter that traps — wrong interface,
+    archived instance, its own internal panic — make **every** branch of
+    `close_round` revert forever and permanently trap every depositor's collateral.
+    That is the one failure this design promises cannot exist, and `oracle.rs`'s
+    step 0 says so in those words.
+
+    Five call sites obey it today and nothing was checking. The rule lived in the
+    prose and in comments beside the code that already followed it, which is the
+    weakest place a rule can live: a sixth site added later compiles, passes every
+    test that does not happen to register a trapping adapter, and reintroduces the
+    trap silently.
+
+    **What a grep can decide here.** `PriceSource` has exactly three methods, and
+    their names are distinctive enough to match on: any `.reading(`, `.spot_check(`
+    or `.supports_round(` in the vault's non-test code must be spelled `try_`.
+    The free `price_source_api::supports_round` helper is a local computation and
+    is reached through `::`, so it is not matched — deliberately, and verified
+    against the tree rather than assumed.
+    """
+    methods = ("reading", "spot_check", "supports_round")
+    bare = re.compile(r"\.\s*(?!try_)(" + "|".join(methods) + r")\s*\(")
+    recoverable = re.compile(r"\.\s*try_(" + "|".join(methods) + r")\s*\(")
+    out, sites = [], 0
+    for f in vault_sources():
+        for i, ln in enumerate(f.read_text().split("\n"), 1):
+            code = ln.split("//", 1)[0]
+            if recoverable.search(code):
+                sites += 1
+            m = bare.search(code)
+            if m:
+                out.append(
+                    f"{rel(f)}:{i}  `{m.group(1)}` called without the recoverable `try_` form "
+                    f"— a trapping adapter would take the whole call down with it -> {code.strip()[:48]}"
+                )
+    notes = [f"{sites} price-source call site(s), all through the recoverable form"] if sites else [
+        "the vault makes no price-source call yet — mandatory from the day it does"
+    ]
+    return out, notes
+
+
 RULES = (
     ("D-70 ABI doc budget", abi_doc_budget),
     ("D-63 write-once fields", write_once_fields),
     ("D-50 network-agnostic build", network_agnostic),
     ("03-STORAGE-TTL no temporary() storage", no_temporary_storage),
     ("07-SECURITY §3 outbound calls declared", outbound_calls),
+    ("04-ORACLE §3b price-source calls are recoverable", oracle_calls_are_recoverable),
     ("07-SECURITY §6 no signing-capable secret", no_signing_secrets),
     ("workflow keys unique", workflow_keys_unique),
     ("python is standard-library only", python_is_stdlib_only),

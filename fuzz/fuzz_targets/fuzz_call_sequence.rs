@@ -466,10 +466,33 @@ fuzz_target!(|input: Input| {
         return;
     }
 
+    let at = usize::from(input.pause_at) % input.ops.len();
+
     // ---- Run A: the sequence as given, recording which I8-set calls succeeded. ----------------
+    //
+    // **Run A takes the same state step run B's injection takes, and this is load-bearing.**
+    // Found by the long run on 2026-08-23, which reported an I8 violation on `CloseRound`: it
+    // succeeded here and failed there, with `diverged` never set because no *compared* op had a
+    // different outcome. The contract was not at fault — `close_round` has no pause check at all
+    // and cannot return `Paused`; the three gates are `deposit`, `bid` and `open_epoch`, exactly as
+    // INVARIANTS §I8 says.
+    //
+    // The divergence came from the injection itself. `set_paused` enters through `enter()`, which
+    // runs `lazy_finalize` **before** the pause check, and then commits the state it produced. So
+    // injecting a pause into a vault holding a due lapse finalizes that lapse in run B and nowhere
+    // else, and a later `close_round` then finds in B a round that A has still to close. The
+    // injection was assumed state-neutral and is not.
+    //
+    // Calling `set_paused(false)` here restores the assumption the comparison rests on: both runs
+    // take the identical `enter` → `lazy_finalize` → commit step at index `at`, and the only
+    // difference left between them is the flag — which is what the assertion below is about.
     let mut a = World::new();
     let mut clean_outcomes: Vec<bool> = Vec::with_capacity(input.ops.len());
     for (i, op) in input.ops.iter().enumerate() {
+        if i == at {
+            a.env.mock_all_auths();
+            let _ = a.client().try_set_paused(&false);
+        }
         let before = Some(a.snapshot());
         let ok = a.apply(op);
         clean_outcomes.push(ok);
@@ -481,7 +504,6 @@ fuzz_target!(|input: Input| {
     // Same construction, so the two runs are identical up to the injected pause: `Env::default()`
     // is deterministic and every address is generated in the same order.
     let mut b = World::new();
-    let at = usize::from(input.pause_at) % input.ops.len();
     // **Set once the two runs stop being in the same state, and the comparison stops with it.**
     //
     // I8 is conditional — *"succeed under `paused == true` IN EVERY STATE WHERE THEY'D SUCCEED

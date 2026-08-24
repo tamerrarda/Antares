@@ -36,6 +36,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export class SeriesError extends Error {
   constructor(message: string) {
@@ -95,8 +96,11 @@ const WHAT = [
   "judges whether an auction cleared near fair value. A number from one is not evidence about the",
   "other (D-79 §1).",
   "",
-  "Written by keeper/series.ts on a schedule. Before that it was fetched by hand, which is how",
-  "check-params.ts came to refuse all five instances on a σ nobody was sampling.",
+  "Written by `pnpm --filter @antares/keeper series`. Before that it was fetched by hand, which is",
+  "how check-params.ts came to refuse all five instances on a σ nobody was sampling — and this file",
+  "claimed to be written *on a schedule* until 2026-08-24, when the schedule turned out not to",
+  "exist and the module to have no caller but its own test. A stale σ refuses a coherent set and",
+  "passes an incoherent one, so the runner is the fix and the claim was the defect.",
 ];
 
 /**
@@ -189,4 +193,46 @@ export function sourceLine(symbol: string, limit: number): string {
 /** Write the artefact. Two-space JSON with a trailing newline, so it survives `prettier --check`. */
 export function writeSeries(path: string, series: PriceSeries): void {
   writeFileSync(path, `${JSON.stringify(series, null, 2)}\n`);
+}
+
+// =================================================================================================
+// Runner
+// =================================================================================================
+
+/**
+ * Refresh the committed series.
+ *
+ * A separate command rather than a step inside the keeper's loop, and deliberately: the keeper runs
+ * continuously against a vault, while this reads a public exchange once and writes a file the
+ * *deploy* consumes. Folding it into the loop would make a deploy-time input depend on a process
+ * that has no reason to be running.
+ */
+export async function main(argv: readonly string[]): Promise<number> {
+  const i = argv.indexOf("--out");
+  // Resolved from this module rather than from the working directory: the committed artefact has
+  // one home, and a relative default would write a second copy wherever the command was typed.
+  const out =
+    i === -1
+      ? fileURLToPath(new URL("../deployments/xlm-price-series.json", import.meta.url))
+      : (argv[i + 1] ?? "");
+  if (out === "") {
+    process.stderr.write("usage: series.ts [--out <path>]\n");
+    return 2;
+  }
+  const rows = dropIncomplete(await fetchKlines(), Date.now());
+  const series = toSeries(
+    rows,
+    DEFAULT_SYMBOL,
+    sourceLine(DEFAULT_SYMBOL, DEFAULT_LIMIT),
+    new Date().toISOString(),
+  );
+  writeSeries(out, series);
+  process.stdout.write(
+    `${series.closes.length} daily closes, ${series.firstClose} → ${series.lastClose}, written to ${out}\n`,
+  );
+  return 0;
+}
+
+if (process.argv[1]?.endsWith("series.ts")) {
+  process.exit(await main(process.argv.slice(2)));
 }

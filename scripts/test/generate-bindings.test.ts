@@ -32,6 +32,7 @@ const base: BindingsCheckInput = {
   committedProvenance: {
     wasmSha256: "a".repeat(64),
     stellarCli: "27.1.0",
+    buildHost: "linux-x64",
     generatedAt: "",
     methods: 3,
     _what: "",
@@ -39,6 +40,7 @@ const base: BindingsCheckInput = {
   localCli: "stellar 27.1.0 (abc)",
   pinnedCli: "27.1.0",
   wasmSha256: "a".repeat(64),
+  host: "linux-x64",
   wasmExports: 4,
   wasmMtimeMs: 2_000,
   newestSource: { path: "contracts/antares-vault/src/vault.rs", mtimeMs: 1_000 },
@@ -90,6 +92,48 @@ test("the surface is counted against the wasm's exports, not against a document'
 test("a recorded wasm that is not the one built is its own finding", () => {
   const checks = checkBindings({ ...base, wasmSha256: "b".repeat(64) });
   assert.deepEqual(failedIds(checks), ["bindings.wasm_recorded"]);
+});
+
+// --- KNOWN_ISSUES O-7: the host is an input to that hash ------------------------------------------------------
+//
+// Measured 2026-08-23. macOS and `ubuntu-latest` compile one commit, under one pinned Rust and one
+// pinned CLI, into two binaries of identical length with identical export and `contractspecv0`
+// sections and the same 140 functions — emitted in a different order, which renumbers every call
+// target. So a hash from another host is not evidence of drift, and a check that read it as drift
+// was red on every CI run: the state this repository's own CI file records ending, three times, in
+// the check being switched off.
+
+test("a hash recorded on another host is not read as drift", () => {
+  const checks = checkBindings({ ...base, host: "darwin-arm64", wasmSha256: "b".repeat(64) });
+  assert.deepEqual(failedIds(checks), []);
+  const c = checks.find((x) => x.id === "bindings.wasm_recorded")!;
+  // Both hashes stay in the output, so the difference is visible rather than swallowed.
+  assert.match(c.note!, /KNOWN_ISSUES O-7/);
+  assert.match(c.note!, /aaaaaaaa/);
+  assert.match(c.note!, /bbbbbbbb/);
+  assert.match(c.what, /linux-x64/);
+  assert.match(c.what, /darwin-arm64/);
+});
+
+test("but a record that does not say which host built it still fails", () => {
+  // The older, undiagnosable kind: without the platform there is no way to tell a foreign-host
+  // hash from a wrong one, and the answer is to regenerate rather than to assume.
+  const { buildHost: _drop, ...older } = base.committedProvenance!;
+  const checks = checkBindings({ ...base, host: "darwin-arm64", committedProvenance: older });
+  assert.deepEqual(failedIds(checks), ["bindings.wasm_recorded"]);
+});
+
+test("and on a foreign host real drift is still caught, which is what makes the relaxation safe", () => {
+  // The claim being defended: relaxing the hash comparison across hosts does not relax the check
+  // that the committed bindings describe the contract. `no_drift` compares them against a fresh
+  // generation from the wasm built HERE, and is untouched by any of this.
+  const checks = checkBindings({
+    ...base,
+    host: "darwin-arm64",
+    wasmSha256: "b".repeat(64),
+    regenerated: `${SOURCE}\n`,
+  });
+  assert.deepEqual(failedIds(checks), ["bindings.no_drift"]);
 });
 
 // --- the precondition, which is the one that decides whether the rest means anything -------------
