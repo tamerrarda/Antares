@@ -600,13 +600,15 @@ const step3c: Stage = {
   title: "the profile against the deployed source's eight supports_round conditions",
   mutates: false,
   run: (ctx) => {
-    // **The FEED, not the adapter.** The only call `checkProfile` makes is `resolution()`, and that
-    // lives on the price source the adapter reads — the adapter itself exports exactly the
-    // `PriceSource` interface and nothing else, which step 1b asserts three ways. Under
-    // `--fast-test` the mock plays both roles, so this read `adapterId` for two deploys and could
-    // not have failed; against the real Reflector it answers `unrecognized subcommand`.
-    const contractId = ctx.opts.fastTest ? ctx.adapterId! : ctx.opts.reflectorId!;
-    const src = { contractId, identity: ctx.opts.identity, net: ctx.netArgs };
+    // Two contracts, not one. `supports_round` is the adapter's; `resolution` is the feed's, and
+    // the adapter deliberately does not re-export it (step 1b asserts the surface is exactly the
+    // interface). `--fast-test`'s mock is both at once, which is why one id carried two deploys.
+    const src = {
+      contractId: ctx.adapterId!,
+      ...(ctx.opts.fastTest ? {} : { resolutionFrom: ctx.opts.reflectorId! }),
+      identity: ctx.opts.identity,
+      net: ctx.netArgs,
+    };
     return Promise.resolve(ctx.instances.flatMap((inst) => checkProfile(src, inst)));
   },
 };

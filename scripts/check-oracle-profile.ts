@@ -131,7 +131,17 @@ export const PERTURBATIONS: readonly Perturbation[] = [
 // =================================================================================================
 
 export interface Source {
+  /** Where `supports_round` lives: the adapter. */
   readonly contractId: string;
+  /**
+   * Where `resolution()` lives, when that is a different contract.
+   *
+   * The adapter exports **exactly** the `PriceSource` interface — `supports_round` is in it and
+   * `resolution` is not; the latter belongs to the feed the adapter reads. Under `--fast-test` the
+   * mock plays both roles and carries both functions, which is why a single id sufficed for two
+   * deploys and this only surfaced on 2026-08-24, the first time the real pair was used.
+   */
+  readonly resolutionFrom?: string;
   readonly identity: string;
   readonly net: NetworkArgs;
 }
@@ -160,7 +170,7 @@ export function supportsRound(src: Source, t: RoundTiming): boolean {
 function readScalar(src: Source, method: string): string {
   const out = runStellar(
     buildInvokeArgv({
-      contractId: src.contractId,
+      contractId: src.resolutionFrom ?? src.contractId,
       method,
       identity: src.identity,
       net: src.net,
