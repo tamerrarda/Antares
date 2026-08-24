@@ -1,0 +1,144 @@
+{
+  "tool": "scripts/verify-environment.ts",
+  "generated": "2026-08-24T08:59:19.330Z",
+  "finished": "2026-08-24T08:59:38.342Z",
+  "mode": "full",
+  "network": "testnet",
+  "rpc": "https://soroban-testnet.stellar.org",
+  "protocolVersion": 27,
+  "rpcVersion": "28.0.0-e29c911f2a720e2bf05028014c00492450547ccc",
+  "oracle": {
+    "id": "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
+    "asset": "Other(\"XLM\")",
+    "resolution": 300,
+    "decimals": 14,
+    "version": 6,
+    "lastTimestamp": 1787561700
+  },
+  "measurements": {
+    "reachableDepthTicks": 255,
+    "reachableDepthSeconds": 76500,
+    "requiredDepthSeconds": 76500,
+    "tickCompletenessGaps": [],
+    "unionOfSweeps": null,
+    "sevenPointCostByAnchorAge": [
+      {
+        "ageSeconds": 300,
+        "totalCpu": 11857332,
+        "totalFee": 100606,
+        "maxCpu": 1702066
+      },
+      {
+        "ageSeconds": 7200,
+        "totalCpu": 11914462,
+        "totalFee": 100891,
+        "maxCpu": 1702066
+      },
+      {
+        "ageSeconds": 28800,
+        "totalCpu": 11915866,
+        "totalFee": 100892,
+        "maxCpu": 1703470
+      },
+      {
+        "ageSeconds": 50400,
+        "totalCpu": 11914462,
+        "totalFee": 100891,
+        "maxCpu": 1702066
+      },
+      {
+        "ageSeconds": 72600,
+        "totalCpu": 11914462,
+        "totalFee": 100891,
+        "maxCpu": 1702066
+      }
+    ],
+    "pricesCollapseAt": 20,
+    "expires": 1788706882
+  },
+  "checks": [
+    {
+      "id": "E-1",
+      "what": "RPC ledgerRetentionWindow covers the UI live-window assumption",
+      "status": "PASS",
+      "measured": "120960 ledgers spanning 605939 s = 168 h 18 m; assumption 604800 s = 168 h 00 m",
+      "note": "Events vanish past this window; anything older must come from views or the archive. DEV3's Claims page rests on it."
+    },
+    {
+      "id": "E-2",
+      "what": "network protocolVersion matches the SDK the wasm was built against",
+      "status": "PASS",
+      "measured": "live 27; expected 27 (soroban-sdk =27.0.6, D-23)"
+    },
+    {
+      "id": "E-3",
+      "what": "feed identity: base asset, and the asset list carries Other(\"XLM\")",
+      "status": "PASS",
+      "measured": "base = [\"Other\",\"USD\"]; 16 assets; carries XLM: true",
+      "note": "D-30: the pinned feed MUST be the external CEX & DEX feed, never an SDEX-sourced one. On-chain data proves the base asset and the asset list; that this contract id is the CEX & DEX feed is a fact about which address was pinned, and is asserted against the deployment record, not derivable from here."
+    },
+    {
+      "id": "E-4",
+      "what": "resolution(), decimals(), history_retention_period(), version()",
+      "status": "PASS",
+      "measured": "resolution = 300 s; decimals = 14; advertised retention = 86400 s = 24 h 00 m; version = 6",
+      "note": "decimals is configuration, not a constant — the adapter normalizes against the live value and pins it per round (D-68)."
+    },
+    {
+      "id": "E-5",
+      "what": "the unit of resolution() and of PriceData.timestamp is SECONDS, asserted rather than assumed",
+      "status": "PASS",
+      "measured": "last_timestamp = 1787561700; ledger closeTime = 1787561955; |difference| = 255 s; resolution = 300",
+      "note": "A millisecond feed would put last_timestamp about 1000x above the ledger clock. This is D-49 applied to the one value every other row takes for granted."
+    },
+    {
+      "id": "E-6",
+      "what": "reachable-depth cutoff, to one tick, is >= 255 x resolution()",
+      "status": "PASS",
+      "measured": "deepest answering tick = 255 -> 76500 s = 21 h 15 m from last_timestamp; required 255 ticks = 76500 s = 21 h 15 m",
+      "note": "A shortfall is not a documentation nit. reach_limit = R - guard_window is derived from R = CAP x res, so if the true cutoff sits below R the adapter reaches past its own horizon: the oldest guard sample returns None, the valid count falls under 04-ORACLE §2 rule 2, and a HEALTHY feed produces Unusable — which is the void path."
+    },
+    {
+      "id": "E-7",
+      "what": "tick completeness across the feed's reachable depth",
+      "status": "PASS",
+      "measured": "100.00 % over 256 grid points (268 probed); 0 gap(s)",
+      "note": "D-65 requires all 3 short samples, so a single gap now voids a round that used to settle. The window is the reachable depth and not \"24 h\": a point query older than the cap returns None BY THE CAP, not by a gap, so a retrospective 24-hour sweep would score its oldest stretch as 100 % missing. Run this twice, >= 3 h apart, and report the union for coverage beyond one depth."
+    },
+    {
+      "id": "E-8",
+      "what": "seven-point battery cost, and that it does NOT vary with the anchor's age",
+      "status": "PASS",
+      "measured": "age 300 s = 0 h 05 m -> 11857332 CPU insn, 100606 stroops; age 7200 s = 2 h 00 m -> 11914462 CPU insn, 100891 stroops; age 28800 s = 8 h 00 m -> 11915866 CPU insn, 100892 stroops; age 50400 s = 14 h 00 m -> 11914462 CPU insn, 100891 stroops; age 72600 s = 20 h 10 m -> 11914462 CPU insn, 100891 stroops  | spread 0.49 %",
+      "note": "D-64's residual rests entirely on this constancy: budget exhaustion is then a never-worked-at-all failure rather than a latent time bomb. Phase 1 measures per-call cost and their sum as a LOWER BOUND — the authoritative aggregate is Phase 3's resource profile against the real adapter (DEV2.md §3.2)."
+    },
+    {
+      "id": "E-9",
+      "what": "the batch prices() call's collapse point",
+      "status": "INFO",
+      "measured": "largest answering records = 20",
+      "note": "D-48: the adapter uses point queries on a derived grid, never this call, because the batch blows its own resource budget long before the retention window. Recorded so the reason stays measured rather than remembered."
+    },
+    {
+      "id": "E-10",
+      "what": "feed expires() outlives epoch_duration + unresolved_after (supports_round condition 7)",
+      "status": "PASS",
+      "measured": "expires = 1788706882 -> runway 1144927 s = 318 h 02 m; round_span 680400 s = 189 h 00 m",
+      "note": "Sponsored feeds die on a schedule (04-ORACLE §5). This is the exact span condition 7 enforces on-chain; the older \"+ oracle_dead_after\" form was weaker than the gate, so a deploy passed and the first open_epoch refused."
+    },
+    {
+      "id": "E-11",
+      "what": "the live resolution() and the admissible unresolved_after interval it implies",
+      "status": "PASS",
+      "measured": "R = 255 x 300 = 76500 s = 21 h 15 m; reach_limit = 72900 s = 20 h 15 m; admissible unresolved_after = (72900, 80100]; shipped 75600 -> inside; admissible resolution for the shipped table = [283, 310]",
+      "note": "With the shipped table fixed, conditions 1/3/4/6 are jointly satisfiable only inside that resolution band (D-68). A tick change outside it makes the shipped parameters unwritable through set_epoch_params until unresolved_after is lowered — a running vault keeps closing on its snapshot, but the next open_epoch fails. Recorded so the margin is visible before a deploy rather than discovered by a rejected open."
+    },
+    {
+      "id": "E-12",
+      "what": "the union of two sweeps spans more than 24 h",
+      "status": "INFO",
+      "measured": "not computed — pass --union-with <prior --full record> to close 06-TEST-PLAN §7b's union row"
+    }
+  ],
+  "verdict": "PASS"
+}
