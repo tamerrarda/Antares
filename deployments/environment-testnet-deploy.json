@@ -1,7 +1,7 @@
 {
   "tool": "scripts/verify-environment.ts",
-  "generated": "2026-08-24T08:59:19.330Z",
-  "finished": "2026-08-24T08:59:38.342Z",
+  "generated": "2026-08-24T09:01:28.632Z",
+  "finished": "2026-08-24T09:01:51.988Z",
   "mode": "full",
   "network": "testnet",
   "rpc": "https://soroban-testnet.stellar.org",
@@ -13,7 +13,7 @@
     "resolution": 300,
     "decimals": 14,
     "version": 6,
-    "lastTimestamp": 1787561700
+    "lastTimestamp": 1787562000
   },
   "measurements": {
     "reachableDepthTicks": 255,
@@ -24,9 +24,9 @@
     "sevenPointCostByAnchorAge": [
       {
         "ageSeconds": 300,
-        "totalCpu": 11857332,
-        "totalFee": 100606,
-        "maxCpu": 1702066
+        "totalCpu": 11858736,
+        "totalFee": 100607,
+        "maxCpu": 1703470
       },
       {
         "ageSeconds": 7200,
@@ -88,7 +88,7 @@
       "id": "E-5",
       "what": "the unit of resolution() and of PriceData.timestamp is SECONDS, asserted rather than assumed",
       "status": "PASS",
-      "measured": "last_timestamp = 1787561700; ledger closeTime = 1787561955; |difference| = 255 s; resolution = 300",
+      "measured": "last_timestamp = 1787562000; ledger closeTime = 1787562085; |difference| = 85 s; resolution = 300",
       "note": "A millisecond feed would put last_timestamp about 1000x above the ledger clock. This is D-49 applied to the one value every other row takes for granted."
     },
     {
@@ -109,7 +109,7 @@
       "id": "E-8",
       "what": "seven-point battery cost, and that it does NOT vary with the anchor's age",
       "status": "PASS",
-      "measured": "age 300 s = 0 h 05 m -> 11857332 CPU insn, 100606 stroops; age 7200 s = 2 h 00 m -> 11914462 CPU insn, 100891 stroops; age 28800 s = 8 h 00 m -> 11915866 CPU insn, 100892 stroops; age 50400 s = 14 h 00 m -> 11914462 CPU insn, 100891 stroops; age 72600 s = 20 h 10 m -> 11914462 CPU insn, 100891 stroops  | spread 0.49 %",
+      "measured": "age 300 s = 0 h 05 m -> 11858736 CPU insn, 100607 stroops; age 7200 s = 2 h 00 m -> 11914462 CPU insn, 100891 stroops; age 28800 s = 8 h 00 m -> 11915866 CPU insn, 100892 stroops; age 50400 s = 14 h 00 m -> 11914462 CPU insn, 100891 stroops; age 72600 s = 20 h 10 m -> 11914462 CPU insn, 100891 stroops  | spread 0.48 %",
       "note": "D-64's residual rests entirely on this constancy: budget exhaustion is then a never-worked-at-all failure rather than a latent time bomb. Phase 1 measures per-call cost and their sum as a LOWER BOUND — the authoritative aggregate is Phase 3's resource profile against the real adapter (DEV2.md §3.2)."
     },
     {
@@ -123,7 +123,7 @@
       "id": "E-10",
       "what": "feed expires() outlives epoch_duration + unresolved_after (supports_round condition 7)",
       "status": "PASS",
-      "measured": "expires = 1788706882 -> runway 1144927 s = 318 h 02 m; round_span 680400 s = 189 h 00 m",
+      "measured": "expires = 1788706882 -> runway 1144797 s = 317 h 59 m; round_span 680400 s = 189 h 00 m",
       "note": "Sponsored feeds die on a schedule (04-ORACLE §5). This is the exact span condition 7 enforces on-chain; the older \"+ oracle_dead_after\" form was weaker than the gate, so a deploy passed and the first open_epoch refused."
     },
     {
