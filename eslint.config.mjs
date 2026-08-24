@@ -86,6 +86,38 @@ export default tseslint.config(
     languageOptions: { globals: { process: "readonly" } },
   },
   {
+    // The app is served under `basePath: "/app"`, and Next applies that prefix to `<Link>` at render
+    // time but to a raw `<a href="/...">` **only while exporting the static HTML**. So a raw anchor
+    // looks correct in the built page and silently loses its prefix the moment the component
+    // re-renders on the client — which is how "See everything the operator has ever done" shipped
+    // pointing at `/operator/`, a 404, while `out/index.html` said `/app/operator/`. Measured in the
+    // live DOM on 2026-08-24, not inferred.
+    //
+    // No amount of checking the built output catches this: the bug is in markup that only exists
+    // after hydration. The rule has to be on the source.
+    files: ["web/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'JSXOpeningElement[name.name="a"] > JSXAttribute[name.name="href"] > Literal[value=/^\\//]',
+          message:
+            'Root-relative <a href="/..."> loses the /app basePath on client re-render. Use next/link\'s <Link>.',
+        },
+        {
+          // Same trap, no `<Link>` to reach for: an asset reference is never rewritten at runtime,
+          // so it has to carry the prefix itself. `NEXT_PUBLIC_BASE_PATH` is the value, and a
+          // template literal is what both the header and the footer already use.
+          selector:
+            'JSXOpeningElement[name.name=/^(img|source|video|audio|embed|iframe)$/] > JSXAttribute[name.name="src"] > Literal[value=/^\\//]',
+          message:
+            'Root-relative src="/..." is not rewritten by basePath. Use `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/...`.',
+        },
+      ],
+    },
+  },
+  {
     files: ["**/test/**/*.ts"],
     rules: {
       // Tests assert on shapes that are deliberately malformed — a record missing a required field,

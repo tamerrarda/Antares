@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEvents } from "./useEvents.ts";
 import { amount } from "../lib/format.ts";
 import { foldRounds, OUTCOME_LABEL, type Outcome } from "../lib/rounds.ts";
@@ -101,9 +103,9 @@ export function TheRecord() {
         <div>
           <span className="k">Every round</span>
           <span className="val">
-            <a href="/rounds/" style={{ color: "var(--ember)", textDecoration: "none" }}>
+            <Link href="/rounds/" style={{ color: "var(--ember)", textDecoration: "none" }}>
               Round history →
-            </a>
+            </Link>
           </span>
           <span className="cap">each row links to the transaction that ended it</span>
         </div>

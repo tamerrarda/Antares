@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { ChainDown } from "../../components/ChainDown.tsx";
 import { useEvents } from "../../components/useEvents.ts";
 import { deployment } from "../../lib/deployment.ts";
@@ -164,9 +166,9 @@ export default function RoundsPage() {
             <p className="sub" style={{ maxWidth: "82ch" }}>
               {page.undecoded.length} kinds of event in this window are not shown here because they are not
               about rounds — token transfers, and the administrative calls that belong on the{" "}
-              <a href="/operator/" style={{ color: "var(--ember)" }}>
+              <Link href="/operator/" style={{ color: "var(--ember)" }}>
                 operator log
-              </a>
+              </Link>
               . Nothing is filtered for being unflattering.
             </p>
           )}
