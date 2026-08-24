@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SpotCorner } from "./SpotCorner.tsx";
 import { WalletCorner } from "./WalletCorner.tsx";
 
 /**
@@ -40,6 +41,7 @@ export function SiteHeader() {
           </Link>
         ))}
       </nav>
+      <SpotCorner />
       <WalletCorner />
     </header>
   );
