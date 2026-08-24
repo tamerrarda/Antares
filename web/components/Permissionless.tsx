@@ -23,11 +23,21 @@ export function Permissionless({
   wallet,
   bountyAddress,
   onDone,
+  bare = false,
 }: {
   wallet: WalletState;
   /** Whoever would collect the close bounty — the visitor, so the figure shown is theirs. */
   bountyAddress: string;
   onDone: () => void;
+  /**
+   * Render without the card shell, to sit inside another one.
+   *
+   * The window card already says a round can be opened; the button that opens it was two cards
+   * further down. State and the action that changes it belong in one block, so in the window face
+   * this renders inside that card instead of beside it. Everywhere else it keeps its own card,
+   * because `close_round` matters most exactly when the window is shut.
+   */
+  bare?: boolean;
 }) {
   const [close, setClose] = useState<Preview<RoundOutcome> | null>(null);
   const [open, setOpen] = useState<Preview<boolean> | null>(null);
@@ -60,12 +70,8 @@ export function Permissionless({
     if (result?.status === "sent") onDone();
   }
 
-  return (
-    <article className="card">
-      <h2>
-        <span>Nobody operates this vault</span>
-        <em>these two calls are open to anyone, including you</em>
-      </h2>
+  const body = (
+    <>
       <div className="body">
         <div className="anyone">
           <button
@@ -132,7 +138,7 @@ export function Permissionless({
 
         {!connected && (
           <p className="note" style={{ marginTop: 18 }}>
-            Connect a wallet to make either call. Reading what they would do needs none.
+            Connect a wallet to call either.
           </p>
         )}
       </div>
@@ -159,6 +165,17 @@ export function Permissionless({
           </p>
         </div>
       )}
+    </>
+  );
+
+  if (bare) return body;
+  return (
+    <article className="card">
+      <h2>
+        <span>Nobody operates this vault</span>
+        <em>these two calls are open to anyone, including you</em>
+      </h2>
+      {body}
     </article>
   );
 }

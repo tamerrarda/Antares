@@ -25,9 +25,7 @@ export default function PositionsPage() {
         <div>
           <h1>My positions</h1>
           <div className="phase" data-tone="quiet" style={{ marginTop: 14 }}>
-            <span style={{ maxWidth: "78ch" }}>
-              Across every vault this build knows about — where your money is, and when you can next move it.
-            </span>
+            <span style={{ maxWidth: "78ch" }}>Where your money is, and when you can next move it.</span>
           </div>
         </div>
       </div>
@@ -39,8 +37,7 @@ export default function PositionsPage() {
           </h2>
           <div className="body">
             <p className="sub" style={{ marginTop: 0, maxWidth: "82ch" }}>
-              The vaults below are readable by anyone; what needs an address is which of them hold anything of
-              yours.
+              The vaults are readable by anyone. An address only says which hold yours.
             </p>
           </div>
         </article>
@@ -63,8 +60,7 @@ export default function PositionsPage() {
                 other. 08-OFFCHAIN §3: without this page the interface becomes a trading terminal,
                 which is the opposite of the product. */}
             <p className="sub" style={{ maxWidth: "82ch" }}>
-              What each holding is worth follows the vault&apos;s price per share, which moves when a round
-              settles and at no other time.
+              Worth follows price per share, which moves when a round settles and at no other time.
             </p>
           </div>
         </article>

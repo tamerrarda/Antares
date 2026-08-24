@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { ActionPanel } from "../components/ActionPanel.tsx";
 import { ChainDown } from "../components/ChainDown.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
@@ -209,33 +211,40 @@ export default function VaultPage() {
                 <span className="big clock" style={{ fontSize: 44 }}>
                   {untilOpen ?? "right now"}
                 </span>
-                <p className="sub" style={{ maxWidth: "70ch" }}>
-                  {untilOpen === null ? (
-                    <>
-                      <b>Anyone can open round {epoch.round + 1} now</b> — including you. Until somebody does,
-                      deposits and exits are instant.
-                    </>
-                  ) : (
-                    <>
-                      <b>A floor, not a deadline.</b> {when(opensAt ?? 0n)} is the earliest anyone may open,
-                      not when this closes.
-                    </>
-                  )}
-                </p>
+                {/* Only the "floor, not a deadline" case earns a sentence. The open case had one too —
+                    "deposits and exits are instant" — which the page header says above and the two
+                    stats below say with more precision. Three statements of one fact in one card. */}
+                {untilOpen !== null && (
+                  <p className="sub" style={{ maxWidth: "70ch" }}>
+                    <b>A floor, not a deadline.</b> {when(opensAt ?? 0n)} is the earliest anyone may open, not
+                    when this closes.
+                  </p>
+                )}
               </div>
               <div className="stats">
-                <div>
-                  <span className="k">Window opened</span>
-                  <span className="val">{whenParts(epoch.last_finalize_time).day}</span>
-                  <span className="cap">
-                    {whenParts(epoch.last_finalize_time).time} · round {epoch.round} closed
-                  </span>
-                </div>
-                <div>
-                  <span className="k">Earliest close</span>
-                  <span className="val">{whenParts(epoch.next_open_at).day}</span>
-                  <span className="cap">{whenParts(epoch.next_open_at).time} · earliest anyone may open</span>
-                </div>
+                {/* Both of these are derived from `last_finalize_time`, which a vault that has
+                    never closed a round reports as **0** — and epoch zero renders as a real date,
+                    "1 Jan, 02:00". A fresh vault was printing 1970 as the moment its window opened
+                    and as the earliest anyone could act. Neither timestamp exists yet, so neither
+                    is shown; the two below are true from the first block. */}
+                {epoch.round > 0 && (
+                  <>
+                    <div>
+                      <span className="k">Window opened</span>
+                      <span className="val">{whenParts(epoch.last_finalize_time).day}</span>
+                      <span className="cap">
+                        {whenParts(epoch.last_finalize_time).time} · round {epoch.round} closed
+                      </span>
+                    </div>
+                    <div>
+                      <span className="k">Earliest close</span>
+                      <span className="val">{whenParts(epoch.next_open_at).day}</span>
+                      <span className="cap">
+                        {whenParts(epoch.next_open_at).time} · earliest anyone may open
+                      </span>
+                    </div>
+                  </>
+                )}
                 <div>
                   <span className="k">Deposits</span>
                   <span className="val">Instant</span>
@@ -247,41 +256,56 @@ export default function VaultPage() {
                   <span className="cap">paid in the same transaction</span>
                 </div>
               </div>
+
+              {/* The two calls, in the card that describes the state they change. The window card
+                  said a round could be opened while the button that opens it sat two cards below;
+                  a reader had to hold one claim in mind to recognise the control. Outside this face
+                  they keep their own card, because `close_round` matters most when a round is live. */}
+              <Permissionless
+                bare
+                wallet={wallet}
+                bountyAddress={wallet.address ?? config.admin}
+                onDone={reload}
+              />
             </article>
           )}
 
-          <article className="card">
-            <h2>
-              <span>This round</span>
-              <em>snapshotted at open</em>
-            </h2>
-            <div className="stats">
-              <div>
-                <span className="k">Strike</span>
-                <span className="val">{price(epoch.strike)}</span>
-                <span className="cap">
-                  {p.strike_bps_otm / 100}% above {price(epoch.open_twap)} at open
-                </span>
+          {/* Not rendered before the first round has ever opened: every field would be a zero,
+              and `expiry` would print the epoch-zero timestamp as a real date — 1 Jan, passed. */}
+          {epoch.round > 0 && (
+            <article className="card">
+              <h2>
+                <span>This round</span>
+                <em>snapshotted at open</em>
+              </h2>
+              <div className="stats">
+                <div>
+                  <span className="k">Strike</span>
+                  <span className="val">{price(epoch.strike)}</span>
+                  <span className="cap">
+                    {p.strike_bps_otm / 100}% above {price(epoch.open_twap)} at open
+                  </span>
+                </div>
+                <div>
+                  <span className="k">Expiry</span>
+                  <span className="val">{whenParts(epoch.expiry).day}</span>
+                  <span className="cap">
+                    {whenParts(epoch.expiry).time} — {duration(Number(epoch.expiry) - now) ?? "passed"}
+                  </span>
+                </div>
+                <div>
+                  <span className="k">Covered</span>
+                  <span className="val">{amount(epoch.notional_offered)}</span>
+                  <span className="cap">XLM — {amount(epoch.notional_sold)} sold</span>
+                </div>
+                <div>
+                  <span className="k">Premium collected</span>
+                  <span className="val">{amount(epoch.premium_collected)}</span>
+                  <span className="cap">XLM, paid up front</span>
+                </div>
               </div>
-              <div>
-                <span className="k">Expiry</span>
-                <span className="val">{whenParts(epoch.expiry).day}</span>
-                <span className="cap">
-                  {whenParts(epoch.expiry).time} — {duration(Number(epoch.expiry) - now) ?? "passed"}
-                </span>
-              </div>
-              <div>
-                <span className="k">Covered</span>
-                <span className="val">{amount(epoch.notional_offered)}</span>
-                <span className="cap">XLM — {amount(epoch.notional_sold)} sold</span>
-              </div>
-              <div>
-                <span className="k">Premium collected</span>
-                <span className="val">{amount(epoch.premium_collected)}</span>
-                <span className="cap">XLM, paid up front</span>
-              </div>
-            </div>
-          </article>
+            </article>
+          )}
 
           {/* Only while a round is live: outside one there is no strike to reason about, and running
               the table against the PREVIOUS round's strike would describe an option nobody holds. */}
@@ -293,8 +317,11 @@ export default function VaultPage() {
           <TheRecord />
 
           {/* Before the operator card on purpose: what anyone can do comes above what only the
-              operator can, because that is the order the trust claim runs in. */}
-          <Permissionless wallet={wallet} bountyAddress={wallet.address ?? config.admin} onDone={reload} />
+              operator can, because that is the order the trust claim runs in. In the idle face this
+              is not rendered here — it is inside the window card, beside the state it acts on. */}
+          {face.id !== "window" && (
+            <Permissionless wallet={wallet} bountyAddress={wallet.address ?? config.admin} onDone={reload} />
+          )}
 
           <article className="card">
             <h2>
@@ -340,13 +367,13 @@ export default function VaultPage() {
               </div>
             </div>
             <div className="body" style={{ borderTop: "1px solid var(--rule-soft)" }}>
-              <a
+              <Link
                 className="switch"
                 style={{ textDecoration: "none", display: "inline-block" }}
                 href="/operator/"
               >
                 See everything the operator has ever done →
-              </a>
+              </Link>
             </div>
           </article>
         </section>

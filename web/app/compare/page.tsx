@@ -18,8 +18,7 @@ export default function ComparePage() {
           </h1>
           <div className="phase" data-tone="quiet" style={{ marginTop: 14 }}>
             <span style={{ maxWidth: "78ch" }}>
-              They differ in two things only. Everything else — the code, the oracle, the auction — is
-              identical.
+              Two differences. The code, the oracle and the auction are identical.
             </span>
           </div>
         </div>
@@ -71,7 +70,7 @@ export default function ComparePage() {
         <div className="payoff">
           <div>
             <span className="k">How long your money is committed</span>
-            <b>The length of one round, plus a window at the end of it.</b>
+            <b>One round, plus the window after it.</b>
             <p>
               You can queue an exit at any moment; the length decides how long you wait for it to pay. Between
               rounds there is a window — at least{" "}
@@ -81,10 +80,9 @@ export default function ComparePage() {
           </div>
           <div>
             <span className="k">How far the price can rise before you stop keeping the gain</span>
-            <b>The cap, set fresh at the start of every round from the price at that moment.</b>
+            <b>Set fresh each round, from the price at that moment.</b>
             <p>
-              Below it you keep everything and the premium on top. Above it the vault pays the difference in
-              cash — nothing is delivered and nothing is sold.
+              Below it you keep everything, plus the premium. Above it the vault pays the difference in cash.
             </p>
           </div>
         </div>

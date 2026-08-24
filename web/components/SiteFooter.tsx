@@ -30,12 +30,10 @@ export function SiteFooter() {
             <span>ANTARES</span>
           </div>
           <p className="said">
-            A covered-call vault on Stellar. <b>Unaudited, on testnet, and run by nobody</b> — rounds open and
-            close because someone calls them, and that someone can be you.
+            A covered-call vault on Stellar. <b>Unaudited, on testnet, and run by nobody</b> — anyone opens
+            and closes its rounds, including you.
           </p>
-          <p className="said">
-            Apache-2.0. The contract, the keeper and this interface are all in one public repository.
-          </p>
+          <p className="said">Apache-2.0. Contract, keeper and interface in one repository.</p>
         </div>
         <div>
           <h4>Verify</h4>
@@ -74,11 +72,6 @@ export function SiteFooter() {
             <li>
               <a href={`${REPO}/docs/TRUST_MODEL.md`} target="_blank" rel="noreferrer">
                 Trust model — what can go wrong ↗
-              </a>
-            </li>
-            <li>
-              <a href={`${REPO}/docs/KNOWN_ISSUES.md`} target="_blank" rel="noreferrer">
-                Known issues ↗
               </a>
             </li>
           </ul>

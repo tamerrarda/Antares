@@ -1,14 +1,19 @@
 /*
- * Antares — the design system, ported from `app.html`.
+ * Antares — the design system.
  *
  * One global stylesheet rather than modules: the vocabulary here is semantic and shared (`.card`,
  * `.stats`, `.pill`, `.k`), every page is built from the same dozen classes, and scoping each of
  * them to a component would turn one file anybody can read into fifteen nobody does.
  *
- * The draft's phase/wallet switchers are deliberately NOT here. They exist so seven states can be
- * reviewed without a chain to produce them; this app has a chain, and a control that fabricates a
- * state would let a screenshot of "settlement is late" be manufactured. If they come back it is as
- * a preview build whose flag is stripped at compile time, never as a runtime check.
+ * These rules were first written in a single-file draft that mocked seven vault states behind a
+ * phase switcher, so the layouts could be reviewed without a chain to produce them. **The draft and
+ * the four harnesses that measured it were deleted on 2026-08-24**, because a static mock of this
+ * app is a thing that can be screenshotted and shown, and a screenshot of "settlement is late" that
+ * nobody had to wait for is a claim about a chain that did not make it. `web/harness/` replaced
+ * them and drives the real exported routes.
+ *
+ * That is also why no phase or wallet switcher appears below. If one comes back it is as a preview
+ * build whose flag is stripped at compile time, never as a runtime control.
  */
 @font-face {
   font-family: "Departure Mono";
@@ -342,6 +347,11 @@ h1 {
 }
 .body {
   padding: 18px;
+}
+/* A card that carries figures and then the calls that change them — the window card does — needs a
+   seam between the two, or the buttons read as a caption on the last statistic. */
+.stats + .body {
+  border-top: 1px solid var(--rule-soft);
 }
 
 .auction {
