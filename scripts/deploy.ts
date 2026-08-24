@@ -450,7 +450,11 @@ const step2: Stage = {
     const built = ctx.wasm[which]!;
     const constructorArgs = ctx.opts.fastTest
       ? { admin: ctx.deployerAddress!, decimals: 14 }
-      : { reflector: ctx.opts.reflectorId!, asset: "XLM" };
+      : // `feed`, which is what `__constructor(env, feed: Address, asset: Symbol)` calls it. This
+        // said `reflector` until 2026-08-24 and the CLI answered `unexpected argument '--reflector'`
+        // — the first time this branch had ever run. Both deploys before it used `--fast-test`, so
+        // the real-adapter path had been carried, reviewed and never executed.
+        { feed: ctx.opts.reflectorId!, asset: "XLM" };
 
     const out = runStellar(
       buildDeployArgv({
