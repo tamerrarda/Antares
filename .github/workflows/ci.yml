@@ -5,9 +5,8 @@
 #   TypeScript, independently: ts; static-rules-ts; bindings drift
 #   scout-audit, fuzz smoke and cargo-mutants: opt-in per run, see the inputs
 #   below. Scout is opt-in rather than per-build since 2026-08-19: measured at
-#   9 m 57 s and still compiling itself when cancelled, to analyse nothing
-#   (KNOWN_ISSUES O-6). When it does run it is gated on its log, never its exit
-#   code.
+#   9 m 57 s and still compiling itself when cancelled, to analyse nothing.
+#   When it does run it is gated on its log, never its exit code.
 #   cargo-mutants is required at the Phase-4 gate and pointless before it.
 #
 # TWO OWNERS, ONE FILE (DEV-PROTOCOL §3). Everything below is DEV1's except the
@@ -59,7 +58,7 @@ on:
         type: boolean
         default: false
       run_scout:
-        description: "Also run scout-audit (~14 min, and currently analyses nothing — KNOWN_ISSUES O-6)"
+        description: "Also run scout-audit (~14 min, and currently analyses nothing)"
         type: boolean
         default: false
 
@@ -243,8 +242,8 @@ jobs:
     if: inputs.run_scout
     needs: test
     runs-on: ubuntu-latest
-    # Out of the blocking chain since 2026-08-18 (06-TEST-PLAN §8, KNOWN_ISSUES
-    # O-6). Not because failures here are tolerable — because Scout cannot
+    # Out of the blocking chain since 2026-08-18 (06-TEST-PLAN §8). Not
+    # because failures here are tolerable — because Scout cannot
     # currently run at all against our pinned target, and blocking every branch
     # on a tool that analyses nothing buys nothing. The step below still refuses
     # to call that state a pass, which is the half that matters: this job reports

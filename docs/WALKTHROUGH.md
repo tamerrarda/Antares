@@ -139,7 +139,12 @@ compromised oracle cannot drain the vault: it can move value between depositors 
 bidder, and it can do nothing else.
 
 **The identity to check:** `assets_after = assets_before + premium − payout − fee − bounty`, and the
-new share price is `assets_after × 10⁷ ÷ shares`, floored. Every term is in the `settled` event.
+new share price is `assets_after × 10⁷ ÷ shares`, floored. **It takes two events, not one.**
+`settled` carries `premium`, `payout_total`, `fee` and the resulting `pps`; the bounty is its own
+event, `settle_bounty{round, to, amount}`, published by the same transaction — and *not published
+at all* when the bounty floors to zero, which is the case a reconciliation should expect rather
+than treat as a missing record. Checking the identity against `settled` alone leaves you short the
+bounty term, so it is named here.
 
 ### 7. Withdrawal
 
@@ -202,13 +207,9 @@ could do: one epoch's sold notional, because there is no leverage anywhere in th
 1. **The contract is the source.** Build it from this commit and compare the hash against the
    deployed one. One caveat, and it is ours rather than yours: the same commit compiles to different
    bytes on macOS and on Linux — same size, same exports, same interface, different internal
-   ordering. It is measured, explained and open as **O-7** in
-   [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md), and `buildHost` in the deployment record tells you which
-   host produced the hash you are comparing against.
+   ordering. `buildHost` in the deployment record tells you which host produced the hash you are
+   comparing against.
 2. **The events are the record.** Every state change emits one. The numbers in this document come
    from them and can be re-derived from them.
 3. **The invariants are testable claims, not adjectives.** [`INVARIANTS.md`](INVARIANTS.md) lists
-   I1–I10 with how each is verified; [`SECURITY_REVIEW.md`](SECURITY_REVIEW.md) records what the
-   internal review walked and what it found.
-4. **What we know is wrong is written down.** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) is the list,
-   including the ones with no fix yet.
+   I1–I10 with how each is verified.

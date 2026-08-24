@@ -31,7 +31,7 @@ this is the wrong product for you.
 
 **How far above? 3 %, and that is closer than it sounds.** The strike sits where the option is
 worth enough for somebody to actually buy it. When markets are calm — XLM's realized volatility
-measured **34 % (measured 2026-08-16) annualized** over the last 30 days, against 98 % over the last 90 — an option
+measured **65 % annualized over the last 30 days, against 103 % over the last 90 (2026-08-24)** — an option
 struck 10 % away is worth almost nothing, so nobody bids and you earn nothing. Struck 3 % away it is worth buying, so
 you get paid; the cost is that your upside stops at 3 % instead of 10 %. This is a real trade-off
 and it is chosen deliberately, not tuned quietly: a covered call that never sells is not a
@@ -222,7 +222,7 @@ anything:
   one who opens on a rally, at your expense. The oracle's guards bound how far the basis can stray
   from the market, but not to zero. It is the sharpest of the few places where another participant's
   timing costs you something — the others being that a new round can open before your instant exit
-  lands (§3), and that anyone may end an idle window as soon as it reaches its minimum width; see [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-7.
+  lands (§3), and that anyone may end an idle window as soon as it reaches its minimum width.
 - **XLM sent directly to the contract address is gone.** Deposits must go through `deposit()`. A
   plain transfer to the vault's address belongs to nobody, is credited to no one, and there is no
   sweep function to recover it — deliberately, because code that can move unattributed funds can
@@ -298,4 +298,3 @@ they are labelled as such in the interface.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the contract actually works
 - [`INVARIANTS.md`](INVARIANTS.md) — the properties that must always hold, and how they're tested
 - [`TRUST_MODEL.md`](TRUST_MODEL.md) — who can do what to your money
-- [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — risks we know about and accept

@@ -27,21 +27,15 @@ and we will not pretend otherwise.
   protocol's whole claim rests on: if you can find a state where a bidder, a depositor, the
   keeper or the admin can profitably bring a delay about — or keep one alive — that is a
   vulnerability even if no funds move incorrectly, and we would rather hear it than defend the
-  design. (One passive asymmetry is already disclosed, not hidden: depositors keep more if an
-  in-the-money round is never closed in time, `docs/KNOWN_ISSUES.md` A-10. It qualifies here the
-  moment you can show a way to *make* that happen.)
+  design. (One passive asymmetry is already known, not hidden: depositors keep more if an
+  in-the-money round is never closed in time. It qualifies here the moment you can show a way to
+  *make* that happen.)
 - Any path where user funds can be trapped, including via the admin, a dead keeper, or a dead
   oracle.
 - Any admin capability beyond those enumerated in the [trust model](docs/TRUST_MODEL.md).
 - Accounting errors in epoch share math, settlement, or claims.
 - Oracle handling: staleness, manipulation, or a guard that fires when it should not (a breaker
   that annuls valid rounds is a real vulnerability — it confiscates earned payouts).
-
-## What is already known
-
-Documented and accepted risks are listed in [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md). A
-report matching one of those entries is still welcome — especially if you think our assessment
-of it is wrong.
 
 ## Upstream
 

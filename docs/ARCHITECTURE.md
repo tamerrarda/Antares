@@ -120,7 +120,7 @@ Amounts are `i128` in stroops (7 decimals). Ratios are basis points (`u32`, 10 0
 | Type | Key | Value | TTL policy |
 |---|---|---|---|
 | **instance** | `Config` | admin, pending_admin, asset, oracle, fee_recipient, **token_suffix**, fee_bps, deposit_cap, paused, allowlist_enabled, **allowlist_expires_at**, params, rent params | bumped on every write |
-| **instance** | `State` | round, phase, strike, expiry, notional_offered, notional_sold, premium_collected, locked_assets | bumped on every write |
+| **instance** | `State` | **the round** — round, phase, params, fee_bps_snapshot · **its clock** — opened_at, auction_end, expiry, last_finalize_time · **its prices** — feed_decimals, strike, open_twap, last_settled_spot · **what was sold** — notional_offered, notional_sold, premium_collected · **what it started from** — locked_at_open, shares_snapshot, burned_this_round · **running totals** — locked_assets, shares_outstanding, last_pps · **the four claim pools** — pending_deposits_total, withdraw_claimable_total, bidder_claimable_total, fee_claimable | bumped on every write |
 | **instance** | `AppVersion` | `u32` — migration schema version (§8) | bumped on every write |
 | **persistent** | `Shares(Address)` | `i128` | bumped on touch |
 | **persistent** | `Allowance(Address, Address)` | SEP-41 allowance `(owner, spender)` with `live_until_ledger` | bumped on touch |
@@ -130,6 +130,11 @@ Amounts are `i128` in stroops (7 decimals). Ratios are basis points (`u32`, 10 0
 | **persistent** | `Fill(u32, Address)` | `{ notional, premium_paid, claimed }` — per (round, bidder); basis for pull-based `claim_payout`/`claim_refund` | bumped on touch; **also bumps `Round(round)`** |
 | **persistent** | `Allowed(Address)` | `bool` | bumped on touch |
 | **temporary** | — | **nothing** | no value-bearing state is temporary, ever |
+
+`State` is one struct of twenty-five fields rather than a handful, and the last group is why it is
+worth reading in full: [`INVARIANTS.md`](INVARIANTS.md) I1 bounds the contract's balance below by
+`locked_assets` plus those four claim pools — **five terms, and every one of them is a field here.**
+The invariant is checkable against storage rather than recomputable only by replaying events.
 
 **Archival:** a `Round` record may only be allowed to expire once no `PendingWithdraw` references it. A public `restore_position(user)` path is documented so a returning depositor with an archived entry has a deterministic recovery route rather than a support ticket.
 
@@ -173,7 +178,7 @@ Retaining it makes waiting worth exactly nothing to an out-of-the-money buyer an
 to an in-the-money one, who forfeits the payout as well. **No party who can cause a delay gains by one** — depositors would passively
 benefit if an in-the-money round drifted past the deadline, but drift is nobody's action to take:
 closing is permissionless and the buyer it would rob holds the payout-sized incentive to prevent
-it ([KNOWN_ISSUES](KNOWN_ISSUES.md) A-10). That is the property that makes the outcome a function
+it. That is the property that makes the outcome a function
 of history rather than of who transacted when. The cost
 is stated in [BIDDER.md](BIDDER.md): a buyer facing a genuinely dead feed has a bounded window to
 annul the round himself, and the call is permissionless.
@@ -188,6 +193,19 @@ Capital that arrives while an option is live took none of that option's risk. If
 - **After round R settles** → the pending deposit converts to shares **at the current price when it converts**, not at a price frozen when it was deposited. Capital that sat pending took none of the intervening rounds' risk, so it enters at today's price; this also makes converting and cancel-then-redeposit worth exactly the same, which is why cancellation stays open for a pending deposit's whole life.
 - **Deposit while no round is live (`IDLE`)** → mints instantly at the last settled `pps` (auto-redeeming any older finalized pending first). No option is live, so instant minting dilutes nobody.
 - **`cancel_pending_deposit`** returns funds that were never locked. This is the only instant exit and it is safe precisely because that capital never backed an option.
+
+**The very first deposit mints `DEAD_SHARES` to the vault itself.** `DEAD_SHARES` is 1 000 stroops
+(0.0001 shares), taken out of the first depositor's own mint — they receive `minted − DEAD_SHARES`
+— and it is never redeemable, because the vault has no path that spends its own balance. It exists
+to floor the supply: without it a holder could burn the supply back to ~zero, at which point every
+subsequent small deposit mints zero shares while its XLM joins the pool, and the next depositor's
+capital silently belongs to the attacker. `min_deposit > DEAD_SHARES` is validated at construction
+*and on every `set_epoch_params`*, so the subtraction can never take the first depositor to zero —
+not even by a later parameter change. Nothing can move the vault's own balance either: every
+share-moving entry point requires the holder's authorization, and no path in the contract asks for
+its own. Both mints emit their SEP-41 `mint`
+event and together sum to `total_supply`, so a consumer rebuilding supply from the event stream
+gets the same number the contract reports.
 
 **Share mints happen only while the phase is `IDLE`.** A share minted mid-round at an old `pps` would acquire a claim on the live round's P&L that its capital never backed — if `pps` rises, total claims exceed the pool and solvency (I1) breaks. Burns (`request_withdraw`) are safe in any phase: burned shares stay in the round's `pps` denominator snapshot, so the exiting holder gets exactly this round's price. To guarantee a usable mint/redeem window every cycle, `open_epoch` requires `now ≥ last_finalize_time + min_idle_gap` (an `EpochParams` field).
 
@@ -222,7 +240,7 @@ The premium is discovered, not assumed. A descending-price auction is the only m
 ```
 spot           = oracle_guarded_reading()   // short TWAP; §7 guards: staleness, self-consistency, sanity
 strike         = spot × (10_000 + strike_bps_otm) / 10_000
-expiry         = now + params.duration
+expiry         = now + params.epoch_duration
 notional_offer = locked_assets
 auction_end    = now + params.auction_duration
 ```
@@ -309,11 +327,11 @@ Retry on a transient failure, annul only on evidence, and never invent a price �
 | …and it never recovers | **The round still ends.** Past `expiry + unresolved_after` (21 h at the shipped parameters) `close_round()` finalizes the epoch as **unresolved without calling the price adapter at all**. The bound is validated on-chain to sit strictly beyond the feed's reachable history, and bounded above so no admin setting can push it out of reach, so this returns the same outcome a working adapter could have produced at that instant — it adds no new result and cannot be used to steer one. It is the only terminal path that survives an adapter which cannot be invoked, and it is what makes "no oracle state can trap funds" a property of the code rather than a claim about it. |
 | Feed demonstrably unusable **at expiry**, past `oracle_dead_after` | **Epoch is voided — by anyone.** A dead oracle plus a dead keeper must still never trap funds. Premium is refunded to each bidder exactly — every fill's own `premium_paid` back, with no
 pro-rata arithmetic and no rounding loss (unlike the payout above, which *is* pro-rata) — payout is zero, `pps` is unchanged, a loud event is emitted. |
-| Nobody closed the round before expiry left the feed's reachable history | **Epoch is unresolved — by anyone.** Premium is kept by depositors, payout is zero, and whoever closed it is paid the bounty. The round is decided by a rule rather than by evidence, precisely because no evidence remains — and the rule is chosen so that nobody who could cause the delay profited by it — see §7's note and [KNOWN_ISSUES](KNOWN_ISSUES.md) A-10 for the passive asymmetry that survives. |
+| Nobody closed the round before expiry left the feed's reachable history | **Epoch is unresolved — by anyone.** Premium is kept by depositors, payout is zero, and whoever closed it is paid the bounty. The round is decided by a rule rather than by evidence, precisely because no evidence remains — and the rule is chosen so that nobody who could cause the delay profited by it. See §7's note for the passive asymmetry that survives. |
 
 The void-and-refund choice is deliberate: an oracle failure is nobody's fault, and nobody who could cause one should profit from one — the refund does leave an out-of-the-money buyer better off than settling would have, but a feed's death is not an event any participant can bring about. Settling at strike would hand depositors a free premium; paying out on a stale price would hand bidders a lottery ticket. Refunding restores both sides to where they started.
 
-`PriceSource` is an interface with a Reflector implementation and a mock. **Settlement reads the price as it was at expiry**, not at the moment someone calls — so every caller, early or late, computes the same settlement price and **no caller can move that price in their own favour by choosing when to call**. The claim is about the price and it is directional: calling *early* is deliberately rewarded (the closer takes the bounty, and a bidder facing a dead feed must annul inside the void window to recover his premium), while *delay* never pays anyone who could choose it. Letting the anchor age out past `reach_limit` changes the **branch** rather than the price, and the passive asymmetry that creates is disclosed in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10 — nobody can bring it about. (One precondition, stated in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-12: the price feed must not change its own update interval while a round is live, because the sampling grid is derived from it.) The adapter takes several point samples across each window (`price(asset, timestamp)`, verified against the live contract — the batch call collapses well before the history it would need) and reduces each window to a **median**, which absorbs a single bad print without needing a retry. **Feed selection is part of the security model:** the pinned feed is Reflector's external CEX & DEX XLM/USD feed — deep aggregated off-chain markets — never any feed sourced from a thin on-chain order book. The February 2026 YieldBlox incident on Stellar was a correctly-functioning oracle reading a manipulable on-chain market; the class is excluded here by construction, and the oracle address is immutable after deployment (changing it requires a reviewed upgrade). Adding median-of-N or a secondary feed later (RedStone now ships SEP-40 feeds on Stellar) is a new implementation, never a refactor — that is the fallback *mechanism*; void-and-refund is the fallback *guarantee*.
+`PriceSource` is an interface with a Reflector implementation and a mock. **Settlement reads the price as it was at expiry**, not at the moment someone calls — so every caller, early or late, computes the same settlement price and **no caller can move that price in their own favour by choosing when to call**. The claim is about the price and it is directional: calling *early* is deliberately rewarded (the closer takes the bounty, and a bidder facing a dead feed must annul inside the void window to recover his premium), while *delay* never pays anyone who could choose it. Letting the anchor age out past `reach_limit` changes the **branch** rather than the price, and the passive asymmetry that creates is one nobody can bring about. (One precondition: the price feed must not change its own update interval while a round is live, because the sampling grid is derived from it.) The adapter takes several point samples across each window (`price(asset, timestamp)`, verified against the live contract — the batch call collapses well before the history it would need) and reduces each window to a **median**, which absorbs a single bad print without needing a retry. **Feed selection is part of the security model:** the pinned feed is Reflector's external CEX & DEX XLM/USD feed — deep aggregated off-chain markets — never any feed sourced from a thin on-chain order book. The February 2026 YieldBlox incident on Stellar was a correctly-functioning oracle reading a manipulable on-chain market; the class is excluded here by construction, and the oracle address is immutable after deployment (changing it requires a reviewed upgrade). Adding median-of-N or a secondary feed later (RedStone now ships SEP-40 feeds on Stellar) is a new implementation, never a refactor — that is the fallback *mechanism*; void-and-refund is the fallback *guarantee*.
 
 ---
 
@@ -354,7 +372,10 @@ so this document reads end to end:
 Every state transition emits. The off-chain metric collector and the public dashboard read only events; no indexer needs to reconstruct state from storage.
 
 ```
+initialized{admin, asset, oracle, fee_recipient, token_suffix, deposit_cap, rent_threshold, rent_extend_to, allowlist_expires_at, params, fee_bps, paused, allowlist_enabled, app_version}
+
 deposited{user, round, amount, shares_minted, instant}
+deposit_cancelled{user, round, amount}
 pending_redeemed{user, round, shares, pps}
 withdraw_requested{user, round, shares}
 withdraw_claimed{user, round, shares, amount}
@@ -369,8 +390,15 @@ settled{round, spot, strike, notional_sold, payout_total, premium, fee, pps, wcl
 epoch_voided{round, reason, premium_refunded, pps, wclaims}
 epoch_unresolved{round, premium_retained, pps, wclaims}
 
-paused{by} · unpaused{by} · params_changed{...} · admin_changed{old, new}
+paused{by} · unpaused{by} · params_changed{...}
+cap_changed{old, new} · fee_changed{old, new} · fee_recipient_changed{old, new}
+allowlist_toggled{enabled} · allowed_changed{bidder, allowed} · rent_params_changed{old_threshold, new_threshold, old_extend_to, new_extend_to}
+admin_transfer_started{current, pending} · admin_changed{old, new}
 ```
+
+Thirty-six events in all: the thirty-one above, plus the five the share token emits as a SEP-41
+token — `transfer`, `transfer_muxed`, `mint`, `burn` and `approve`. Those follow the standard and
+are not restated here. There is no `clawback`, because there is no clawback.
 
 **All four finalization events carry `wclaims`** — every outcome credits the withdrawal queue, so
 an indexer that only read it on `settled` would drift permanently the first time a round lapsed

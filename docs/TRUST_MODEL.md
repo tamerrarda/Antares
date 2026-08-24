@@ -187,8 +187,8 @@ constrained to return the outcome a working adapter could only have returned at 
 cannot be used to steer a result. That rule is not chosen to be kind to
 either side but to make delay worthless to both: an out-of-the-money buyer ends up exactly where
 settling would have put him, and an in-the-money one is strictly worse off, so neither of them has a reason
-to let the clock run (depositors passively keep more if an in-the-money round drifts — disclosed
-in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10 — but drift is not an action anyone can take). What you are trusting here is arithmetic, not attentiveness.
+to let the clock run (depositors passively keep more if an in-the-money round drifts, but drift is
+not an action anyone can take). What you are trusting here is arithmetic, not attentiveness.
 
 **Worst case, assume the feed is fully compromised** and every guard defeated:
 
@@ -210,10 +210,10 @@ permissionless, and `close_round` does not let its caller choose how the round e
 
 - Epochs open late, or not at all — depositors keep their funds and can withdraw between rounds.
 - Rounds close whenever anyone calls, including you — and the outcome does not depend on who did
-  or when, with one bounded exception stated in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-10: a round
-  nobody closes for about 20 hours can no longer be decided on evidence and finalizes with the
-  premium retained. That rule is chosen so nobody who could cause the delay gains
-  by it — the passive asymmetry that survives is stated in A-10, not hidden.
+  or when, with one bounded exception: a round nobody closes for about 20 hours can no longer be
+  decided on evidence and finalizes with the premium retained. That rule is chosen so nobody who
+  could cause the delay gains by it, and the passive asymmetry that survives it is stated here
+  rather than hidden — depositors keep more, and nobody can bring that about.
 - Nothing is ever locked by its absence.
 
 The keeper is a convenience, never an authority.

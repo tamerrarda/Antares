@@ -106,7 +106,7 @@ whatever bugs it has at that moment.
 design's refusal to route exits through the admin pays for itself.
 
 **Do.** Announce it. A vault whose admin key is gone is a different risk profile from the one people
-deposited into, and the disclosure belongs in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) and on the app.
+deposited into, and the disclosure belongs on the app and in the release notes.
 
 ## What to watch, and at what threshold
 

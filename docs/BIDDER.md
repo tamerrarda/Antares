@@ -78,12 +78,21 @@ widening the gap between clearing price and fair value, so it was shortened. The
 premium: the clearing price is whatever a bidder accepts, and it is recognized **at fill**, not
 at offer.
 
-**The part of that window you would actually want is much shorter — measured, not estimated.** A
-rational buyer does not bid while the curve sits above fair value, and from a 450 bps start the
-linear decay does not reach the fair value of these terms until roughly minute 41. The
-economically live tail is therefore about **2 to 4 minutes**, depending on the instance. That is a
-real obstacle to a human counterparty and we are not going to pretend otherwise: as written, this
-auction favours a bot. The curve's shape is decided for this build — linear stays, because it is
+**The part of that window you would actually want is shorter, and how much shorter moves with
+volatility — measured, not estimated.** A rational buyer does not bid while the curve sits above
+fair value. At the shipped bands and the volatility measured on 2026-08-24 (σ 103 % over 90 days),
+the linear decay crosses fair value at about **minute 7** on every instance, leaving an
+economically live tail of roughly **38 minutes**. Priced against the calmer 30-day window
+(σ 65 %) the crossing is near minute 31 and the tail is about **13 minutes**. Either way it is
+wide enough for a person to act in.
+
+**It was not always, and the earlier answer stays on the page.** Until 2026-08-24 this section
+reported a live tail of two to four minutes and concluded the auction favoured a bot. That was
+true of the premium bands as they then stood — sized against an *assumed* σ of 33.7 % rather than
+a measured one. When σ was measured it came back at 103 %, the bands were raised to stay coherent
+with it, and the crossing moved with them. The superseded finding is recorded rather than deleted:
+a document that quietly drops the claim it used to argue from is not one you should trust the rest
+of. The curve's shape is decided for this build — linear stays, because it is
 the only shape our verification suite can check exactly without new machinery — but a geometric curve that roughly
 triples the live window is on record as its designated successor, and what promotes it is
 evidence, not our mood: **if the window is the reason you would not participate, saying so is
@@ -219,9 +228,9 @@ update interval so that the windows we asked for no longer fit its grid. In the 
 produces the same result a working feed would have produced at that moment, so it cannot be used,
 by us or by anyone, to change how a round ends. **The exception is worth your attention if you are
 in the money:** if the feed alters its update interval mid-round, that equivalence can break and a
-round that was settleable can close as UNRESOLVED instead. It is written up in
-[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) A-12 rather than left for you to discover, and it is the same
-class of risk as the deadline above — one you can remove for yourself by closing the round early.
+round that was settleable can close as UNRESOLVED instead. It is written here rather than left for
+you to discover, and it is the same class of risk as the deadline above — one you can remove for
+yourself by closing the round early.
 
 If the round was out of the money, that is exactly where a normal settlement would have left you.
 **If it was in the money, you lose the payout as well as the premium.** Closing the round is
@@ -250,8 +259,7 @@ property we cannot back.
 
 - **Unaudited.** The contract is written, it runs on testnet, and every invariant is asserted by
   our own tests. That is necessary and not sufficient: nobody outside this project has audited it,
-  and the internal review that has been done ([`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)) was done
-  by the people who wrote the thing. Testnet only.
+  and the review that has been done was done by the people who wrote the thing. Testnet only.
 - **The vault can refuse to sell** at any price you'd accept if the option has drifted into the
   money. You may show up and find nothing to buy.
 - **Upgradeability.** The contract is upgradeable behind an admin key on testnet (a timelocked
@@ -274,11 +282,12 @@ property we cannot back.
 The XLM is free; **the prices are not.** The strike comes from the live XLM/USD feed, settlement
 uses the real price path, and the parameters were derived from XLM's measured realized
 volatility — so the option you are pricing is the option we intend to sell for real money, at the
-size we intend to sell it (the vault is capped at 100 000 XLM, about $16 k of notional).
+size we intend to sell it (the vault is capped at 100 000 XLM — about $20 k of notional at XLM's
+price on 2026-08-24).
 
 What is useful to us is therefore **a decision you would stand behind with your own capital**. A
 fill placed casually because the tokens are free tells us nothing and, worse, tells us something
-false. If our number is wrong, saying *"I'd want 140 bps for that, not 76"* is worth more to this
+false. If our number is wrong, saying *"I'd want 200 bps for that, not 112"* is worth more to this
 project than a fill — and it is the finding we will publish.
 
 ## 6c. Testnet is wiped on a schedule

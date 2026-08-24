@@ -94,7 +94,7 @@ test("a recorded wasm that is not the one built is its own finding", () => {
   assert.deepEqual(failedIds(checks), ["bindings.wasm_recorded"]);
 });
 
-// --- KNOWN_ISSUES O-7: the host is an input to that hash ------------------------------------------------------
+// --- the host is an input to that hash -------------------------------------------------------
 //
 // Measured 2026-08-23. macOS and `ubuntu-latest` compile one commit, under one pinned Rust and one
 // pinned CLI, into two binaries of identical length with identical export and `contractspecv0`
@@ -108,7 +108,7 @@ test("a hash recorded on another host is not read as drift", () => {
   assert.deepEqual(failedIds(checks), []);
   const c = checks.find((x) => x.id === "bindings.wasm_recorded")!;
   // Both hashes stay in the output, so the difference is visible rather than swallowed.
-  assert.match(c.note!, /KNOWN_ISSUES O-7/);
+  assert.match(c.note!, /host is an input to this hash/);
   assert.match(c.note!, /aaaaaaaa/);
   assert.match(c.note!, /bbbbbbbb/);
   assert.match(c.what, /linux-x64/);

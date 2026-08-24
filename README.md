@@ -161,7 +161,7 @@ The policy has an exit condition, so that it cannot quietly become an excuse: on
 
 **Oracle dependency.** Settlement correctness rests entirely on the price feed. The design bounds this — a deep CEX & DEX aggregated feed rather than any manipulable on-chain market (the February 2026 YieldBlox incident on Stellar was exactly that failure), TWAP, staleness limits, a self-consistency breaker, and a dead-oracle policy that never traps funds. Even a fully compromised feed cannot extract more than one epoch's sold notional — there is no leverage anywhere in the system. But bounding a risk is not eliminating it, and no amount of testnet activity proves behaviour under real volatility.
 
-**Unaudited.** The contract is written and running on testnet, and every invariant in [`docs/INVARIANTS.md`](docs/INVARIANTS.md) is asserted by our own tests — a property suite, three fuzz targets, a differential reference in a second language, and a mutation gate that admits no surviving mutant in the module that moves money. An internal security review is complete and its record is [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md), findings and all. **None of that is an audit.** Every correctness claim here is still our own, checked by people who wanted it to be true, and [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) lists what we already know is wrong or unproven.
+**Unaudited.** The contract is written and running on testnet, and every invariant in [`docs/INVARIANTS.md`](docs/INVARIANTS.md) is asserted by our own tests — a property suite, three fuzz targets, a differential reference in a second language, and a mutation gate that admits no surviving mutant in the module that moves money. An internal security review is complete. **None of that is an audit.** Every correctness claim here is still our own, checked by people who wanted it to be true.
 
 **We are not first, and the incumbent is closer than the usual kind.** [Lusty Finance](https://lusty.finance) is already live on Stellar testnet doing XLM covered calls, with a working web app, an SCF panel review behind it, and a shipped Soroban vault. Being early is not our advantage — it is not available. What is left is a different answer to the same question: they price the option with an off-chain quote engine and make the protocol the counterparty; we discover the price on-chain and require a real counterparty to show up. Which is better is an empirical question, and their design is the safer bet if independent bidders never appear.
 
@@ -174,47 +174,52 @@ Beyond that: OpenZeppelin ships Soroban vault primitives, and established yield 
 Everything below is verifiable without asking us. Each address links to an explorer; each wasm hash
 can be reproduced by building this repository at the commit named and comparing.
 
-**What is deployed today is a *mechanism* deployment, not the Phase-1 gate.** The vault runs on a
-fast-test profile — second-scale durations against a mock price source — which
-`09-DEPLOYMENT.md` §2 stamps **economically meaningless** and D-57 bars from ever being presented as
-demand evidence. It proves the state machine, not the market. The Phase-1 gate in the roadmap below
-asks for a closed epoch at parameters where fair value falls inside the auction's band, and that
-deployment has not happened.
+**What is deployed today runs on the shipped parameters against a feed we do not control.** Until
+2026-08-24 it did not: the vault ran a fast-test profile — second-scale durations against a mock
+price source — which the deployment record stamps `economicallyMeaningless: true` and which is
+barred from ever being presented as demand evidence. That instance is gone. The one below is a
+three-day epoch, struck 3 % out of the money, reading Reflector's aggregated CEX & DEX XLM/USD
+feed, and its record says `economicallyMeaningless: false`.
+
+**It is still not the Phase-1 gate.** That gate asks for a *closed* epoch at these parameters —
+opened, sold, settled — and no round has closed on this instance yet. What is proven today is the
+deployment, not the cycle.
 
 ### Contracts
 
 | | Address | Wasm SHA-256 |
 |---|---|---|
-| **Vault** (fast-test, `aXLM-F`) | [`CDMB6D4S…ZCVYM75`](https://stellar.expert/explorer/testnet/contract/CDMB6D4SAMS5PEIFWBUEB3ZQTIT6X27K53TJMYWK7LIUMVMTWZCVYM75) | `ba0b18ad85f143de41fe7a80204d0202f6db7e2825db0d468303fc951d6f0b83` |
-| **Reflector adapter** (real feed) | [`CCZQF5WU…H2FQP`](https://stellar.expert/explorer/testnet/contract/CCZQF5WUF3LCGYONRGNLADUJZGYLOEXY7JBRRGCLDTHTHSL5GJOH2FQP) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
-| **Mock price source** (what the fast-test vault reads) | [`CD2CWMXS…J6BG3QUA`](https://stellar.expert/explorer/testnet/contract/CD2CWMXSEMYN7PBRWM6BGBMIIWCPGCASVILSZADZUB4CFQCMJ6BG3QUA) | `908dde6d80f16f3ccca3543c16e79e37a25c38dcda5cca1a10d5b68a258f3402` |
+| **Vault** (`aXLM-E`, 3-day, 3 % OTM) | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2` |
+| **Reflector adapter** (what the vault reads) | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
 | Reflector CEX & DEX feed (theirs, not ours) | [`CCYOZJCO…MJRN63`](https://stellar.expert/explorer/testnet/contract/CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63) | — |
+| XLM (native SAC) | [`CDLZFC3S…HHGCYSC`](https://stellar.expert/explorer/testnet/contract/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC) | — |
 
-The adapter and the vault are separate deployments made on different days, and the adapter is the
-one wired to the real feed. The fast-test vault reads the mock instead, because a second-scale
-profile cannot use a feed whose tick is five minutes.
+The adapter is pinned at the vault's construction and **immutable** — there is no setter, so
+changing the price source requires a reviewed upgrade. `contracts/mock-price-source` still exists
+in this repository and is deployed nowhere: it is the test double that lets dead-feed, rescale and
+trap cases be forced, which a live feed cannot be made to do on demand.
 
 ### Deployment transactions
 
-Deployer `GDFPSLES…EKBQQ`, 2026-08-20, ledgers 4240379–4240388. The deploy script records these as it
-submits them, in `deployments/testnet.json`, because a testnet reset erases the transactions
-themselves and a hash not written down at submission cannot be recovered afterwards at all.
+Deployer `antares-testnet` (`GDFPSLES…EKBQQ`), 2026-08-24T09:11:48Z, from a clean tree at commit
+`87e4224a`. The deploy script records these as it submits them, in `deployments/testnet.json`,
+because a testnet reset erases the transactions themselves and a hash not written down at
+submission cannot be recovered afterwards at all.
 
 | | Transaction |
 |---|---|
-| Mock price source created | [`42421aeb…6a4a7`](https://stellar.expert/explorer/testnet/tx/42421aeb3477fb59ed2fcc615430b4bff530d2bef757ca878099550c07e6a4a7) |
-| Mock primed (`set_expires`) | [`aca95394…6f30eb`](https://stellar.expert/explorer/testnet/tx/aca953941dc21d30fea985bcae0edf2d19e99defa3f18b33522e74c02c6f30eb) |
-| Mock primed (`fill`) | [`d0dbb93f…00d830`](https://stellar.expert/explorer/testnet/tx/d0dbb93f24b203bbd8a8bdb16f6298987bd95ea8e48ef1678b6a3f428900d830) |
-| Vault created | [`ca5e8e32…b2df82`](https://stellar.expert/explorer/testnet/tx/ca5e8e32bb0c4377bf5cbb8f8f30b586890805c0881d51eb67d99e13eab2df82) |
-| Smoke deposit (`deposit`) | [`94e3265d…32fe45`](https://stellar.expert/explorer/testnet/tx/94e3265d65a417d188c6ec86dc1e4b504946e48cbac2f3626d3784172232fe45) |
-| Smoke withdrawal (`request_withdraw`) | [`1bfb3d89…3fd6a4`](https://stellar.expert/explorer/testnet/tx/1bfb3d89c9b0bb8f5a6714e9a0711aaae5fd293557dd475068a480e84c3fd6a4) |
+| Adapter created | [`233c858c…cafb9c`](https://stellar.expert/explorer/testnet/tx/233c858caf45c1b0d2f2df581ce8dbd802f984550a4807e4885d29cdc9cafb9c) |
+| Vault `-E` created | [`9cd2cb41…5b851e`](https://stellar.expert/explorer/testnet/tx/9cd2cb4127b622d75f818298a763b4e778432a5021c3303c363b5ce34c5b851e) |
+| Smoke deposit (`deposit`) | [`d2622e59…b5ecb0`](https://stellar.expert/explorer/testnet/tx/d2622e5952c79a5a7f0ce9e77dfe7f40a3fb75e30fb5bb5521cd1c5e15b5ecb0) |
+| Smoke withdrawal (`request_withdraw`) | [`d299d00d…3eb731`](https://stellar.expert/explorer/testnet/tx/d299d00d4487eaa89d985224ea01653c1de35a09b83cb277a5f42921633eb731) |
 
 ### Reproducing the hashes
 
-The vault wasm was built at commit `41090520` and the adapter at `18dcef1a` — they were deployed on
-different days and each record names its own. Both used Rust 1.95.0, `soroban-sdk =27.0.6`,
-`stellar-cli 27.1.0` and target `wasm32v1-none`, all pinned in the repository rather than restated
-here. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes.
+Both wasms were built at commit `87e4224a` and deployed in the same run, from a tree the deploy
+script verified clean before it would submit anything. They used Rust 1.95.0, `soroban-sdk
+=27.0.6`, `stellar-cli 27.1.0` and target `wasm32v1-none`, all pinned in the repository rather than
+restated here — and `deployments/testnet.json` records every one of those alongside the host that
+did the building. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes.
 
 **The hash reproduces against a host, not against a toolchain.** Measured on
 2026-08-21: `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` build the vault to the same
@@ -256,7 +261,7 @@ Phase 2 is a market question, not an engineering one. It cannot be answered by w
 
 The third condition is the one that can fail us. An uncontested Dutch auction always walks toward its floor; if clearing prices cluster at the bottom of the curve, price discovery never happened and the mechanism has quietly degenerated into a fixed premium that hands the buyer a free timing option. That would falsify a load-bearing design assumption, and we would report it as falsification rather than as a fill count.
 
-Getting this condition right took **five** attempts, and the first four were each satisfiable by the failure they were meant to detect. "At least one fill above the floor" is true of every possible fill. "A quarter of the way up the curve" is an absolute number while fair value moves with volatility, so a perfectly competitive market could have failed it. "Half of fair value" is cleared by the auction floor itself, since the floor is defined as at least half of fair value. And the single ratio `≥ 0.75 of fair value` broke the same way one level down: its numerator moves with volatility while the reserve price is an integer fixed at deployment, so below roughly 29 % realized volatility — an ordinary quiet fortnight for XLM, whose measured 30-day figure is 33.7 % — an auction filled entirely at the reserve passes it again.
+Getting this condition right took **five** attempts, and the first four were each satisfiable by the failure they were meant to detect. "At least one fill above the floor" is true of every possible fill. "A quarter of the way up the curve" is an absolute number while fair value moves with volatility, so a perfectly competitive market could have failed it. "Half of fair value" is cleared by the auction floor itself, since the floor is defined as at least half of fair value. And the single ratio `≥ 0.75 of fair value` broke the same way one level down: its numerator moves with volatility while the reserve price is an integer fixed at deployment, so below roughly 29 % realized volatility — an ordinary quiet fortnight for XLM, whose measured 30-day figure was 33.7 % when this gate was written and 65.1 % on 2026-08-24 — an auction filled entirely at the reserve passes it again.
 
 Hence two conditions rather than one. The 0.75 sits below the only competitive vault auctions anyone has measured (Ribbon's cleared at 0.83–0.98 of fair value). The `1.30 × reserve` is volatility-independent by construction and bounded on both sides: an uncontested auction stops within 0.4 % of the reserve, so 1.30 excludes reserve-walking outright, and it must not bind where the fair-value test already works, which caps it at 1.354. A lone bidder walks the curve to the reserve and fails; a second bidder forces the clear earlier and passes. The gate measures whether anyone was competing — and the fourth rewrite is why we now publish the volatility estimator's exact definition alongside the result, so a third party can recompute the gate rather than trust it.
 
@@ -282,7 +287,7 @@ keeper/             Off-chain epoch trigger (TypeScript) — convenience, never 
 bidder/             Open-source reference bidder (TypeScript)
 web/                Deposit / withdraw / epoch status interface (Next.js)
 scripts/            Network-parameterised deployment, upgrade, recovery tooling
-docs/               Architecture, invariants, known issues
+docs/               Architecture, invariants, trust model, guides
 ```
 
 ## Building
@@ -326,7 +331,6 @@ Full index: [`docs/`](docs/README.md) — start with the document written for wh
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Contract surface, storage model, epoch accounting, settlement math, failure modes |
 | [`docs/INVARIANTS.md`](docs/INVARIANTS.md) | The properties that must hold in every state, and how each is verified |
 | [`docs/TRUST_MODEL.md`](docs/TRUST_MODEL.md) | Who can do what to your funds — including the powers we'd rather not have |
-| [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) | Accepted risks, open questions, and what design review already caught |
 | [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability |
 
 ## License

@@ -119,6 +119,13 @@ ahead of a loss that they were exposed to.
 **Why.** `shares_outstanding` is the denominator of price-per-share. If it drifts from reality,
 every depositor's claim on the pool is silently wrong.
 
+**The vault's own address is one of the holders,** and a reader summing balances has to count it:
+the first deposit mints 1 000 stroops of `DEAD_SHARES` to the contract itself, which floors the
+supply against an inflation attack and is never redeemable
+([`ARCHITECTURE.md`](ARCHITECTURE.md) §4). It is in the sum on both sides, so the equality is exact
+rather than approximate — but a check that skipped the vault's balance would report a permanent
+1 000-stroop shortfall and be wrong.
+
 **Verified by.** Asserted after every token operation in unit tests and after every step in the
 property suite.
 
@@ -231,8 +238,8 @@ selected by what that read returns, so no caller can name it. The three answers 
 cleanly — the feed answered (settle), the feed was demonstrably dead at expiry and we can still
 see that it was (void), or expiry has left the feed's reachable history (unresolved) — and the
 rule for the third is chosen so that **no party who can cause a delay gains by one** (the passive
-depositor-side asymmetry that survives the rule is disclosed in
-[KNOWN_ISSUES](KNOWN_ISSUES.md) A-10 — it is not an action anyone can take). Without that last part the
+depositor-side asymmetry that survives the rule — depositors keep more — is real, and bringing it
+about is not an action anyone can take). Without that last part the
 invariant would still hold formally while paying an out-of-the-money buyer his whole premium back
 for doing nothing.
 
@@ -249,8 +256,8 @@ therefore adds no fourth reachable result.
 reachable depth is read live when it closes. If the price feed lengthens its tick mid-round — a
 3.4 % change is enough at today's values — the fallback can fire while the anchored read would
 still have answered, which costs an in-the-money buyer his payout. Opening a round re-checks the
-live feed, so the exposure is one round rather than open-ended, and the residual is listed in
-[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) rather than argued away.
+live feed, so the exposure is one round rather than open-ended, and the residual is stated here
+rather than argued away.
 
 That last clause is load-bearing and was missing until it was audited in. If a permanently
 unreachable adapter could block every branch, `close_round()` would revert forever and the round's
@@ -303,8 +310,8 @@ Stated explicitly, because their absence is a design choice rather than an overs
   with depositors and the payout is zero. Nobody who can cause an oracle failure or a delay
   profits from one, nobody is trapped by one, and — the reason the third outcome exists at all —
   **waiting is not an action that pays anyone who can choose it**; the passive depositor-side
-  asymmetry (more stays in the pool if an in-the-money round is never closed in time) is real,
-  disclosed in [KNOWN_ISSUES](KNOWN_ISSUES.md) A-10, and reachable by nobody's decision.
+  asymmetry (more stays in the pool if an in-the-money round is never closed in time) is real and
+  reachable by nobody's decision.
 - **There is no guarantee that every round has a positive share price.** See I6: where a positive
   price and solvency cannot both hold, solvency wins.
 - **There is no guarantee about returns.** See the README's stance on yield numbers.
