@@ -72,7 +72,7 @@ export function Calendar({ epoch, face }: { epoch: EpochInfo; face: FaceId }) {
       </h2>
       <div className="body">
         <p className="note" style={{ margin: 0 }}>
-          No server watches the chain for you, so nothing here can remind you. Take a file instead.
+          Nothing here can remind you. Take a file instead.
         </p>
         <button
           className="cta"

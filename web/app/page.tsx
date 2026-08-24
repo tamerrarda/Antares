@@ -212,14 +212,13 @@ export default function VaultPage() {
                 <p className="sub" style={{ maxWidth: "70ch" }}>
                   {untilOpen === null ? (
                     <>
-                      <b>Nobody has opened the next round.</b> The guaranteed minimum elapsed already, so
-                      anyone — including you — can open round {epoch.round + 1} at any moment. Until somebody
-                      does, deposits and exits settle in the same transaction.
+                      <b>Anyone can open round {epoch.round + 1} now</b> — including you. Until somebody does,
+                      deposits and exits are instant.
                     </>
                   ) : (
                     <>
-                      <b>A floor, not a deadline.</b> {when(opensAt ?? 0n)} is the earliest anyone may open
-                      the next round, not when this window closes.
+                      <b>A floor, not a deadline.</b> {when(opensAt ?? 0n)} is the earliest anyone may open,
+                      not when this closes.
                     </>
                   )}
                 </p>
@@ -229,25 +228,23 @@ export default function VaultPage() {
                   <span className="k">Window opened</span>
                   <span className="val">{whenParts(epoch.last_finalize_time).day}</span>
                   <span className="cap">
-                    {whenParts(epoch.last_finalize_time).time} — when round {epoch.round} finalised
+                    {whenParts(epoch.last_finalize_time).time} · round {epoch.round} closed
                   </span>
                 </div>
                 <div>
                   <span className="k">Earliest close</span>
                   <span className="val">{whenParts(epoch.next_open_at).day}</span>
-                  <span className="cap">
-                    {whenParts(epoch.next_open_at).time} — the first moment open_epoch can succeed
-                  </span>
+                  <span className="cap">{whenParts(epoch.next_open_at).time} · earliest anyone may open</span>
                 </div>
                 <div>
                   <span className="k">Deposits</span>
                   <span className="val">Instant</span>
-                  <span className="cap">no pending step while no round is running</span>
+                  <span className="cap">no pending step</span>
                 </div>
                 <div>
                   <span className="k">Exits</span>
                   <span className="val">Instant</span>
-                  <span className="cap">request_withdraw pays out in the same transaction</span>
+                  <span className="cap">paid in the same transaction</span>
                 </div>
               </div>
             </article>
@@ -256,14 +253,14 @@ export default function VaultPage() {
           <article className="card">
             <h2>
               <span>This round</span>
-              <em>snapshotted when it opened — a later parameter change cannot move it</em>
+              <em>snapshotted at open</em>
             </h2>
             <div className="stats">
               <div>
                 <span className="k">Strike</span>
                 <span className="val">{price(epoch.strike)}</span>
                 <span className="cap">
-                  {p.strike_bps_otm / 100}% above {price(epoch.open_twap)}, the price at open
+                  {p.strike_bps_otm / 100}% above {price(epoch.open_twap)} at open
                 </span>
               </div>
               <div>
@@ -281,7 +278,7 @@ export default function VaultPage() {
               <div>
                 <span className="k">Premium collected</span>
                 <span className="val">{amount(epoch.premium_collected)}</span>
-                <span className="cap">XLM, paid up front by the buyer</span>
+                <span className="cap">XLM, paid up front</span>
               </div>
             </div>
           </article>
@@ -307,7 +304,7 @@ export default function VaultPage() {
               <div>
                 <span className="k">Paused</span>
                 <span className="val">{config.paused ? "Yes" : "No"}</span>
-                <span className="cap">and a paused vault can still be exited</span>
+                <span className="cap">exits work either way</span>
               </div>
               <div>
                 <span className="k">Deposit cap</span>
@@ -318,7 +315,7 @@ export default function VaultPage() {
                 <span className="k">Protocol fee</span>
                 <span className="val">{bps(config.fee_bps)}</span>
                 <span className="cap">
-                  {config.fee_bps === 0 ? "nothing is taken" : "of the premium, never of your collateral"}
+                  {config.fee_bps === 0 ? "nothing taken" : "of premium, never collateral"}
                 </span>
               </div>
               {/* The fifth balance somebody can forget, and the last one with no surface anywhere.
@@ -331,9 +328,7 @@ export default function VaultPage() {
                   {amount(config.fee_claimable)}
                 </span>
                 <span className="cap">
-                  {config.fee_claimable > 0n
-                    ? "XLM owed to the fee recipient, unclaimed"
-                    : "XLM — nothing has been taken, so nothing is owed"}
+                  {config.fee_claimable > 0n ? "XLM owed, unclaimed" : "XLM — nothing owed"}
                 </span>
               </div>
               <div>

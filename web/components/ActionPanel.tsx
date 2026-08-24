@@ -291,13 +291,12 @@ export function ActionPanel({
           {tab === "deposit" ? (
             liveRound ? (
               <>
-                <b>A round is live, so this waits as a pending deposit</b> and converts at the price the round
-                ends on. You can take it back before then.
+                <b>A round is live</b> — this waits, and converts at the price the round ends on. You can take
+                it back before then.
               </>
             ) : (
               <>
-                <b>No round is running, so this becomes shares in the same transaction.</b> Nothing is left
-                pending and nothing has to be collected later.
+                <b>No round is running</b> — this becomes shares in the same transaction.
               </>
             )
           ) : liveRound ? (

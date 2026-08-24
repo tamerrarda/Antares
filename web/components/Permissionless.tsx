@@ -78,15 +78,18 @@ export function Permissionless({
           </button>
           <p className="sub">
             {close === null ? (
-              "Asking the chain what closing would do…"
+              "Asking the chain…"
             ) : close.kind === "would-succeed" ? (
               <>
-                <b>Simulated now: {OUTCOME_SENTENCE[close.value.tag] ?? close.value.tag}.</b> Whoever calls it
-                keeps the close bounty.
+                <b>{OUTCOME_SENTENCE[close.value.tag] ?? close.value.tag}.</b> The caller keeps the bounty.
               </>
             ) : (
               <>
-                <b>Simulated now: it would refuse.</b> {close.refusal.title} {close.refusal.body}
+                <b>Would refuse.</b> {close.refusal.title}
+                <details className="more">
+                  <summary>Why</summary>
+                  <p>{close.refusal.body}</p>
+                </details>
               </>
             )}
           </p>
@@ -103,24 +106,25 @@ export function Permissionless({
           </button>
           <p className="sub">
             {open === null ? (
-              "Asking the chain what opening would do…"
+              "Asking the chain…"
             ) : open.kind === "would-succeed" && open.value ? (
               <>
-                <b>Simulated now: a round would open.</b> It reads the oracle, fixes the strike above the
-                price at that moment, and puts the vault up for auction.
+                <b>A round would open.</b> Strike is fixed above the price at that moment.
               </>
             ) : open.kind === "would-succeed" ? (
               // `open_epoch` returning FALSE without reverting is its second failure shape: it
               // finalised a lapse and then could not open. A transaction that succeeds and changes
               // nothing visible must not be reported as success.
               <>
-                <b>Simulated now: it would succeed and open nothing.</b> There is a previous round left to
-                finalise, and this call would do that and stop. It is not an error, and it is not a new round
-                either.
+                <b>Would finalise the last round and open nothing.</b> Not an error, and not a new round.
               </>
             ) : (
               <>
-                <b>Simulated now: it would refuse.</b> {open.refusal.title} {open.refusal.body}
+                <b>Would refuse.</b> {open.refusal.title}
+                <details className="more">
+                  <summary>Why</summary>
+                  <p>{open.refusal.body}</p>
+                </details>
               </>
             )}
           </p>
@@ -128,8 +132,7 @@ export function Permissionless({
 
         {!connected && (
           <p className="note" style={{ marginTop: 18 }}>
-            Connect a wallet to make either call. The simulations above need no wallet — anyone can ask the
-            chain what would happen, which is the same permissionlessness the buttons rely on.
+            Connect a wallet to make either call. Reading what they would do needs none.
           </p>
         )}
       </div>
