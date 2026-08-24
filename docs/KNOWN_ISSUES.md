@@ -217,6 +217,15 @@ Deposit with `deposit()`. Anything else is a gift to nobody, and it is permanent
 
 ## Open questions we cannot close ourselves
 
+> **`O-n` here is not `O-n` in the oracle test matrix, and both are cited from code.** This file
+> numbers its open issues O-0…; `04-ORACLE`'s conformance matrix numbers its rows O-1…O-16b. They
+> have overlapped since O-6 — `.github/workflows/ci.yml` cites O-6 meaning Scout, while
+> `test_settle.rs` cites O-6 meaning a matrix row — and O-7 was added on 2026-08-23 without noticing.
+> Citations written since say **`KNOWN_ISSUES O-7`** in full; the older ones do not, and renaming one
+> of the two series is a decision nobody has taken yet. Recorded here rather than left for a reader
+> to trip over.
+
+
 ### O-0 · A live competitor already answers this question differently
 
 [Lusty Finance](https://lusty.finance) is live on Stellar testnet with XLM covered calls and
@@ -389,6 +398,60 @@ is reproducible against a host.
 
 Until the container lands, this note is the thing that stops a correct build from looking like a
 compromised one.
+
+### O-8 · The parameter sets do not currently pass their own gate
+
+Before a vault is deployed, `check-params.ts` refuses a parameter set whose auction band no longer
+brackets what the option is worth. **Run on 2026-08-24 against a series refreshed the same day, all
+five sets in `scripts/instances.json` are refused**, and the shipped instance E fails two gates:
+
+    gate 1  premium_start_bps >= fair(sigma_high)     start 240 bps  vs  246.6
+    gate 2  premium_floor_bps >= fair(sigma_low)/2    floor  15 bps  vs   51.22
+
+The band's **top** is now below fair value. The table was sized around σ ≈ 33.7 %; measured realized
+volatility over 90 days is **103.0 %**.
+
+**The measurement was checked before the conclusion was drawn.** Staleness was the obvious
+explanation and it is the wrong one: refreshing the series made the verdict *stricter*, not looser
+(σ 100.1 % → 103.0 %, and E picked up a second failing gate). Nor is it a bad candle — over the
+window the price ran 0.1475 → 0.2599, a 1.76× range, with two single days moving **+24.2 %** and
+**+21.7 %**. This is a real market, measured correctly.
+
+**So a real-parameter deploy is blocked on a decision, not on a fix.** Moving E's floor from 15 to
+above 51 bps and its start above 247 makes the set coherent — and makes the option dearer at every
+point of the auction, which bears directly on the one question the whole project exists to answer:
+whether an independent bidder shows up at all. The gate cannot make that trade for us. It can only
+refuse to let it be made by accident, which is what it is doing.
+
+**Two smaller things were found underneath it and one is fixed.**
+
+`keeper/series.ts` — the module that produces the very series this gate consumes — **had no
+runner**. It exported `fetchKlines`, `toSeries` and `writeSeries`, was fully tested, and nothing
+outside its own test ever called it: no CLI entry, no npm script, no scheduled workflow. Its own
+header said the artefact was *"written by keeper/series.ts on a schedule"*, and the schedule did not
+exist. The committed series was five days old for exactly the reason the same comment says had been
+solved: *"before that it was fetched by hand, which is how check-params.ts came to refuse all five
+instances on a σ nobody was sampling."* **Fixed on 2026-08-24**: `pnpm --filter @antares/keeper
+series` now refreshes it, and the comment says what is true.
+
+**Still open: nothing re-checks a vault that is already running.** The gate is deploy-time by
+construction, and there is no second look anywhere. The contract cannot provide one — it has no
+notion of fair value at all; `premium_start_bps` and `premium_floor_bps` appear in `auction.rs` only
+to compute the decay and in `epoch.rs` only to be emitted. The keeper measures σ continuously and
+compares it to nothing: `decide.ts` and `runner.ts` contain no reference to the band. So a vault
+deployed while coherent keeps opening rounds after it stops being so, and says nothing.
+
+That drift is **not a safety defect** — I1–I10 hold at any σ, the vault stays solvent, the payout
+stays strictly bounded by the notional, pause still cannot trap anyone. What degrades is the price,
+and the loss is the depositors'. The sharper cost is measurement: fills at a floor far under fair
+value are **arbitrage that looks like demand**, and D-34 counts fills to decide whether this project
+continues. A drifted vault does not merely lose value; it corrupts the number the decision reads.
+
+The smallest honest fix is an alert rather than an action — the same arithmetic `check-params.ts`
+already performs, against numbers the keeper already holds. Acting automatically is a larger
+question and probably the wrong answer: `set_epoch_params` is an admin call, so a self-adjusting
+band would hand the admin key a price lever, which is precisely what `TRUST_MODEL.md` §2 says it
+does not have.
 
 ## Fixed during design review
 

@@ -51,7 +51,7 @@ export interface BindingProvenance {
   readonly stellarCli: string;
   /**
    * The host that built the wasm — see `buildHost()`, which says why a hash needs one. Optional
-   * because records written before O-7 was measured do not carry it, and the check treats their
+   * because records written before KNOWN_ISSUES O-7 was measured do not carry it, and the check treats their
    * absence as the finding rather than assuming a host.
    */
   readonly buildHost?: string;
@@ -283,7 +283,7 @@ export function checkBindings(input: BindingsCheckInput): Check[] {
 
   if (input.committedProvenance !== null) {
     const recorded = input.committedProvenance;
-    // The hash is only comparable to a build from the same host, which is O-7. On a foreign host
+    // The hash is only comparable to a build from the same host, which is KNOWN_ISSUES O-7. On a foreign host
     // this check cannot compare hashes, so it asserts the one thing that still decides whether a
     // mismatch is diagnosable: that the record says which host it came from. It does not go green
     // silently — the id is the same, and `what` states which of the two forms ran.
@@ -306,7 +306,7 @@ export function checkBindings(input: BindingsCheckInput): Check[] {
             "a recorded buildHost",
             recorded.buildHost ?? "(not recorded)",
             typeof recorded.buildHost === "string" && recorded.buildHost.length > 0,
-            `O-7: the host is an input to this hash. Recorded ${recorded.wasmSha256} on ` +
+            `KNOWN_ISSUES O-7: the host is an input to this hash. Recorded ${recorded.wasmSha256} on ` +
               `${recorded.buildHost ?? "an unrecorded host"}, built here ${input.wasmSha256} ` +
               `on ${input.host}. The two are not compared: the same commit compiles into a ` +
               "different byte order on a different host, so a difference here would not mean " +
@@ -389,7 +389,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         "change that caused it. wasmSha256 says which build these describe; stellarCli says which " +
         "generator produced them, because a CLI upgrade and a contract change look identical in " +
         "the diff and are entirely different problems. buildHost says which host built that " +
-        "wasm, because the host is an input to the hash and used to be an invisible one (O-7).",
+        "wasm, because the host is an input to the hash and used to be an invisible one (KNOWN_ISSUES O-7).",
     };
     writeFileSync(provPath, `${JSON.stringify(provenance, null, 2)}\n`);
     console.log(`wrote ${committedPath} and ${provPath}`);
