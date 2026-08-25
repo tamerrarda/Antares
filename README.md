@@ -245,38 +245,6 @@ source sits, and says nothing about which machine compiled it.
 
 </details>
 
-## Honest limitations
-
-**Unaudited.** Every invariant is asserted by this project's own tests — a property suite run after
-every state transition, three fuzz targets, and a differential reference written in Python from the
-spec rather than from the Rust, whose replay matches the contract's own arithmetic byte for byte. An
-internal security review was carried out against known Soroban vulnerability classes, and **there is no
-published artifact behind that sentence.** None of it is an audit. Every correctness claim here is
-still ours, checked by people who wanted it to be true.
-
-**No proven counterparty.** No professional options market makers operate on Stellar. XLM futures and
-perpetuals exist, so delta can be hedged; XLM options do not trade on a major venue, so a bidder cannot
-lay off volatility risk. This is the project's largest open question and it is a market question, not a
-code one — an auction with nobody in it discovers no price. During testnet the counterparty is an
-open-source reference bot this project runs, labelled as such everywhere it appears, and **its fills
-are not treated as evidence of anything.**
-
-**Prior art in this category is discouraging.** Comparable vaults on other chains ran this structure and
-shut down. Their contracts worked; their counterparty base was a handful of desks, and when those desks
-left, premium went to zero. The failure mode here is counterparty concentration rather than contract
-risk, which is why counterparty discovery is a first-class deliverable rather than an afterthought.
-
-**Oracle dependency.** Settlement correctness rests entirely on the price feed. The design bounds it —
-a deep aggregated off-chain feed rather than any manipulable on-chain market, medians rather than
-ticks, a staleness bound, a self-consistency breaker, and a dead-feed policy that never traps funds.
-Even a fully compromised feed cannot extract more than one round's sold notional, because there is no
-leverage anywhere in the system. Bounding a risk is not eliminating it.
-
-**No distribution.** No users, no integrations, no audience. Being technically correct does not produce
-a counterparty.
-
-→ [Risks, stated plainly](https://docsantares.vercel.app/trust/risks/)
-
 ## Where this stands
 
 The contract is **written, tested and deployed**. Two things stand between it and a mainnet
