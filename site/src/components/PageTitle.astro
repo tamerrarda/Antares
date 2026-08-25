@@ -1,0 +1,12 @@
+---
+// Starlight renders `description` into the document head and nowhere else. This
+// site's front matter carries a `deck` as well — one sentence stating the page's
+// claim — and the deck is the first thing a reader should meet after the title.
+import Default from "@astrojs/starlight/components/PageTitle.astro";
+
+const { entry } = Astro.locals.starlightRoute;
+const deck = (entry.data as { deck?: string }).deck;
+---
+
+<Default><slot /></Default>
+{deck && <p class="antares-deck">{deck}</p>}

@@ -1,0 +1,4 @@
+# Astro build output and caches. Nothing here is a source of truth.
+dist/
+.astro/
+node_modules/
