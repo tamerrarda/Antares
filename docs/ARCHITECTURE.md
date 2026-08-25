@@ -282,7 +282,7 @@ else:               payout = notional_sold × (spot − strike) / spot
 Two properties make this safe by construction:
 
 - **`payout < notional_sold` for all `spot`.** As `spot → ∞`, `(spot − strike)/spot → 1`, so the payout approaches but never reaches the sold notional. The vault can never owe more than the collateral backing the position — no margin call, no bad debt, no liquidation engine.
-- **No second leg.** The bidder paid the premium up front and has no further obligation. There is no atomic swap, no delivery failure, no counterparty credit risk, and a bidder never needs to hold `strike × notional` in capital. That last point is the reason the capital barrier to *being* a counterparty is roughly **136× lower** here than under physical settlement at the option's fair value — and never less than ~18× lower anywhere on any of the five vaults' auction curves — which matters more than anything else in a market this thin.
+- **No second leg.** The bidder paid the premium up front and has no further obligation. There is no atomic swap, no delivery failure, no counterparty credit risk, and a bidder never needs to hold `strike × notional` in capital. That last point is the reason the capital barrier to *being* a counterparty is **23× to 49× lower** here than under physical settlement at the option's fair value on instance A, across the volatility range measured on 2026-08-24 — and never less than **15×** lower anywhere on any of the five vaults' auction curves, that floor being instance D at the top of its own curve. (The **136×** this paragraph carried until 2026-08-25 was computed against the *assumed* σ of 33.7 % the original premium table was sized around; the bands were re-derived on 2026-08-24 against measured volatility and the ratio moved with them.) Which matters more than anything else in a market this thin.
 
 Payout is distributed to bidders pro-rata to their filled notional — **pull-based**, via `claim_payout(round)` computed from each bidder's own `Fill` record. `close_round()` is O(1) on every branch and never iterates bidders: a per-bidder loop would make the exit path's cost grow with participation, which is a denial-of-service surface. Depositors absorb the payout and receive the premium, both pro-rata to shares, through `pps[R]`.
 
@@ -376,19 +376,19 @@ initialized{admin, asset, oracle, fee_recipient, token_suffix, deposit_cap, rent
 
 deposited{user, round, amount, shares_minted, instant}
 deposit_cancelled{user, round, amount}
-pending_redeemed{user, round, shares, pps}
+pending_redeemed{user, round, amount, shares, pps}
 withdraw_requested{user, round, shares}
 withdraw_claimed{user, round, shares, amount}
 payout_claimed{round, bidder, amount} · refund_claimed{round, bidder, amount}
 fee_accrued{round, amount} · fee_claimed{recipient, amount} · settle_bounty{round, to, amount} · position_restored{user}
-upgraded{wasm_hash, app_version} · migrated{version}
+upgraded{wasm_hash, app_version} · migrated{from_version, to_version}
 
 epoch_opened{round, strike, expiry, opened_at, auction_end, notional_offered, open_twap, premium_start_bps, premium_floor_bps}
 bid_filled{round, bidder, notional, premium_bps, premium, notional_sold_after}
 epoch_lapsed{round, notional_offered, pps, wclaims}
 settled{round, spot, strike, notional_sold, payout_total, premium, fee, pps, wclaims}
 epoch_voided{round, reason, premium_refunded, pps, wclaims}
-epoch_unresolved{round, premium_retained, pps, wclaims}
+epoch_unresolved{round, premium_retained, fee, pps, wclaims, oracle_answered}
 
 paused{by} · unpaused{by} · params_changed{...}
 cap_changed{old, new} · fee_changed{old, new} · fee_recipient_changed{old, new}
@@ -445,6 +445,6 @@ Every decision below was closed **before contract work started**.
 
 1. **Upgradeability — resolved: upgradeable v1.** Admin-gated upgrade with versioned migrate; timelocked multisig before mainnet; trust statement in README and §8.
 2. **Dead-oracle policy — resolved: void-and-refund** (§7), confirmed by external review. A feed that never recovers is handled by the unresolved path instead, which needs no oracle call at all.
-3. **Auction decay curve — resolved: linear, on revised grounds.** The original reason ("exponential's marginal benefit does not justify harder verification") was falsified by measurement — a rational bidder only acts below fair value, and geometric decay roughly triples that live tail. Linear ships anyway because it is integer-exact for the byte-for-byte differential suite, and because the curve is an internal function replaceable without touching storage — which is also why geometric stands on record as the designated successor, promoted by bidder evidence before any mainnet parameter freeze (plan D-03).
+3. **Auction decay curve — resolved: linear, on revised grounds.** The original reason ("exponential's marginal benefit does not justify harder verification") was falsified by measurement — a rational bidder only acts below fair value, and geometric decay widens that live tail by 1.08× to 1.67× on instance A across the volatility range measured on 2026-08-24, widest exactly where the linear tail is shortest. (It said *triples* until 2026-08-25, which was true of the premium bands as they stood before the 2026-08-24 re-derivation.) Linear ships anyway because it is integer-exact for the byte-for-byte differential suite, and because the curve is an internal function replaceable without touching storage — which is also why geometric stands on record as the designated successor, promoted by bidder evidence before any mainnet parameter freeze (plan D-03).
 4. **Strike selection — resolved: fixed % OTM parameter.** Volatility-adjusted selection requires a volatility source Stellar does not have; the parameter leaves the policy adjustable per epoch.
 5. **Multisig threshold and signers — resolved as a mainnet gate.** Testnet runs a single documented admin; threshold and signer set are chosen at the mainnet gate, blocking nothing before it.

@@ -254,7 +254,8 @@ therefore adds no fourth reachable result.
 
 **One stated precondition (D-68).** `unresolved_after` is fixed when the round opens; the feed's
 reachable depth is read live when it closes. If the price feed lengthens its tick mid-round — a
-3.4 % change is enough at today's values — the fallback can fire while the anchored read would
+lengthening past `(unresolved_after + guard_window) ÷ 255` — 311 seconds against the 300 the feed
+runs today, roughly 3.5 % — the fallback can fire while the anchored read would
 still have answered, which costs an in-the-money buyer his payout. Opening a round re-checks the
 live feed, so the exposure is one round rather than open-ended, and the residual is stated here
 rather than argued away.

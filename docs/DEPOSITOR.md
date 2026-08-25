@@ -62,8 +62,9 @@ on the 7-day, 3 %-out-of-the-money vault it is exactly this:
 | +20 % | 14.17 % | **P − 14.17 %** | same coins, +20 % in USD |
 | +50 % | 31.33 % | **P − 31.33 %** | same coins, +50 % in USD |
 
-P is small — it is bounded below by the auction's reserve of 0.40 % and above by 4.5 %, and an
-uncontested auction clears near the reserve. So from +5 % upward the middle column is negative in
+P is small — on this vault it is bounded below by the auction's reserve of 1.12 % and above by a
+start price of 5.00 %, and an uncontested auction walks to within 1 % of the reserve (the last
+admissible tick is 113 bps against a 112 bps floor). So from +5 % upward the middle column is negative in
 every realistic case, and it gets worse the harder XLM rallies: **at +50 % you hold roughly a third
 fewer coins than you started with.** In dollars you are still ahead of where you began, but far
 behind simply holding — that gap is the thing you are selling, and the premium is what you are paid

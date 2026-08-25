@@ -37,8 +37,11 @@ Black-Scholes figures this project publishes have always assumed the vanilla pay
 ### The capital point
 
 Under physical settlement a counterparty must hold `strike × notional` to write or take the other
-side. Here you post the premium alone. At the option's fair value that is about a **136×** lower
-capital barrier, and, across the five vaults, never less than ~18× lower anywhere on any of their auction curves. That is the
+side. Here you post the premium alone. At the option's fair value on instance A that is a **23× to
+49×** lower capital barrier across the volatility range measured on 2026-08-24, and, across the five
+vaults, never less than **15×** lower anywhere on any of their auction curves. (This said **136×**
+until 2026-08-25; that figure was computed against the assumed σ of 33.7 % the premium bands were
+originally sized around, and it moved when they were re-derived against measured volatility.) That is the
 deliberate design choice that makes being a counterparty possible in a thin market at all.
 
 ---
@@ -93,8 +96,9 @@ a measured one. When σ was measured it came back at 103 %, the bands were raise
 with it, and the crossing moved with them. The superseded finding is recorded rather than deleted:
 a document that quietly drops the claim it used to argue from is not one you should trust the rest
 of. The curve's shape is decided for this build — linear stays, because it is
-the only shape our verification suite can check exactly without new machinery — but a geometric curve that roughly
-triples the live window is on record as its designated successor, and what promotes it is
+the only shape our verification suite can check exactly without new machinery — but a geometric
+curve, which widens the live window by 1.08× to 1.67× at the shipped band and is widest exactly
+where the linear tail is shortest, is on record as its designated successor, and what promotes it is
 evidence, not our mood: **if the window is the reason you would not participate, saying so is
 literally the named trigger** for making that change before any mainnet parameters are frozen.
 
@@ -215,8 +219,10 @@ All three are normal states, not failures — and all three are defined in advan
 
 ### The deadline, stated plainly
 
-The price feed keeps a bounded history — about **20 hours 20 minutes** at the current parameters,
-derived from the feed's own live tick resolution rather than assumed. Past that, the expiry window
+The price feed keeps a bounded history — **20 hours 15 minutes** at the current parameters
+(`255 × resolution − guard_window` = 76 500 − 3 600 s, at the feed's own live 300-second tick;
+measured in `deployments/adapter-testnet.json` as `reachLimitSeconds`), less up to one tick
+depending on where expiry falls on the grid. Past that, the expiry window
 can no longer be read by anyone, so the round cannot be decided on evidence. It then finalizes as
 **UNRESOLVED**: the premium stays with depositors, the payout is zero.
 
