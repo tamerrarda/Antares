@@ -15,7 +15,12 @@ footnote.
 Every invariant is asserted by this project's own tests: a property suite run after every state
 transition, three fuzz targets — call-sequence, auction and settlement math — and a differential
 reference implementation written in Python from the spec rather than from the Rust, replayed
-against shared vectors. An internal security review is complete.
+against shared vectors.
+
+**An internal security review was carried out** against known Soroban vulnerability classes.
+Unlike everything else in that list, **there is no published artifact behind that sentence** — no
+report you can open, no findings list you can count. It is a statement by the people who wrote the
+code about work they did on it, and it is written here as one rather than presented as evidence.
 
 **Two things about that list are stated rather than left to be assumed.** CI in this repository has
 no push trigger — it runs only when it is dispatched by hand — so those checks are a thing that
