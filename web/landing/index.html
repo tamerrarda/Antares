@@ -46,6 +46,17 @@
       }
       html {
         scroll-behavior: auto;
+        /* The bar is hidden, the scrolling is not. This page is one continuous shot and the
+           scrollbar is the only browser chrome drawn on top of it, arriving on every gesture and
+           leaving again — a moving edge against a still frame. Wheel, trackpad, keys, touch and
+           anchor jumps all behave exactly as before; the indicator is simply not painted, and the
+           thumb is no longer there to grab. Three declarations because three engines: `none` for
+           Gecko, the pseudo-element for Blink and WebKit, and the legacy property for old Edge. */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      html::-webkit-scrollbar {
+        display: none;
       }
       body {
         margin: 0;
@@ -132,7 +143,10 @@
         min-height: 100svh;
         display: flex;
         align-items: center;
-        padding: 0 clamp(24px, 7vw, 120px);
+        /* The header is fixed, so the vertical padding is what keeps a tall block
+           from running underneath it. The right hand blocks sit closest to the
+           launch button and are what set this figure. */
+        padding: 96px clamp(24px, 7vw, 120px);
       }
       /* The copy carries its own ground. A fixed scrim cannot: the blocks travel the full height
          of the screen as the page scrolls, so any gradient pinned to the viewport is dark in the
@@ -145,6 +159,12 @@
         position: relative;
         isolation: isolate;
       }
+      /* Occasional, not alternating. A block every third one moves to the right edge; a strict
+         zigzag reads as a template. The text inside stays left aligned either way, because right
+         aligned prose is harder to read and this page has paragraphs rather than captions. */
+      .copy.right {
+        margin-inline-start: auto;
+      }
       .copy::before {
         content: "";
         position: absolute;
@@ -153,14 +173,30 @@
            which is what the first version produced: a visible panel, the exact thing this was meant
            to avoid. Oversizing the box and reaching full transparency at 62% puts the whole falloff
            well inside it, so the edge has nothing left to reveal. */
-        inset: -90px -70px -100px -64px;
+        inset: -100px -84px -110px -76px;
         z-index: -1;
         background: radial-gradient(
-          58% 54% at 34% 50%,
-          rgba(5, 6, 10, 0.92) 0%,
-          rgba(5, 6, 10, 0.78) 30%,
-          rgba(5, 6, 10, 0.4) 47%,
-          transparent 62%
+          62% 58% at 34% 50%,
+          rgba(5, 6, 10, 0.82) 0%,
+          rgba(5, 6, 10, 0.68) 32%,
+          rgba(5, 6, 10, 0.34) 50%,
+          transparent 68%
+        );
+      }
+      /* Mirrored, and heavier. `START_X` pans the star RIGHT of centre — that constant was written
+         when every block sat on the left, so it clears a left hand column and runs straight into a
+         right hand one. Measured at blocks two and four, the copy was landing on the disc itself
+         rather than beside it. The ground therefore reaches further out on the side the brightness
+         arrives from, and holds a higher floor before it falls away. The falloff still completes
+         well inside the box, for the reason the base rule gives. */
+      .copy.right::before {
+        inset: -100px -84px -110px -176px;
+        background: radial-gradient(
+          68% 62% at 44% 50%,
+          rgba(5, 6, 10, 0.86) 0%,
+          rgba(5, 6, 10, 0.74) 32%,
+          rgba(5, 6, 10, 0.42) 52%,
+          transparent 70%
         );
       }
       h1,
@@ -351,7 +387,11 @@
         letter-spacing: 0.16em;
         text-transform: uppercase;
         text-decoration: none;
-        padding: 10px 18px;
+        /* 44px tall, which is the smallest comfortable touch target and the figure both Apple and
+           Google publish. Derived rather than guessed: the line box measures 16px, so 13 of
+           padding either side plus the 1px border is exactly 44. The horizontal padding is
+           untouched — these were already 76px wide. */
+        padding: 13px 18px;
         border: 1px solid rgba(244, 241, 234, 0.14);
         color: var(--dim);
         transition:
@@ -423,7 +463,12 @@
            into a long, many-stopped falloff that is closer to a haze than a scrim, and the legibility
            it stops providing is picked up by two shadows on the type itself — one tight enough to
            hold a letterform against a bright plasma edge, one wide and soft to seat the block. */
-        .copy::before {
+        /* `.copy.right::before` is named too. `.copy` goes full width here, so there is no right
+           hand block and nothing for the heavier desktop ground to do — but it outranks a bare
+           `.copy::before` on specificity, so without this it would sit through the phone rule that
+           deliberately goes light. */
+        .copy::before,
+        .copy.right::before {
           inset: -110px -96px -120px -90px;
           background: radial-gradient(
             100% 100% at 50% 50%,
@@ -480,7 +525,11 @@
           font-size: 11px;
           letter-spacing: 0.08em;
           gap: 7px;
-          padding: 10px 14px;
+          /* Same 44px floor as the footer controls, and this is the one that matters most: it is
+             the primary action and it sits under a thumb. Only this narrowest band fell short, at
+             36; the desktop rule that governs everything above 560 already stands at 47. The line
+             box here is 14px, so 14 either side plus the 1px border lands on exactly 44. */
+          padding: 14px 14px;
           border-width: 1px;
           white-space: nowrap;
         }
@@ -493,7 +542,13 @@
           padding-right: 20px;
         }
         section:first-child {
-          padding-top: 76px;
+          /* Clears the fixed header, so it moves whenever the launch control's height does. Two
+             bands sit under this rule and 84 covers the taller: below 560 the header pads 13px
+             either side of a 44px button and stands 70, and from 561 up it pads 18 either side of
+             the 47px desktop button and stands 83. The old 76 cleared the first and was 7px short
+             of the second, hidden only because the copy is bottom aligned here. Measured across
+             320 to 820. */
+          padding-top: 84px;
         }
       }
 
@@ -521,7 +576,8 @@
           margin-bottom: 12px;
           padding: 4px 10px;
         }
-        .copy::before {
+        .copy::before,
+        .copy.right::before {
           inset: -60px -50px -70px -46px;
         }
       }
@@ -529,7 +585,15 @@
       /* `overflow-x: hidden` on BOTH html and body is a known way to break scrolling on iOS: it
          turns the document into a scroll container and the page can end up pinned — which is the
          symptom reported, stuck at the bottom with no way back up. `clip` forbids the horizontal
-         overflow without creating a scroll container, and it is applied to one element, not two. */
+         overflow WITHOUT creating a scroll container, which is why it is safe to name both here
+         and `hidden` was not.
+         Both, because on a phone body alone did not hold: `.copy::before` is deliberately far
+         wider than the text it darkens, and at 390px it reached 96px past the padding edge and the
+         viewport scrolled 76px sideways with it — the whole page draggable off its own left edge,
+         fixed header and plate sliding against the copy. Measured at 320, 360, 390, 414 and 430:
+         76px every time, and 0 with this. Nothing is lost by clipping at the viewport, because the
+         gradient has already reached full transparency long before it gets there. */
+      html,
       body {
         overflow-x: clip;
       }
@@ -561,64 +625,70 @@
     <main>
       <section>
         <div class="copy fade">
-          <span class="tag">Testnet · Stellar</span>
-          <h1>The premium is the point.</h1>
+          <h1>Someone will pay for the upside you weren't going to take.</h1>
           <p>
-            Antares writes covered calls against a vault of XLM and sells them in a descending-price auction.
-            The premium the auction discovers is paid to depositors, whatever the option does next.
+            Antares writes a covered call against a pool of XLM once per round and sells it in an auction
+            anyone can bid into. The premium the auction discovers goes to the depositors, whatever the
+            option does next.
           </p>
         </div>
       </section>
 
       <section>
         <div class="copy fade">
-          <h2>An auction, not a quote.</h2>
+          <h2>You keep the premium. You cap the rally.</h2>
           <p>
-            The price starts high and falls until somebody takes it. Nobody sets the premium — the first
-            bidder willing to pay does, and the curve is published in the event that opens the round, so
-            anyone can evaluate it without asking us.
+            Each round the vault sells a call that runs three days, struck 3 % above the market. Below the
+            strike the pool keeps the collateral and the premium. Above it the pool pays the difference out
+            of its own XLM, so a hard rally leaves you holding fewer coins than you started with. That is
+            the trade, stated the way it actually lands.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="copy right fade">
+          <h2>The price is discovered, not declared.</h2>
+          <p>
+            A descending auction runs for 45 minutes. The premium starts at 2.80 % of notional and falls to
+            0.55 %, and whoever thinks it is cheap enough signs a transaction. There is no quote engine and
+            no key that names a price. The whole curve is published in the event that opens the round.
           </p>
         </div>
       </section>
 
       <section>
         <div class="copy fade">
-          <h2>Every round is verifiable.</h2>
+          <h2>Nobody decides how a round ends.</h2>
           <p>
-            State can be rebuilt from transaction hashes and events alone and diffed against what the contract
-            reports. That is a test in this repository, not a claim on this page.
+            One call closes a round and it takes no authorization at all. It reads the price as it stood at
+            expiry and dispatches on what it finds: settled, annulled, or unresolved. Calling early or late
+            returns the same number, so the outcome is a function of history rather than of who transacted
+            first.
           </p>
         </div>
       </section>
 
       <section>
         <div class="copy fade">
-          <h2>Pause can never hold funds.</h2>
+          <h2>Pause can stop new risk. It cannot trap old risk.</h2>
           <p>
-            The entire exit path is unpausable. Closing a round, requesting and claiming a withdrawal, and
-            every bidder claim all work while the vault is paused — so an admin can stop new risk and can
-            never trap what is already there.
+            Pause blocks exactly three calls, and all three are ways <em>in</em>. Nine calls keep working
+            while the vault is paused, including every withdrawal, every claim, and closing a round. Past a
+            fixed deadline a round closes without calling the price feed at all, so no oracle state can
+            strand collateral.
           </p>
         </div>
       </section>
 
       <section>
-        <div class="copy fade">
-          <h2>No oracle state can trap a round.</h2>
+        <div class="copy right fade">
+          <h2>Being the other side costs a premium, not collateral.</h2>
           <p>
-            Past a fixed deadline the round closes with no oracle call at all. A dead feed refunds the bidder
-            in full; a feed that merely aged out resolves the other way. The two are different facts and the
-            contract keeps them apart.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <div class="copy fade">
-          <h2>Nothing here is a yield figure.</h2>
-          <p>
-            This runs on testnet with test XLM. A depositor can win and can also simply keep their capital and
-            the premium — what they cannot do is be told a number we have not measured.
+            A buyer never posts the value of the position. They pay the premium up front and owe nothing
+            after the fill, and the payout can never exceed the XLM already backing it. That is what makes
+            taking the other side possible in a market this thin, and whether anyone will is the question
+            this project exists to answer.
           </p>
         </div>
       </section>
@@ -762,6 +832,10 @@
       const SCALE_END = set.portrait ? 1.1 : 1.12; // the explosion beat
       const BEAT_AT = 0.82; // where the scale starts to open up
 
+      // Last scrim decision, so the threshold can widen to leave a state it is already in. Kept
+      // here rather than read back off the body, so `render` never depends on the DOM it wrote.
+      let scrimState = null;
+
       function render() {
         const max = document.body.scrollHeight - innerHeight;
         const p = clamp01(max > 0 ? scrollY / max : 0);
@@ -814,8 +888,28 @@
         // Below this the star cannot be moved far enough to clear a text column, so the page stops
         // pretending it can and puts the copy on a dark floor instead. 6% of the viewport is the
         // point where the shift stops being readable as a shift.
-        const scrim = headroom / innerWidth < 0.06 || set.portrait ? "floor" : "side";
-        if (document.body.dataset.scrim !== scrim) document.body.dataset.scrim = scrim;
+        //
+        // It is decided at SCALE_BASE, NOT at `s`, and that is the whole point of these two lines.
+        // The scrim is a layout switch: floor drops the block to the bottom of its section and
+        // widens it to 62ch, side keeps it narrow and vertically centred. Deciding it from `s`
+        // made that switch a function of scroll position, because `s` opens up from SCALE_BASE to
+        // SCALE_END over the last stretch — so the plate grew, the headroom grew, the threshold
+        // was crossed mid-scroll, and the last block changed its measure and its alignment under
+        // the reader. Worse, the relayout changes scrollHeight, scrollHeight feeds `p`, and `p`
+        // feeds `s`: holding the scroll near the boundary oscillated. Measured at 1512 wide, it
+        // flipped for EVERY window height from 500 to 875.
+        //
+        // Deciding at the resting scale makes the scrim a function of the window and nothing else.
+        // The hysteresis is for the one way left in — dragging a resize across the boundary — and
+        // it is free, because on the first pass there is no previous state to widen.
+        const restPlate = Math.max(innerWidth, innerHeight * aspect) * SCALE_BASE;
+        const restHeadroom = Math.max(0, (restPlate - innerWidth) / 2) / innerWidth;
+        const leave = scrimState === "floor" ? 0.075 : 0.06;
+        const scrim = set.portrait || restHeadroom < leave ? "floor" : "side";
+        if (scrimState !== scrim) {
+          scrimState = scrim;
+          document.body.dataset.scrim = scrim;
+        }
         const tf = `translate(calc(-50% + ${x.toFixed(1)}px), -50%) scale(${s.toFixed(4)})`;
         if (plate.style.transform !== tf) plate.style.transform = tf;
 
