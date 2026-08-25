@@ -13,8 +13,11 @@ import { visit } from "unist-util-visit";
 // Doing it here rather than in the Markdown is deliberate: the content tree stays
 // navigable as plain Markdown — every link works when the files are read directly
 // — and the site is correct as well, instead of one at the other's expense.
-export default function rehypeDocsLinks({ docsRoot }) {
+export default function rehypeDocsLinks({ docsRoot, base = "" }) {
   const root = path.resolve(docsRoot);
+  // A route emitted here is absolute, so it has to carry the deployment's base
+  // path or it 404s the moment the site is served from a subdirectory.
+  const prefix = base.replace(/\/$/, "");
 
   return (tree, file) => {
     const source = file?.path ? path.resolve(file.path) : null;
@@ -35,7 +38,8 @@ export default function rehypeDocsLinks({ docsRoot }) {
         .replace(/\\/g, "/")
         .replace(/\.md$/, "");
 
-      const route = resolved === "index" ? "/" : `/${resolved.replace(/\/index$/, "")}/`;
+      const route =
+        resolved === "index" ? `${prefix}/` : `${prefix}/${resolved.replace(/\/index$/, "")}/`;
       node.properties.href = hash ? `${route}#${hash}` : route;
     });
   };
