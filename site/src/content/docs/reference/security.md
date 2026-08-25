@@ -7,6 +7,10 @@ deck: What is in scope, how to report it, and what this project can and cannot o
 risk. Every invariant in this system is asserted by this project's own tests, which is necessary and
 not sufficient.
 
+> **The full policy lives in the repository** — [`SECURITY.md`](https://github.com/tamerrarda/Antares/blob/main/SECURITY.md).
+> It carries the in-scope contract addresses, the known issues that are not worth re-reporting, the
+> safe-harbour statement and the rules for testing against testnet. This page is the short version; where the two differ, that file is the one that governs.
+
 ## How to report
 
 Report privately — open a GitHub security advisory on
@@ -16,8 +20,14 @@ not exploitable.
 Please include **what breaks, the exact sequence that reaches it, and what an attacker gains.** A
 reproduction against the test suite is the most useful form; a clear paragraph is fine too.
 
-You will get an acknowledgement within a few days, a decision on whether we consider it valid and
-why, and credit unless you prefer otherwise.
+You will get an acknowledgement, then a verdict — whether we consider it valid, and **the reasoning
+either way** — and credit unless you prefer otherwise. Disclosure timing is agreed with you rather
+than imposed. **No fixed turnaround is promised**, deliberately: this is an unfunded pre-alpha project
+with no on-call rotation, and a deadline we might not honour is worth less than none.
+
+**Safe harbour.** We have no interest in pursuing anyone who researches in good faith and within that
+policy, and do not intend to take or support action against such a report. It is a statement of intent
+rather than a legal grant — the full wording is in `SECURITY.md`.
 
 **There is no bug bounty.** This is an unfunded pre-alpha project and pretending otherwise would be
 worse than saying so.
