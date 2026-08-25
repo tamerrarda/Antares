@@ -14,9 +14,9 @@ Deposit XLM, an on-chain auction discovers what an option over it is worth, and 
 [![license](https://img.shields.io/badge/license-Apache--2.0-6f6a63?style=flat-square)](LICENSE)
 
 <!-- Replace this line with the live URL once the app is deployed:
-     **[Open the app](https://…)** · **[Docs](https://tamerrarda.github.io/AntaresDocs/)** · **[Report a vulnerability](SECURITY.md)** -->
+     **[Open the app](https://…)** · **[Docs](https://docsantares.vercel.app/)** · **[Report a vulnerability](SECURITY.md)** -->
 
-**Live app** *(not deployed yet)* · **[Docs](https://tamerrarda.github.io/AntaresDocs/)** · **[Report a vulnerability](SECURITY.md)**
+**Live app** *(not deployed yet)* · **[Docs](https://docsantares.vercel.app/)** · **[Report a vulnerability](SECURITY.md)**
 
 </div>
 
@@ -79,7 +79,7 @@ For readers who do not trade options:
 
 The trade is symmetric and it is stated as such: **you earn a premium every round, and in exchange you
 give up the part of a rally that goes past the strike.** In coins, not in percentages — the
-[depositor's page](https://tamerrarda.github.io/AntaresDocs/depositor/what-you-give-up/) puts a table on it.
+[depositor's page](https://docsantares.vercel.app/depositor/what-you-give-up/) puts a table on it.
 
 **There is no APY on this repository, in the interface, or anywhere else.** While the only bidder is a
 reference bot this project runs, any premium figure would be us paying ourselves and quoting the
@@ -120,7 +120,7 @@ At the shipped parameters — a 3-day round, struck 3 % out of the money, a 45-m
 from 2.80 % to 0.55 % of notional — a round reaches a terminal state within **21 hours past expiry**
 whatever the price feed is doing, on a branch that calls no external contract at all.
 
-→ [The four ways a round ends](https://tamerrarda.github.io/AntaresDocs/mechanism/round-outcomes/)
+→ [The four ways a round ends](https://docsantares.vercel.app/mechanism/round-outcomes/)
 
 ## Architecture
 
@@ -147,7 +147,7 @@ Single contract: vault, token, auction and settlement share one state, so no pat
 cross-contract hop. The keeper is a bot on a timer holding one key that can call two entry points
 **anyone** can call — losing it costs the bounties and nothing else.
 
-→ [Contract surface](https://tamerrarda.github.io/AntaresDocs/reference/contract-surface/) — 42 exported
+→ [Contract surface](https://docsantares.vercel.app/reference/contract-surface/) — 42 exported
 functions, 36 events, every error code
 
 ## What makes it different
@@ -192,7 +192,7 @@ any mainnet deployment the admin becomes a **timelocked multisig whose delay exc
 can always exit at the old code before new code takes effect. Operational rule: never upgrade while a
 round is live; the contract permits it and the deployment tooling refuses it.
 
-→ [Who can do what to your funds](https://tamerrarda.github.io/AntaresDocs/trust/trust-model/) — every
+→ [Who can do what to your funds](https://docsantares.vercel.app/trust/trust-model/) — every
 power in the system and who holds it, including the ones we would rather did not exist
 
 ## What's deployed
@@ -274,7 +274,7 @@ leverage anywhere in the system. Bounding a risk is not eliminating it.
 **No distribution.** No users, no integrations, no audience. Being technically correct does not produce
 a counterparty.
 
-→ [Risks, stated plainly](https://tamerrarda.github.io/AntaresDocs/trust/risks/)
+→ [Risks, stated plainly](https://docsantares.vercel.app/trust/risks/)
 
 ## Where this stands
 
@@ -368,20 +368,20 @@ cargo test --workspace     361 passed, 0 failed
 | **Differential** | Curve, settlement and claim output replayed against an independent Python reference written from the spec, not from the Rust |
 | **Static rules** | Eleven source rules a grep can decide — ABI doc budget, network-agnostic build, no value in temporary storage, every outbound call declared and recoverable |
 
-→ [The ten invariants](https://tamerrarda.github.io/AntaresDocs/trust/invariants/), what each says and how each is verified
+→ [The ten invariants](https://docsantares.vercel.app/trust/invariants/), what each says and how each is verified
 
 ## Documentation
 
-**[The documentation site](https://tamerrarda.github.io/AntaresDocs/)** is written for whoever arrived
+**[The documentation site](https://docsantares.vercel.app/)** is written for whoever arrived
 from a link; `docs/` is written for whoever has this tree open.
 
 | Start with | If you are |
 |---|---|
-| [What a covered call is](https://tamerrarda.github.io/AntaresDocs/start/covered-call/) | New to options |
-| [Depositing](https://tamerrarda.github.io/AntaresDocs/depositor/depositing/) | Considering depositing XLM |
-| [What you are buying](https://tamerrarda.github.io/AntaresDocs/bidder/what-you-are-buying/) | A potential counterparty |
-| [Who can do what to your funds](https://tamerrarda.github.io/AntaresDocs/trust/trust-model/) | Deciding whether to trust this |
-| [Contract surface](https://tamerrarda.github.io/AntaresDocs/reference/contract-surface/) | Integrating or reviewing the code |
+| [What a covered call is](https://docsantares.vercel.app/start/covered-call/) | New to options |
+| [Depositing](https://docsantares.vercel.app/depositor/depositing/) | Considering depositing XLM |
+| [What you are buying](https://docsantares.vercel.app/bidder/what-you-are-buying/) | A potential counterparty |
+| [Who can do what to your funds](https://docsantares.vercel.app/trust/trust-model/) | Deciding whether to trust this |
+| [Contract surface](https://docsantares.vercel.app/reference/contract-surface/) | Integrating or reviewing the code |
 
 ## Security
 

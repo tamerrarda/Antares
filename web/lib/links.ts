@@ -11,7 +11,7 @@
  */
 
 /** The docs site. Source lives in this repository under `site/`; it publishes from `AntaresDocs`. */
-export const DOCS = "https://tamerrarda.github.io/AntaresDocs/";
+export const DOCS = "https://docsantares.vercel.app/";
 
 /** The repository the contract, the keeper, this interface and the docs source all live in. */
 export const REPO = "https://github.com/tamerrarda/Antares";
