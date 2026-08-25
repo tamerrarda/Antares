@@ -1,0 +1,473 @@
+[astro] `markdown.remarkPlugins`, `markdown.rehypePlugins`, and `markdown.remarkRehype` are deprecated. Pass them to `unified({...})` from `@astrojs/markdown-remark` directly instead.
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Generated 0ms","label":"types","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Syncing content","label":"content","level":"info"}
+{"message":"Remark transformed mermaid block #1 in /Users/tamerarda/dev/antares-docs/site/src/content/docs/mechanism/round-lifecycle.md","label":"astro-mermaid","level":"info"}
+{"message":"Remark total mermaid blocks transformed: 1","label":"astro-mermaid","level":"info"}
+{"message":"Remark transformed mermaid block #1 in /Users/tamerarda/dev/antares-docs/site/src/content/docs/mechanism/round-outcomes.md","label":"astro-mermaid","level":"info"}
+{"message":"Remark total mermaid blocks transformed: 1","label":"astro-mermaid","level":"info"}
+{"message":"Synced content","label":"content","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":" astro  v7.2.4 ready in 3078 ms\n┃ Local    http://localhost:4321/\n┃ Network  use --host to expose","label":"SKIP_FORMAT","level":"info"}
+{"message":"watching for file changes...","label":null,"level":"info"}
+{"message":"[200] / 114ms","label":null,"level":"info"}
+{"message":"[200] / 40ms","label":null,"level":"info"}
+{"message":"A `getStaticPaths()` route pattern was matched, but no matching static path was found for requested path `/favicon.svg`.\n\nPossible dynamic routes being matched: node_modules/.pnpm/@astrojs+starlight@0.41.8_@astrojs+markdown-remark@7.2.4_astro@7.2.4_@astrojs+markdown-_c850d8f63cb706428102db3a7e501a22/node_modules/@astrojs/starlight/routes/static/index.astro.","label":"router","level":"warn"}
+Entry docs → 404 was not found.
+{"message":"[404] /favicon.svg 62ms","label":null,"level":"info"}
+{"message":"[200] / 28ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 24ms","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"Reloaded data from index.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/auction.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/price-feed.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Remark transformed mermaid block #1 in /Users/tamerarda/dev/antares-docs/site/src/content/docs/mechanism/round-lifecycle.md","label":"astro-mermaid","level":"info"}
+{"message":"Remark total mermaid blocks transformed: 1","label":"astro-mermaid","level":"info"}
+{"message":"Reloaded data from mechanism/round-lifecycle.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Remark transformed mermaid block #1 in /Users/tamerarda/dev/antares-docs/site/src/content/docs/mechanism/round-outcomes.md","label":"astro-mermaid","level":"info"}
+{"message":"Remark total mermaid blocks transformed: 1","label":"astro-mermaid","level":"info"}
+{"message":"Reloaded data from mechanism/round-outcomes.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/settlement.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from start/covered-call.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from start/status.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from start/why-antares.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from depositor/depositing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from depositor/what-you-give-up.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from depositor/withdrawing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/bidding-and-payout.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/pricing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/what-you-are-buying.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/incidents.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/invariants.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/risks.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/trust-model.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/contract-surface.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/deployment.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/glossary.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/security.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"[200] /mechanism/round-outcomes/ 57ms","label":null,"level":"info"}
+{"message":"[200] / 24ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 30ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 27ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 44ms","label":null,"level":"info"}
+{"message":"[200] / 55ms","label":null,"level":"info"}
+{"message":"A `getStaticPaths()` route pattern was matched, but no matching static path was found for requested path `/apple-touch-icon-precomposed.png`.\n\nPossible dynamic routes being matched: node_modules/.pnpm/@astrojs+starlight@0.41.8_@astrojs+markdown-remark@7.2.4_astro@7.2.4_@astrojs+markdown-_c850d8f63cb706428102db3a7e501a22/node_modules/@astrojs/starlight/routes/static/index.astro.","label":"router","level":"warn"}
+Entry docs → 404 was not found.
+{"message":"[404] /apple-touch-icon-precomposed.png 110ms","label":null,"level":"info"}
+{"message":"A `getStaticPaths()` route pattern was matched, but no matching static path was found for requested path `/apple-touch-icon.png`.\n\nPossible dynamic routes being matched: node_modules/.pnpm/@astrojs+starlight@0.41.8_@astrojs+markdown-remark@7.2.4_astro@7.2.4_@astrojs+markdown-_c850d8f63cb706428102db3a7e501a22/node_modules/@astrojs/starlight/routes/static/index.astro.","label":"router","level":"warn"}
+Entry docs → 404 was not found.
+{"message":"[404] /apple-touch-icon.png 16ms","label":null,"level":"info"}
+{"message":"A `getStaticPaths()` route pattern was matched, but no matching static path was found for requested path `/favicon.svg`.\n\nPossible dynamic routes being matched: node_modules/.pnpm/@astrojs+starlight@0.41.8_@astrojs+markdown-remark@7.2.4_astro@7.2.4_@astrojs+markdown-_c850d8f63cb706428102db3a7e501a22/node_modules/@astrojs/starlight/routes/static/index.astro.","label":"router","level":"warn"}
+Entry docs → 404 was not found.
+{"message":"[404] /favicon.svg 8ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/settlement/ 22ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 20ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 16ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 20ms","label":null,"level":"info"}
+{"message":"[200] / 17ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 17ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 17ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 17ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 14ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 16ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 10ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/auction/ 21ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/auction/ 16ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/settlement/ 14ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/settlement/ 16ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 19ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 14ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/price-feed/ 13ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/price-feed/ 13ms","label":null,"level":"info"}
+{"message":"[200] /depositor/depositing/ 16ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 15ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 14ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 14ms","label":null,"level":"info"}
+{"message":"[200] /depositor/what-you-give-up/ 13ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 17ms","label":null,"level":"info"}
+{"message":"[200] /depositor/depositing/ 16ms","label":null,"level":"info"}
+{"message":"[200] /depositor/depositing/ 17ms","label":null,"level":"info"}
+{"message":"[200] /depositor/what-you-give-up/ 14ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 13ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 16ms","label":null,"level":"info"}
+{"message":"[200] /depositor/what-you-give-up/ 14ms","label":null,"level":"info"}
+{"message":"[200] /depositor/what-you-give-up/ 14ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 17ms","label":null,"level":"info"}
+{"message":"[200] /trust/trust-model/ 14ms","label":null,"level":"info"}
+{"message":"[200] /trust/risks/ 13ms","label":null,"level":"info"}
+{"message":"[200] /trust/invariants/ 19ms","label":null,"level":"info"}
+{"message":"[200] /trust/invariants/ 15ms","label":null,"level":"info"}
+{"message":"[200] /trust/incidents/ 18ms","label":null,"level":"info"}
+{"message":"[200] /trust/risks/ 16ms","label":null,"level":"info"}
+{"message":"[200] /trust/risks/ 9ms","label":null,"level":"info"}
+{"message":"[200] /trust/incidents/ 17ms","label":null,"level":"info"}
+{"message":"[200] /trust/incidents/ 12ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 14ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 13ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 15ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 13ms","label":null,"level":"info"}
+{"message":"[200] /reference/glossary/ 14ms","label":null,"level":"info"}
+{"message":"[200] /reference/security/ 9ms","label":null,"level":"info"}
+{"message":"[200] /reference/security/ 7ms","label":null,"level":"info"}
+{"message":"[200] /trust/incidents/ 14ms","label":null,"level":"info"}
+{"message":"[200] /trust/risks/ 16ms","label":null,"level":"info"}
+{"message":"[200] /trust/trust-model/ 23ms","label":null,"level":"info"}
+{"message":"[200] /trust/trust-model/ 26ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 18ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 19ms","label":null,"level":"info"}
+{"message":"[200] / 15ms","label":null,"level":"info"}
+{"message":"[200] / 16ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 13ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 13ms","label":null,"level":"info"}
+{"message":"[200] / 21ms","label":null,"level":"info"}
+{"message":"[200] / 15ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/settlement/ 19ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 17ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 9ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 15ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 14ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 7ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 13ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 7ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 16ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 15ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 15ms","label":null,"level":"info"}
+{"message":"[200] /depositor/withdrawing/ 18ms","label":null,"level":"info"}
+{"message":"[200] /depositor/depositing/ 18ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 14ms","label":null,"level":"info"}
+{"message":"[200] /trust/invariants/ 9ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 10ms","label":null,"level":"info"}
+{"message":"[200] / 16ms","label":null,"level":"info"}
+{"message":"Reloaded data from start/status.md","label":"starlight-docs-loader","level":"info"}
+{"message":"[200] /start/why-antares/ 16ms","label":null,"level":"info"}
+{"message":"Reloaded data from mechanism/auction.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/round-outcomes.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/price-feed.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/round-lifecycle.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from mechanism/settlement.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from start/status.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from start/covered-call.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from depositor/depositing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from depositor/what-you-give-up.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from depositor/withdrawing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/bidding-and-payout.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/what-you-are-buying.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/risks.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/trust-model.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/incidents.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/invariants.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/glossary.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/security.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/contract-surface.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from index.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/deployment.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from start/why-antares.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/pricing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"[200] /start/why-antares/ 12ms","label":null,"level":"info"}
+{"message":"Reloaded data from trust/risks.md","label":"starlight-docs-loader","level":"info"}
+{"message":"[200] /start/why-antares/ 16ms","label":null,"level":"info"}
+{"message":"Reloaded data from trust/invariants.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from trust/incidents.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/what-you-are-buying.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from reference/deployment.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Reloaded data from bidder/pricing.md","label":"starlight-docs-loader","level":"info"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"[200] /start/why-antares/ 15ms","label":null,"level":"info"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[optimizer] bundling dependencies...","label":"vite","level":"info"}
+{"message":"[200] /start/why-antares/ 149ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 22ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 34ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 78ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 13ms","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 52ms","label":null,"level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[optimizer] bundling dependencies...","label":"vite","level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 188ms","label":null,"level":"info"}
+{"message":"[200] / 201ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 36ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 26ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/settlement/ 61ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/auction/ 22ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/auction/ 18ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 20ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 22ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 39ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 17ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 17ms","label":null,"level":"info"}
+{"message":"[200] / 17ms","label":null,"level":"info"}
+{"message":"[200] / 18ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 24ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 24ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 11ms","label":null,"level":"info"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Failed to update routes via HMR:\n TypeError: undefined is not a function","label":"router","level":"error"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 116ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 50ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 27ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 33ms","label":null,"level":"info"}
+{"message":"[200] / 13ms","label":null,"level":"info"}
+{"message":"[200] / 20ms","label":null,"level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 21ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 27ms","label":null,"level":"info"}
+{"message":"[200] /depositor/depositing/ 14ms","label":null,"level":"info"}
+{"message":"[200] /bidder/what-you-are-buying/ 13ms","label":null,"level":"info"}
+{"message":"[200] / 51ms","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"[200] /reference/deployment/ 57ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 12ms","label":null,"level":"info"}
+{"message":"[200] /depositor/what-you-give-up/ 35ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 21ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 15ms","label":null,"level":"info"}
+{"message":"[200] /reference/glossary/ 33ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 19ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 63ms","label":null,"level":"info"}
+{"message":"[200] /reference/glossary/ 30ms","label":null,"level":"info"}
+{"message":"[200] /reference/glossary/ 21ms","label":null,"level":"info"}
+{"message":"[200] /reference/security/ 23ms","label":null,"level":"info"}
+{"message":"[200] /reference/security/ 20ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 16ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 23ms","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"[200] /reference/deployment/ 105ms","label":null,"level":"info"}
+{"message":"[200] /depositor/what-you-give-up/ 93ms","label":null,"level":"info"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[200] / 123ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 16ms","label":null,"level":"info"}
+{"message":"[200] / 37ms","label":null,"level":"info"}
+{"message":"[200] / 29ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 22ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 21ms","label":null,"level":"info"}
+{"message":"[200] /reference/glossary/ 22ms","label":null,"level":"info"}
+{"message":"[200] /reference/glossary/ 43ms","label":null,"level":"info"}
+{"message":"[200] /reference/security/ 29ms","label":null,"level":"info"}
+{"message":"[200] /reference/security/ 17ms","label":null,"level":"info"}
+{"message":"[200] / 12ms","label":null,"level":"info"}
+{"message":"[200] / 21ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 64ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 21ms","label":null,"level":"info"}
+{"message":"[200] / 20ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 22ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 19ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 21ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 21ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 19ms","label":null,"level":"info"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Could not import `/src/components/ThemeSelect.astro`.\n  Hint:\n    This is often caused by a typo in the import path. Please make sure the file exists.\n  Error reference:\n    https://docs.astro.build/en/reference/errors/failed-to-load-module-ssr/\n  Stack trace:\n    at loadAndTransform (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:20660:31)\n    at async handleInvoke (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:26886:21)","label":null,"level":"error"}
+{"message":"Could not import `/src/components/ThemeSelect.astro`.\n  Hint:\n    This is often caused by a typo in the import path. Please make sure the file exists.\n  Error reference:\n    https://docs.astro.build/en/reference/errors/failed-to-load-module-ssr/\n  Stack trace:\n    at loadAndTransform (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:20660:31)\n    at async handleInvoke (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:26886:21)","label":null,"level":"error"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[200] /reference/deployment/ 111ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 54ms","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 98ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 30ms","label":null,"level":"info"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[200] /mechanism/round-lifecycle/ 115ms","label":null,"level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"[200] /mechanism/round-outcomes/ 90ms","label":null,"level":"info"}
+{"message":"[200] / 52ms","label":null,"level":"info"}
+{"message":"[200] /trust/invariants/ 23ms","label":null,"level":"info"}
+{"message":"[200] / 47ms","label":null,"level":"info"}
+{"message":"Configuration file updated. Restarting...","label":null,"level":"info"}
+{"message":"Setting up Mermaid integration","label":"astro-mermaid","level":"info"}
+{"message":"Existing rehype plugins:","label":"astro-mermaid","level":"info"}
+{"message":"Skipping ELK support","label":"astro-mermaid","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[optimizer] bundling dependencies...","label":"vite","level":"info"}
+{"message":"[200] /start/covered-call/ 147ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 148ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 12ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 22ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 20ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 15ms","label":null,"level":"info"}
+{"message":"[200] /start/status/ 18ms","label":null,"level":"info"}
+{"message":"[200] / 27ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 23ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 19ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 23ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 28ms","label":null,"level":"info"}
+{"message":"[200] / 31ms","label":null,"level":"info"}
+{"message":"[200] / 20ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 52ms","label":null,"level":"info"}
+{"message":"[200] /start/covered-call/ 47ms","label":null,"level":"info"}
+{"message":"[200] /start/why-antares/ 34ms","label":null,"level":"info"}
+{"message":"[200] / 25ms","label":null,"level":"info"}
+{"message":"[200] / 27ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 60ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 14ms","label":null,"level":"info"}
+{"message":"[200] /reference/deployment/ 25ms","label":null,"level":"info"}
+{"message":"[200] /reference/contract-surface/ 22ms","label":null,"level":"info"}
+{"message":"Configuration file removed. Restarting...","label":null,"level":"info"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"changed tsconfig file detected: /Users/tamerarda/dev/antares-docs/site/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.","label":"vite","level":"info"}
+{"message":"program reload","label":"vite","level":"info"}
+{"message":"program reload","label":"vite","level":"info"}
+{"message":"/src/styles/antares.css","label":"watch","level":"info"}
+{"message":"An error happened during full reload\nFailed to load url /Users/tamerarda/dev/antares-docs/site/src/content.config.ts (resolved id: /Users/tamerarda/dev/antares-docs/site/src/content.config.ts). Does the file exist?\nError: Failed to load url /Users/tamerarda/dev/antares-docs/site/src/content.config.ts (resolved id: /Users/tamerarda/dev/antares-docs/site/src/content.config.ts). Does the file exist?\n    at loadAndTransform (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:20660:31)\n    at async fetchModule (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:34343:15)\n    at async handleInvoke (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:26886:21)\n    at async EventEmitter.listenerForInvokeHandler (file:///Users/tamerarda/dev/antares-docs/site/node_modules/.pnpm/vite@8.2.2_@types+node@24.13.3_esbuild@0.28.2/node_modules/vite/dist/node/chunks/node.js:26941:13)","label":"vite","level":"error"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Re-optimizing dependencies because vite config has changed","label":"vite","level":"info"}
+{"message":"server restarted.","label":"vite","level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 6ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 2ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 5ms","label":null,"level":"info"}
+{"message":"[404] / 3ms","label":null,"level":"info"}
+{"message":"[404] / 4ms","label":null,"level":"info"}
+{"message":"[404] / 3ms","label":null,"level":"info"}
+{"message":"[404] /start/covered-call/ 1ms","label":null,"level":"info"}
+{"message":"[404] /start/covered-call/ 1ms","label":null,"level":"info"}
+{"message":"[404] /depositor/depositing/ 2ms","label":null,"level":"info"}
+{"message":"[404] /depositor/depositing/ 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"[404] /Users/tamerarda/dev/antares-docs/site/public/antares-mark-48.webp 1ms","label":null,"level":"info"}
+{"message":"Configuration file added. Restarting...","label":null,"level":"info"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"changed tsconfig file detected: /Users/tamerarda/dev/antares-docs/site/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.","label":"vite","level":"info"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
+{"message":"Missing pages directory: src/pages","label":null,"level":"warn"}
