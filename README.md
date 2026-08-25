@@ -355,13 +355,6 @@ output is served from [`AntaresDocs`](https://github.com/tamerrarda/AntaresDocs)
 | [Who can do what to your funds](https://docsantares.vercel.app/trust/trust-model/) | Deciding whether to trust this |
 | [Contract surface](https://docsantares.vercel.app/reference/contract-surface/) | Integrating or reviewing the code |
 
-## Security
-
-Found something? [`SECURITY.md`](SECURITY.md) — report privately, and note what is explicitly in scope:
-**any way a party profits by causing or prolonging a delay** is a vulnerability here even if no funds
-move incorrectly. There is no bug bounty; this is an unfunded pre-alpha project and pretending
-otherwise would be worse than saying so.
-
 ## License
 
 Apache-2.0 — see [`LICENSE`](LICENSE).
