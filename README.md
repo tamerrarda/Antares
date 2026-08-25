@@ -7,7 +7,8 @@
 **Covered call vaults on Stellar.**
 Deposit XLM, an on-chain auction discovers what an option over it is worth, and the premium goes to the depositors.
 
-[![status](https://img.shields.io/badge/status-pre--alpha-ff6b3d?style=flat-square)](#where-this-stands)
+[![docs](https://img.shields.io/badge/docs-docsantares.vercel.app-ff6b3d?style=flat-square)](https://docsantares.vercel.app/)
+[![status](https://img.shields.io/badge/status-pre--alpha-05060a?style=flat-square)](#where-this-stands)
 [![network](https://img.shields.io/badge/network-Stellar%20testnet-05060a?style=flat-square)](#whats-deployed)
 [![audit](https://img.shields.io/badge/audit-none-6f6a63?style=flat-square)](#honest-limitations)
 [![tests](https://img.shields.io/badge/tests-361%20passing-05060a?style=flat-square)](#testing)
@@ -372,8 +373,11 @@ cargo test --workspace     361 passed, 0 failed
 
 ## Documentation
 
-**[The documentation site](https://docsantares.vercel.app/)** is written for whoever arrived
-from a link; `docs/` is written for whoever has this tree open.
+### <https://docsantares.vercel.app>
+
+Written for whoever arrived from a link; `docs/` in this repository is written for whoever has the
+tree open. The site's source lives on the `docs-site` branch under `site/`, and the published
+output is served from [`AntaresDocs`](https://github.com/tamerrarda/AntaresDocs).
 
 | Start with | If you are |
 |---|---|
