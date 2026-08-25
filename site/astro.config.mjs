@@ -11,8 +11,8 @@ import rehypeDocsLinks from "./src/rehype-docs-links.mjs";
 // — a subpath on Pages, a custom domain, somewhere else entirely — is a deploy
 // variable rather than a commit. The defaults are what every link in the main
 // repository already assumes; `web/lib/links.ts` is the other half of that pair.
-const SITE = process.env.SITE_URL ?? "https://tamerrarda.github.io";
-const BASE = process.env.BASE_PATH ?? "/AntaresDocs";
+const SITE = process.env.SITE_URL ?? "https://docsantares.vercel.app";
+const BASE = process.env.BASE_PATH ?? "";
 
 export default defineConfig({
   site: SITE,
