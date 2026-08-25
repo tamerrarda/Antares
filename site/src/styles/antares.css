@@ -1,0 +1,478 @@
+/*
+ * Antares docs — the app's design language, adapted to prose.
+ *
+ * The tokens, the square corners, the hairlines, the ember and the sky are the
+ * dashboard's (`web/app/globals.css`). Two things are deliberately NOT the
+ * dashboard's, and both are the difference between a control surface and a
+ * document:
+ *
+ *   - The dashboard sets its whole body in one small monospace face, which is
+ *     right for a dense grid of numbers you scan and wrong for the ~28 000 words
+ *     here, which are read. So the typography is a triad rather than a single
+ *     face: the display for every title, label and rail; a text face at reading
+ *     size for prose; and a plain system monospace for code and nothing else.
+ *   - The dashboard is dark-only; this is not. Docs get read in daylight, at
+ *     length, and often beside other windows. So the light theme is a second
+ *     palette that was actually drawn rather than a filter over the first: the
+ *     sky is a dark-only surface and does not appear on paper, and the ember
+ *     splits in two, because #ff6b3d on paper is 2.5:1 and cannot carry text.
+ *     `--ember` stays the mark — rails, borders, focus — and `--ember-text`
+ *     (5.05:1 on paper) carries anything a reader has to read.
+ */
+
+@font-face {
+  font-family: "Chakra Petch";
+  src: url("/fonts/chakra-petch-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Chakra Petch";
+  src: url("/fonts/chakra-petch-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+:root {
+  /* dark: the dashboard's palette, unchanged */
+  --void: #05060a;
+  --ink: #f4f1ea;
+  --dim: #a8a29a;
+  --faint: #6f6a63;
+  --ember: #ff6b3d;
+  --ember-text: #ff6b3d;
+  --rule: rgba(244, 241, 234, 0.14);
+  --rule-soft: rgba(244, 241, 234, 0.07);
+  --panel: rgba(10, 11, 16, 0.62);
+  --rail: rgba(5, 6, 10, 0.42);
+  --sky: 1;
+
+  --display: "Chakra Petch", system-ui, sans-serif;
+  --text: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  /* Code needs a monospace, and only code does. Everything that is a *label*
+     rather than a literal — the deck, table headers, the eyebrows — takes the
+     display face, so the mono never carries prose. */
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Starlight's own vocabulary, mapped onto it */
+  --sl-color-accent: var(--ember);
+  --sl-color-accent-low: rgba(255, 107, 61, 0.18);
+  --sl-color-accent-high: #ffb59b;
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: var(--ink);
+  --sl-color-gray-2: var(--dim);
+  --sl-color-gray-3: var(--dim);
+  --sl-color-gray-4: var(--faint);
+  --sl-color-gray-5: rgba(244, 241, 234, 0.12);
+  --sl-color-gray-6: rgba(244, 241, 234, 0.06);
+  --sl-color-gray-7: rgba(244, 241, 234, 0.03);
+  --sl-color-black: var(--void);
+
+  --sl-color-bg: transparent;
+  --sl-color-bg-nav: rgba(5, 6, 10, 0.86);
+  --sl-color-bg-sidebar: transparent;
+  --sl-color-bg-inline-code: rgba(244, 241, 234, 0.07);
+  --sl-color-bg-accent: var(--ember);
+
+  --sl-color-text: var(--ink);
+  --sl-color-text-accent: var(--ember-text);
+  --sl-color-text-invert: var(--void);
+
+  --sl-color-hairline: var(--rule-soft);
+  --sl-color-hairline-light: var(--rule);
+  --sl-color-hairline-shade: var(--rule-soft);
+
+  --sl-font: var(--text);
+  --sl-font-mono: var(--mono);
+
+  --sl-content-width: 54rem;
+  --sl-nav-height: 3.75rem;
+  --sl-text-code: 0.85em;
+}
+
+/* Light: paper rather than sky. The ink and the ground trade places — the dark
+   theme's ink IS this theme's paper — so the two are the same two colours seen
+   from opposite sides rather than an unrelated second scheme. Every value below
+   was checked against the paper: ink 16.1:1, dim 7.1:1, faint 4.6:1,
+   ember-text 5.1:1. */
+:root[data-theme="light"] {
+  --void: #f4f1ea;
+  --ink: #14151c;
+  --dim: #55504a;
+  --faint: #6b655d;
+  --ember: #ff6b3d;
+  --ember-text: #b83c0a;
+  --rule: rgba(20, 21, 28, 0.16);
+  --rule-soft: rgba(20, 21, 28, 0.08);
+  --panel: rgba(255, 254, 250, 0.72);
+  --rail: rgba(255, 254, 250, 0.5);
+  --sky: 0;
+
+  --sl-color-gray-5: rgba(20, 21, 28, 0.14);
+  --sl-color-gray-6: rgba(20, 21, 28, 0.07);
+  --sl-color-gray-7: rgba(20, 21, 28, 0.035);
+  --sl-color-black: var(--ink);
+  --sl-color-white: var(--ink);
+  --sl-color-bg-nav: rgba(244, 241, 234, 0.88);
+  --sl-color-bg-inline-code: rgba(20, 21, 28, 0.06);
+  --sl-color-accent-low: rgba(184, 60, 10, 0.14);
+  --sl-color-accent-high: #7a2705;
+  --sl-color-accent: var(--ember-text);
+}
+
+/* ---------------------------------------------------------------- the sky --
+   The same fixed starfield and veil the app uses, so the two read as one
+   surface. `--sl-color-bg` is transparent above precisely so this shows
+   through every Starlight panel rather than behind a solid plate. */
+html {
+  background: var(--void);
+}
+body {
+  position: relative;
+  background: transparent;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  opacity: var(--sky);
+  background: url("/app-bg.webp") center center / cover no-repeat;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: var(--sky);
+  background:
+    linear-gradient(180deg, rgba(5, 6, 10, 0.9) 0%, rgba(5, 6, 10, 0.72) 22%, rgba(5, 6, 10, 0.78) 100%),
+    radial-gradient(120% 100% at 50% 40%, rgba(5, 6, 10, 0.5) 0%, rgba(5, 6, 10, 0.34) 55%, rgba(5, 6, 10, 0.74) 100%);
+}
+/* Paper gets its own ground — a warmth gradient rather than a starfield, so the
+   light theme is quiet in the same way the dark one is rather than flat white. */
+:root[data-theme="light"] body::after {
+  opacity: 1;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 107, 61, 0.05) 0%, rgba(244, 241, 234, 0) 55%);
+}
+
+/* Nothing in this interface is rounded. */
+:where(a, button, input, summary, .card, figure, img, pre, code, kbd, table, [class*="rounded"]) {
+  border-radius: 0 !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 3px;
+}
+
+/* -------------------------------------------------------------- the chrome -- */
+header.header {
+  border-bottom: 1px solid var(--rule-soft);
+  backdrop-filter: blur(14px);
+}
+.site-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+.sidebar-pane {
+  border-inline-end: 1px solid var(--rule-soft);
+  background: var(--rail);
+  backdrop-filter: blur(10px);
+}
+
+/* The mark is light line art drawn for a dark plate. On paper it disappears, so
+   it is inverted rather than redrawn — one asset, both grounds. */
+:root[data-theme="light"] .site-title img {
+  filter: invert(1);
+}
+/* Navigation is titling, not data. Both rails and the wordmark take the display
+   face the headings use; the mono is kept for what it is actually for — code,
+   figures, and the labels that sit on top of them. */
+starlight-toc,
+.right-sidebar {
+  font-family: var(--display);
+}
+
+.sidebar-content summary .group-label span,
+.right-sidebar h2 {
+  font-family: var(--display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.sidebar-content a {
+  font-family: var(--display);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--dim);
+  border-inline-start: 1px solid transparent;
+}
+.right-sidebar a {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.005em;
+}
+.sidebar-content a:hover {
+  color: var(--ink);
+}
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover {
+  background: transparent;
+  color: var(--ember-text);
+  border-inline-start-color: var(--ember);
+  font-weight: 400;
+}
+.right-sidebar a[aria-current="true"] {
+  color: var(--ember-text);
+}
+
+/* --------------------------------------------------------------- the page -- */
+.content-panel + .content-panel {
+  border-top: 1px solid var(--rule-soft);
+}
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+h1#_top {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+}
+/* Starlight sets headings `display: inline` inside a wrapper so the anchor link
+   sits beside them, so a rule on the h2 itself is only as wide as its text. It
+   goes on the wrapper. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+  padding-top: 0.7em;
+  border-top: 1px solid var(--rule-soft);
+}
+
+/* A two-column table with an empty header row is a definition list that Markdown
+   had no syntax for. Do not draw it a header. */
+.sl-markdown-content thead:not(:has(th:not(:empty))) {
+  display: none;
+}
+
+/* The deck: the app's `.sub` voice — one line, dim, set apart from the body. */
+.antares-deck {
+  margin-block: 0.85rem 0;
+  max-width: 58ch;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
+  color: var(--dim);
+  text-wrap: pretty;
+}
+
+.sl-markdown-content {
+  font-size: 1rem;
+  line-height: 1.72;
+}
+.sl-markdown-content strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.sl-markdown-content a {
+  color: var(--ink);
+  text-decoration-color: rgba(255, 107, 61, 0.55);
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 1px;
+}
+.sl-markdown-content a:hover {
+  color: var(--ember-text);
+  text-decoration-color: var(--ember);
+}
+.sl-markdown-content :not(pre) > code {
+  font-family: var(--mono);
+  border: 1px solid var(--rule-soft);
+  background: rgba(244, 241, 234, 0.05);
+  color: var(--dim);
+  padding: 0.1em 0.35em;
+}
+
+/* --------------------------------------------------------------- surfaces --
+   Blockquotes are this site's status callouts, and code blocks and tables are
+   where its evidence lives. All three get the app's card: hairline border,
+   translucent panel, blur, square. */
+.sl-markdown-content blockquote {
+  border-inline-start: 2px solid var(--ember);
+  border-block: 1px solid var(--rule-soft);
+  border-inline-end: 1px solid var(--rule-soft);
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  padding: 0.9rem 1.1rem;
+  color: var(--dim);
+}
+.sl-markdown-content blockquote strong {
+  color: var(--ink);
+}
+.sl-markdown-content .expressive-code .frame,
+.sl-markdown-content pre {
+  border: 1px solid var(--rule-soft);
+  background: var(--panel) !important;
+}
+
+/* This site is table-heavy — parameters, error codes, the four outcomes. The
+   header row takes the app's `.card > h2` treatment; wide tables scroll inside
+   themselves rather than pushing the page. */
+/* A wide table should scroll, not compress. Left to `width: 100%` the columns
+   fight each other and the first one — usually the one naming the row — loses,
+   which is the column a reader needs most. `max-content` lets the table take the
+   width its content asks for and the block scroll carries the overflow. */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: min(100%, 100%);
+  border-collapse: collapse;
+  border: 1px solid var(--rule-soft);
+  background: var(--panel);
+  font-size: 0.92rem;
+}
+.sl-markdown-content th {
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 0.85rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.sl-markdown-content td {
+  vertical-align: top;
+  min-width: 8ch;
+  padding: 0.75rem 0.9rem;
+  border-top: 1px solid var(--rule-soft);
+  color: var(--dim);
+}
+.sl-markdown-content td strong {
+  color: var(--ink);
+}
+.sl-markdown-content tr:first-child td {
+  border-top: 0;
+}
+
+/* Mermaid sits on the same plate as everything else, and takes the same tokens.
+   The integration re-renders the diagram on the theme toggle using one of
+   mermaid's built-in palettes, so the colours are pulled back here — `!important`
+   because mermaid writes them as inline attributes. */
+.sl-markdown-content pre.mermaid {
+  border: 1px solid var(--rule-soft);
+  background: var(--panel);
+  padding: 1.25rem;
+  overflow-x: auto;
+}
+.sl-markdown-content pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.sl-markdown-content pre.mermaid :is(.node, .cluster) :is(rect, polygon, circle, path) {
+  fill: color-mix(in srgb, var(--ink) 6%, transparent) !important;
+  stroke: var(--rule) !important;
+  stroke-width: 1px !important;
+}
+.sl-markdown-content pre.mermaid :is(.nodeLabel, .edgeLabel, .label, .titleText) {
+  color: var(--ink) !important;
+  fill: var(--ink) !important;
+}
+.sl-markdown-content pre.mermaid .edgeLabel :is(rect, .labelBkg, foreignObject div) {
+  background: var(--void) !important;
+  fill: var(--void) !important;
+  color: var(--dim) !important;
+}
+/* mermaid paints the edge label a flat grey of its own; the ground is already
+   drawn by `.labelBkg` behind it, so this only has to get out of the way. */
+.sl-markdown-content pre.mermaid :is(g.edgeLabel, span.edgeLabel, .edgeLabel p) {
+  background: transparent !important;
+  color: var(--dim) !important;
+  fill: var(--dim) !important;
+}
+.sl-markdown-content pre.mermaid :is(.edgePath .path, .flowchart-link, .transition, path.messageLine0) {
+  stroke: var(--faint) !important;
+}
+.sl-markdown-content pre.mermaid :is(marker path, .marker, .arrowheadPath) {
+  fill: var(--faint) !important;
+  stroke: var(--faint) !important;
+}
+/* The start marker of a state diagram, and any node mermaid fills solid. */
+.sl-markdown-content pre.mermaid :is(.node circle.state-start, [class*="statediagram"] circle) {
+  fill: var(--ember) !important;
+  stroke: var(--ember) !important;
+}
+
+/* --------------------------------------------------------------- controls -- */
+site-search button,
+.sl-flex button[aria-label] {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  border: 1px solid var(--rule-soft) !important;
+  background: rgba(244, 241, 234, 0.03) !important;
+  color: var(--dim);
+}
+.pagination-links a {
+  border: 1px solid var(--rule-soft);
+  background: var(--panel);
+  color: var(--dim);
+}
+.pagination-links a:hover {
+  border-color: var(--rule);
+  color: var(--ink);
+}
+.pagination-links a span:first-child {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.pagination-links a .link-title {
+  font-family: var(--display);
+  font-weight: 600;
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   Phones. Starlight switches layouts at 50rem: above it the sidebar is a rail
+   beside the article, below it the rail is gone, a menu button appears, and the
+   same element returns as a sheet on top of the article. Everything here is for
+   that second state, which the rest of this file was not written for.
+   --------------------------------------------------------------------------- */
+@media (max-width: 49.99rem) {
+  /* A rail can be translucent: there is page ground behind it and the blur reads
+     as depth. An overlay cannot. Measured at 390px, body text was legible
+     straight through the 0.5 alpha and the 10px blur and competed with the nav
+     labels sitting on top of it. On a phone it takes the page's own solid ground
+     instead, and drops the blur, which then has nothing left to work on. */
+  .sidebar-pane {
+    background: var(--void);
+    backdrop-filter: none;
+  }
+
+  /* 44px, the touch target both Apple and Google publish. These two are the only
+     controls on a phone — the menu button is how the whole nav is reached — and
+     they measured 32x32 and 34x40. Starlight's own defaults, sized for a mouse.
+     Both are custom elements, so these selectors survive a rebuild; the classes
+     beside them are per-build hashes and cannot be named. */
+  starlight-menu-button button,
+  site-search button[data-open-modal] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

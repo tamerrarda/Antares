@@ -1,0 +1,6 @@
+# esbuild and sharp each fetch a platform binary in a postinstall script, and
+# pnpm 11 refuses to run those unless they are named here. Astro cannot bundle
+# without the first and cannot optimise an image without the second.
+allowBuilds:
+  esbuild: true
+  sharp: true
