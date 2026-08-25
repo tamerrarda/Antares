@@ -81,10 +81,8 @@ For readers who do not trade options:
 The trade is symmetric and it is stated as such: **you earn a premium every round, and in exchange you
 give up the part of a rally that goes past the strike.** In coins, not in percentages — the
 [depositor's page](https://docsantares.vercel.app/depositor/what-you-give-up/) puts a table on it.
+**There is no APY on this repository, in the interface, or anywhere else.** 
 
-**There is no APY on this repository, in the interface, or anywhere else.** While the only bidder is a
-reference bot this project runs, any premium figure would be us paying ourselves and quoting the
-result. See [Honest limitations](#honest-limitations).
 
 ## How a round works
 
