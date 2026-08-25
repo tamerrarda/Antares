@@ -447,3 +447,32 @@ site-search button,
   font-weight: 600;
   color: inherit;
 }
+
+/* ---------------------------------------------------------------------------
+   Phones. Starlight switches layouts at 50rem: above it the sidebar is a rail
+   beside the article, below it the rail is gone, a menu button appears, and the
+   same element returns as a sheet on top of the article. Everything here is for
+   that second state, which the rest of this file was not written for.
+   --------------------------------------------------------------------------- */
+@media (max-width: 49.99rem) {
+  /* A rail can be translucent: there is page ground behind it and the blur reads
+     as depth. An overlay cannot. Measured at 390px, body text was legible
+     straight through the 0.5 alpha and the 10px blur and competed with the nav
+     labels sitting on top of it. On a phone it takes the page's own solid ground
+     instead, and drops the blur, which then has nothing left to work on. */
+  .sidebar-pane {
+    background: var(--void);
+    backdrop-filter: none;
+  }
+
+  /* 44px, the touch target both Apple and Google publish. These two are the only
+     controls on a phone — the menu button is how the whole nav is reached — and
+     they measured 32x32 and 34x40. Starlight's own defaults, sized for a mouse.
+     Both are custom elements, so these selectors survive a rebuild; the classes
+     beside them are per-build hashes and cannot be named. */
+  starlight-menu-button button,
+  site-search button[data-open-modal] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
