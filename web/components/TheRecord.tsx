@@ -9,9 +9,9 @@ import { foldRounds, OUTCOME_LABEL, type Outcome } from "../lib/rounds.ts";
 /**
  * What stands where a competitor puts an APY.
  *
- * D-35 forbids an annualised figure and this is the substitute it names: the raw record. Ribbon puts
- * "Total Projected Yield (APY)" here and Lusty puts "MAX APR 95.62%"; both are extrapolations from a
- * handful of rounds. What this shows instead is what actually happened, and it is deliberately the
+ * D-35 forbids an annualised figure and this is the substitute it names: the raw record. The
+ * convention in this category is a projected APY or a headline "max APR" in this position, and both
+ * are extrapolations from a handful of rounds. What this shows instead is what actually happened, and it is deliberately the
  * same card whether the news is good or bad — a record that only appears when it flatters is not a
  * record.
  *

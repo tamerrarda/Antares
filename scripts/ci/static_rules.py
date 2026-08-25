@@ -480,6 +480,61 @@ def oracle_calls_are_recoverable():
     return out, notes
 
 
+def landing_links_match_the_app():
+    """The landing page's three outbound links agree with `web/lib/links.ts`.
+
+    The app reads them from that module; the landing page is a static file and
+    cannot, so the two can drift — and a docs link that is right in one surface and
+    stale in the other is worse than no link, because a reader has no way to know
+    which one is lying.
+
+    The empty case is checked in both directions, and that is the half worth
+    stating: while `FEEDBACK` is empty the landing page must render the control
+    disabled rather than as an `href`, because a link that looks like a destination
+    and goes nowhere is the defect this whole file exists to catch a class of.
+    """
+    links = ROOT / "web/lib/links.ts"
+    landing = ROOT / "web/landing/index.html"
+    if not links.exists() or not landing.exists():
+        return [], ["web/lib/links.ts or web/landing/index.html absent — nothing to compare"]
+
+    src = links.read_text()
+    consts = dict(re.findall(r'export const (\w+) = "([^"]*)"', src))
+    html = landing.read_text()
+    foot = re.search(r'<footer class="foot">(.*?)</footer>', html, re.S)
+    if not foot:
+        return [f"{rel(landing)}  no <footer class=\"foot\"> to compare against"], []
+    block = foot.group(1)
+
+    out, notes = [], []
+    for name in ("DOCS", "REPO"):
+        url = consts.get(name)
+        if not url:
+            out.append(f"{rel(links)}  {name} is missing or empty; the landing page links to it")
+        elif f'href="{url}"' not in block:
+            out.append(
+                f"{rel(landing)}  the {name.lower()} link does not match links.ts "
+                f"-> expected {url}"
+            )
+        else:
+            notes.append(f"{name} agrees: {url}")
+
+    feedback = consts.get("FEEDBACK", "")
+    has_link = re.search(r'<a[^>]*>\s*Feedback', block, re.I) is not None
+    disabled = 'aria-disabled="true"' in block
+    if feedback and not has_link:
+        out.append(f"{rel(landing)}  FEEDBACK is set but the landing page still renders it disabled")
+    if not feedback:
+        if has_link:
+            out.append(
+                f"{rel(landing)}  FEEDBACK is empty and the landing page links it anyway "
+                "— a destination that does not exist"
+            )
+        elif disabled:
+            notes.append("FEEDBACK is empty and both surfaces render it disabled")
+    return out, notes
+
+
 RULES = (
     ("D-70 ABI doc budget", abi_doc_budget),
     ("D-63 write-once fields", write_once_fields),
@@ -491,6 +546,7 @@ RULES = (
     ("workflow keys unique", workflow_keys_unique),
     ("python is standard-library only", python_is_stdlib_only),
     ("typescript declarations are unique", typescript_declarations_are_unique),
+    ("landing links match the app", landing_links_match_the_app),
 )
 
 

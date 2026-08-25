@@ -331,6 +331,47 @@
         outline: 2px solid #ffffff;
         outline-offset: 4px;
       }
+
+      /* The three destinations outside this page. Same square, bordered, letterspaced control as
+         `.launch`, one weight quieter — they are the way out of the page, not the way into the app. */
+      .foot {
+        position: relative;
+        z-index: 2;
+        border-top: 1px solid rgba(244, 241, 234, 0.07);
+        padding: 26px clamp(18px, 3vw, 34px) 44px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .foot > * {
+        display: inline-block;
+        font: inherit;
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        text-decoration: none;
+        padding: 10px 18px;
+        border: 1px solid rgba(244, 241, 234, 0.14);
+        color: var(--dim);
+        transition:
+          border-color 0.2s ease,
+          color 0.2s ease;
+      }
+      .foot a:hover {
+        border-color: var(--ink);
+        color: var(--ink);
+      }
+      .foot a:focus-visible {
+        outline: 2px solid var(--ember);
+        outline-offset: 3px;
+      }
+      /* Not a link, and it must not read as one. See `web/lib/links.ts`. */
+      .foot [aria-disabled="true"] {
+        color: #6f6a63;
+        border-style: dashed;
+        cursor: default;
+      }
       @media (prefers-reduced-motion: reduce) {
         .launch,
         .launch .spark {
@@ -582,6 +623,18 @@
         </div>
       </section>
     </main>
+
+    <!--
+      The same three destinations the app's footer carries, and they have to stay in step with it:
+      `web/lib/links.ts` is the source, and `scripts/ci/static_rules.py` fails if this drifts from
+      it. Feedback has no form yet — rather than a `#` that looks like a destination and does
+      nothing, it renders disabled until there is somewhere to send people.
+    -->
+    <footer class="foot">
+      <a href="https://tamerrarda.github.io/AntaresDocs/" target="_blank" rel="noreferrer">Docs</a>
+      <a href="https://github.com/tamerrarda/Antares" target="_blank" rel="noreferrer">GitHub</a>
+      <span aria-disabled="true" title="Not open yet">Feedback</span>
+    </footer>
 
     <!--
       A readout for tuning the frame sequence, kept because `scripts/build-frames.py` argues from

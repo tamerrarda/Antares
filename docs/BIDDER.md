@@ -76,8 +76,9 @@ premium_bps(t) = start_bps − (start_bps − floor_bps) × elapsed / auction_du
 ```
 
 The price starts high and falls linearly to a floor over the auction window, which is **45
-minutes**. It was two hours in an earlier draft; Ribbon's published data showed long windows
-widening the gap between clearing price and fair value, so it was shortened. There is no fixed
+minutes**. It was two hours in an earlier draft; the published clearing data from comparable vault
+auctions showed long windows widening the gap between clearing price and fair value, so it was
+shortened. There is no fixed
 premium: the clearing price is whatever a bidder accepts, and it is recognized **at fill**, not
 at offer.
 

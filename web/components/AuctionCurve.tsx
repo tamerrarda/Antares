@@ -5,8 +5,9 @@ import type { EpochInfo } from "@antares/bindings";
 import { amount, clockOf, duration } from "../lib/format.ts";
 
 /**
- * The one object on this page no competitor has: Ribbon runs its auction off-chain among
- * whitelisted market makers, and Lusty sets the price itself.
+ * The one object on this page that only an on-chain auction can produce. Where the price is quoted
+ * by a server, or discovered off-chain among whitelisted market makers, there is no public curve to
+ * draw — the number simply arrives.
  *
  * Drawn from the round's own snapshotted parameters — linear decay from `premium_start_bps` to
  * `premium_floor_bps` across `auction_duration`. The shaded wedge is the argument: a rational

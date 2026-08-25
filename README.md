@@ -19,9 +19,9 @@ Stellar's DeFi stack has filled in from the bottom up:
 | Lending / borrowing | Blend, Kinetic |
 | Yield vaults / aggregators | Upshift, Sentora, DeFindex |
 | Perpetual futures | Stellars Finance, Rails |
-| **Options / derivatives** | **one testnet protocol (Lusty); no on-chain price discovery** |
+| **Options / derivatives** | **one testnet protocol; no on-chain price discovery** |
 
-The next layer up — options — is barely populated: one live testnet protocol (Lusty, see below), no options protocol in Stellar's DeFi TVL rankings, and **no on-chain price discovery for an option anywhere on the network.** Every attempt so far has priced the option off-chain. This is not a niche gap: on Ethereum and Solana, covered-call vaults (Ribbon/Opyn, Friktion/Katana) became a standard way for holders to earn income on assets they were already holding.
+The next layer up — options — is barely populated: one live testnet protocol (see below), no options protocol in Stellar's DeFi TVL rankings, and **no on-chain price discovery for an option anywhere on the network.** Every attempt so far has priced the option off-chain. This is not a niche gap: on Ethereum and Solana, covered-call vaults became a standard way for holders to earn income on assets they were already holding.
 
 Antares builds that primitive: one asset, one strategy — designed as a system that can hold real value. (The counterparty phase runs five instances of the same contract side by side on different terms, so that a run of empty auctions can tell "wrong terms" apart from "no buyer"; see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §12.)
 
@@ -35,15 +35,15 @@ Antares builds that primitive: one asset, one strategy — designed as a system 
 | DEX aggregator | Exists (Soroswap) |
 | Lending / borrowing | Exists (Blend, Kinetic) |
 | Yield vault / aggregator | Exists (Upshift, Sentora, DeFindex) |
-| **Options / covered call protocol** | **One live on testnet (Lusty), several dead attempts** |
+| **Options / covered call protocol** | **One live on testnet, several dead attempts** |
 
 > **Re-verified against the SCF archive and GitHub (2026-08).** This layer is neither empty nor untouched.
 >
-> **[Lusty Finance](https://lusty.finance)** is live on testnet and actively developed: XLM covered calls and cash-secured puts, a Soroban vault holding collateral, Reflector settlement pinned to the expiry timestamp, and a permissionless `settle()`. It went through an SCF panel review. It is not a graveyard entry — it works, and anyone comparing the two should start there.
+> **One protocol in this category is live on testnet and actively developed**: XLM covered calls and cash-secured puts, a Soroban vault holding collateral, oracle settlement pinned to the expiry timestamp, and a permissionless `settle()`. It went through an SCF panel review. It is not a graveyard entry — it works.
 >
-> Behind it there *is* a graveyard: Block Time Financial took SCF funding (~$61.5k, rounds #14/#15) for a Soroban options contract whose last commit is October 2023, plus several inactive single-developer attempts.
+> Behind it there *is* a graveyard: an SCF-funded Soroban options contract, roughly $61.5k across two rounds, whose last commit is October 2023, plus several inactive single-developer attempts.
 >
-> **So what is left for Antares?** Not the idea — the market structure. In Lusty the protocol itself is the counterparty: a pool buys the option from you, and the price comes from an off-chain quote engine whose key co-signs each premium. That is a legitimate design and it sidesteps the hardest problem in this category by answering it internally. Antares takes the opposite bet: **the counterparty is an independent bidder, and the price is discovered on-chain by a descending auction with no privileged quoter.** Nobody has to trust a pricing server, and nobody's pool absorbs the risk — but it only works if independent bidders actually show up, which is precisely the question this project exists to answer and has not answered yet. If they don't, Lusty's design is the better one and we should say so.
+> **So what is left for Antares?** Not the idea — the market structure. In that design the protocol itself is the counterparty: a pool buys the option from you, and the price comes from an off-chain quote engine whose key co-signs each premium. That is a legitimate design and it sidesteps the hardest problem in this category by answering it internally. Antares takes the opposite bet: **the counterparty is an independent bidder, and the price is discovered on-chain by a descending auction with no privileged quoter.** Nobody has to trust a pricing server, and nobody's pool absorbs the risk — but it only works if independent bidders actually show up, which is precisely the question this project exists to answer and has not answered yet. If they don't, the incumbent's design is the better one and we should say so.
 
 ## How a covered call vault works
 
@@ -163,9 +163,9 @@ The policy has an exit condition, so that it cannot quietly become an excuse: on
 
 **Unaudited.** The contract is written and running on testnet, and every invariant in [`docs/INVARIANTS.md`](docs/INVARIANTS.md) is asserted by our own tests — a property suite, three fuzz targets (call-sequence, auction, settlement math), and a differential reference in a second language whose replay matches the Rust byte for byte across all four sections on the hand-written vectors. Two qualifications belong beside that rather than under it. **CI here has no push trigger** — it runs only when dispatched by hand — so these are checks that *can* be run rather than checks that run continuously; and **the mutation run is a gate for a later phase, not one already passed**: it is scoped to the single module nothing else grades, at a bar of zero survivors, with twenty-two unjudged timeouts in two further modules recorded as an open item. **An internal security review was carried out** against known Soroban vulnerability classes, and there is no published artifact behind that sentence — it is a statement by the people who wrote the code, not something you can check. **None of that is an audit.** Every correctness claim here is still our own, checked by people who wanted it to be true.
 
-**We are not first, and the incumbent is closer than the usual kind.** [Lusty Finance](https://lusty.finance) is already live on Stellar testnet doing XLM covered calls, with a working web app, an SCF panel review behind it, and a shipped Soroban vault. Being early is not our advantage — it is not available. What is left is a different answer to the same question: they price the option with an off-chain quote engine and make the protocol the counterparty; we discover the price on-chain and require a real counterparty to show up. Which is better is an empirical question, and their design is the safer bet if independent bidders never appear.
+**We are not first, and the incumbent is closer than the usual kind.** A protocol in this category is already live on Stellar testnet doing XLM covered calls, with a working web app, an SCF panel review behind it, and a shipped Soroban vault. Being early is not our advantage — it is not available. What is left is a different answer to the same question: they price the option with an off-chain quote engine and make the protocol the counterparty; we discover the price on-chain and require a real counterparty to show up. Which is better is an empirical question, and their design is the safer bet if independent bidders never appear.
 
-Beyond that: OpenZeppelin ships Soroban vault primitives, and established yield protocols (Upshift, DeFindex) could extend into structured products with distribution we do not have. Open source and public progress are the only mitigation on offer.
+Beyond that: Soroban vault primitives ship as libraries, and established yield protocols could extend into structured products with distribution we do not have. Open source and public progress are the only mitigation on offer.
 
 **Prior art is not encouraging and we are not ignoring it.** Friktion and Katana ran this structure on Solana and shut down. Their contracts worked; their counterparty base was a handful of desks, and when those desks left, premium went to zero. The failure mode of this product category is counterparty concentration, not contract risk — which is why counterparty discovery is treated here as a first-class deliverable rather than an afterthought.
 

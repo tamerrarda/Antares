@@ -1173,6 +1173,41 @@ footer .said b {
   color: var(--dim);
   font-weight: 400;
 }
+
+/* The three destinations outside this app, on one rule under everything else. Bordered rather
+   than underlined, because they leave the page and the rest of the footer does not. */
+.foot-bar {
+  max-width: 1240px;
+  margin: 30px auto 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule-soft);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.foot-bar > * {
+  display: inline-block;
+  padding: 9px 16px;
+  border: 1px solid var(--rule-soft);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--dim);
+  transition:
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+.foot-bar a:hover {
+  border-color: var(--rule);
+  color: var(--ink);
+}
+/* Not a link, and it must not read as one: no hover, no pointer, and a colour that says the
+   destination is missing rather than that the control is broken. */
+.foot-bar [aria-disabled="true"] {
+  color: var(--faint);
+  border-style: dashed;
+  cursor: default;
+}
 .foot-brand {
   display: flex;
   align-items: center;

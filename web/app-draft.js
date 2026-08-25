@@ -774,8 +774,9 @@ function payoffCard(strike) {
 
 // ---- the auction curve ---------------------------------------------------------------------------
 /*
- * The one object on this page no competitor has: Ribbon runs its auction off-chain among whitelisted
- * market makers, and Lusty sets the price itself. Drawn from the contract's own parameters — linear
+ * The one object on this page that only an on-chain auction can produce: where the price is quoted
+ * by a server, or discovered off-chain among whitelisted market makers, there is no public curve to
+ * draw. Drawn from the contract's own parameters — linear
  * decay from `premium_start_bps` to `premium_floor_bps` across `auction_duration`, against the
  * Black-Scholes fair value.
  *

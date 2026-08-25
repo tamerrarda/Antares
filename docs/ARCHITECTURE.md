@@ -10,7 +10,7 @@
 | Question | Decision | Reasoning |
 |---|---|---|
 | Share token interface | **SEP-41 (token interface), implemented inside the vault contract** | Wallets, explorers and DEXes can read the share token like any other Soroban token. A separate token contract would add a cross-contract hop on every mint/burn for no benefit. |
-| Vault standard (SEP-56 / ERC-4626-style, incl. OpenZeppelin's Soroban vault extension) | **Follow where it does not conflict; do not inherit the accounting** | 4626-style vaults assume deposit and redeem are continuous and instant. A covered-call vault locks collateral for the duration of an epoch — capital arriving mid-epoch cannot be allowed to dilute the premium earned by capital that was actually at risk. This is the same reason Ribbon built custom round-based accounting rather than using 4626 directly. We expose 4626-shaped views (`total_assets`, `convert_to_shares`) for tooling, but issuance is epoch-gated. |
+| Vault standard (SEP-56 / ERC-4626-style, including the Soroban vault extensions that ship as libraries) | **Follow where it does not conflict; do not inherit the accounting** | 4626-style vaults assume deposit and redeem are continuous and instant. A covered-call vault locks collateral for the duration of an epoch — capital arriving mid-epoch cannot be allowed to dilute the premium earned by capital that was actually at risk. This is why round-based accounting has to be written rather than inherited, wherever this strategy has been built. We expose 4626-shaped views (`total_assets`, `convert_to_shares`) for tooling, but issuance is epoch-gated. |
 
 **Consequence:** the epoch ledger in §4 is written by us and is the highest-risk component in the codebase. It gets the deepest test coverage (§11).
 

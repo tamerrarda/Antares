@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { deployment } from "../lib/deployment.ts";
+import { DOCS, FEEDBACK, REPO as REPO_ROOT } from "../lib/links.ts";
 
 /**
  * The repository the contract, the keeper and this interface all live in.
@@ -10,7 +11,7 @@ import { deployment } from "../lib/deployment.ts";
  * it looks like a destination and is a no-op. Pointing them at the real paths makes them true the
  * moment the repository is public, which is the same moment this interface is.
  */
-const REPO = "https://github.com/tamerrarda/Antares/blob/main";
+const REPO = `${REPO_ROOT}/blob/main`;
 
 /** The verify column is the product's argument, so it comes before the reading column. */
 export function SiteFooter() {
@@ -76,6 +77,27 @@ export function SiteFooter() {
             </li>
           </ul>
         </div>
+      </div>
+
+      {/* The three destinations outside this app, on one line under everything else. Feedback has
+          no form yet: rather than a `#` that looks like a destination and does nothing, it renders
+          as a disabled control that says why, and becomes a link the moment `FEEDBACK` is set. */}
+      <div className="foot-bar">
+        <a href={DOCS} target="_blank" rel="noreferrer">
+          Docs ↗
+        </a>
+        <a href={REPO_ROOT} target="_blank" rel="noreferrer">
+          GitHub ↗
+        </a>
+        {FEEDBACK ? (
+          <a href={FEEDBACK} target="_blank" rel="noreferrer">
+            Feedback ↗
+          </a>
+        ) : (
+          <span aria-disabled="true" title="Not open yet">
+            Feedback
+          </span>
+        )}
       </div>
     </footer>
   );
