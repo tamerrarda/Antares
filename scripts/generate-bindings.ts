@@ -265,7 +265,7 @@ export function checkBindings(input: BindingsCheckInput): Check[] {
     ),
   );
 
-  // The surface, checked against the wasm rather than against the CHANGELOG's sentence. `42 entry
+  // The surface, checked against the wasm rather than against a sentence in a document. `42 entry
   // points` is 41 callable plus `__constructor`, which the client exposes as a static `deploy`
   // rather than as a method.
   const methods = countMethods(input.committed);
