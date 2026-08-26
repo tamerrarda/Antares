@@ -357,9 +357,3 @@ output is served from [`AntaresDocs`](https://github.com/tamerrarda/AntaresDocs)
 
 Apache-2.0 — see [`LICENSE`](LICENSE).
 
----
-
-<div align="center">
-<sub>Antares is the red supergiant in Scorpius — the brightest star in its constellation.<br/>
-The name follows Stellar's convention; it is not a claim about the project's size.</sub>
-</div>
