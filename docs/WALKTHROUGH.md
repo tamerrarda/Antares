@@ -8,16 +8,18 @@ It is written to be checked rather than believed. Every claim below is either a 
 transaction, a number you can recompute from other numbers on this page, or a pointer to the
 document that defines the rule — never a restatement of it.
 
-> **Status: drafted, awaiting its round.** The narration, the arithmetic and the two approval
-> conditions below are final. The transaction hashes are not yet filled in: they come from the
-> real-parameter round, and a hash from anywhere else does not belong here. Every field marked
-> `TBD` is one of those, and the document is not delivered until none remain.
+> **Status: complete.** Round 1 opened 2026-08-24, expired 2026-08-27, and settled the same day.
+> Every hash below comes from that round on the deployed instance — the one
+> `deployments/testnet.json` records with `economicallyMeaningless: false`. Antares has closed full
+> cycles at fast-test parameters against a price source we control, and the integration suite drives
+> one against a live vault when it is run; none of those hashes are here, because they answer a
+> different question from the one this document asks.
 >
-> Read that as a constraint we accepted rather than a delay we are explaining. Antares has closed
-> full cycles on testnet already, and the integration suite drives one against a live vault when it
-> is run — but those are at fast-test parameters against a price source we control, and the
-> deployment record labels such an instance `economicallyMeaningless: true` in its own words.
-> Putting those hashes here would answer a different question from the one this document asks.
+> **One path this round did not exercise.** The exit in §7 was taken while the vault was idle, which
+> pays out in the same transaction that burns the shares. The *queued* exit — shares burned during a
+> live round, priced by that round's settlement, claimed afterwards — is covered by the test suite
+> and defined in [`ARCHITECTURE.md`](ARCHITECTURE.md) §4, but no hash on this page demonstrates it.
+> Said here rather than left for a reader to notice.
 
 ## What this proves, and what it does not
 
@@ -37,10 +39,10 @@ and prints it at startup.
 | | |
 |---|---|
 | Network | Stellar testnet |
-| Vault | `TBD` |
-| Oracle adapter | `TBD` — pinned at construction and **immutable**; there is no setter |
+| Vault | [`CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) |
+| Oracle adapter | [`CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) — pinned at construction and **immutable**; there is no setter |
 | Price source | Reflector's external CEX & DEX XLM/USD feed |
-| Epoch | `TBD` |
+| Epoch | 3 days (259 200 s), 2026-08-24T14:48:28Z → 2026-08-27T14:48:28Z |
 | Auction | 45 minutes, premium decaying linearly from a start rate to a floor — both in the `epoch_opened` event below |
 | Strike | 3 % out of the money, fixed at open from the oracle's TWAP |
 | Protocol fee | 0 bps |
@@ -55,8 +57,9 @@ them alongside the toolchain and the host that built the wasm.
 
 | | |
 |---|---|
-| Transaction | `TBD` |
-| Caller | a depositor, signing for themselves |
+| Transaction | [`2ffbad70…6b37`](https://stellar.expert/explorer/testnet/tx/2ffbad70d905e236aef1031a0d3ea08a3b17dc1f036f00554f1b21ae39076b37) · 2026-08-24T14:47:18Z |
+| Caller | [`GAM7T6J7…MYVL`](https://stellar.expert/explorer/testnet/account/GAM7T6J7LNKWH3R2OTVMCNJDFGT5ZEPZMEE5ZNALELLVVAPIJEMLMYVL) — a depositor, signing for themselves |
+| In | 200 XLM → 2 000 000 000 shares, at a share price of 1.0000000 |
 
 XLM in, shares out, at the current share price. Nothing about this step is special to the round: a
 deposit while the vault is idle mints immediately, and a deposit during a live round waits for it to
@@ -67,8 +70,8 @@ result they did not take the risk for.
 
 | | |
 |---|---|
-| Transaction | `TBD` |
-| Caller | `TBD` |
+| Transaction | [`947c178d…d8ac`](https://stellar.expert/explorer/testnet/tx/947c178d3257c62a6301753825ca66bb2989a89908ddb6b9c734a8162c20d8ac) · 2026-08-24T14:48:28Z |
+| Caller | [`GAM7T6J7…MYVL`](https://stellar.expert/explorer/testnet/account/GAM7T6J7LNKWH3R2OTVMCNJDFGT5ZEPZMEE5ZNALELLVVAPIJEMLMYVL) — **the depositor**, not the admin and not a keeper |
 
 `open_epoch()` takes no admin. It reads the oracle live, sets the strike 3 % above the TWAP it
 found, and offers the vault's assets as notional. If the feed is stale, deviating, or unable to
@@ -82,10 +85,10 @@ times 1.03, floored. Both are in the event; you do not need us for either.
 
 | | |
 |---|---|
-| Transaction | `TBD` |
-| Bidder | `TBD` — self-operated, see above |
-| Filled | `TBD` |
-| Premium paid | `TBD` |
+| Transaction | [`4a71f3de…5aee`](https://stellar.expert/explorer/testnet/tx/4a71f3deedc4d7b92d38e5a284755d86add97eb4616e8114414d7557d9e35aee) · 2026-08-24T14:55:24Z |
+| Bidder | [`GCTFTPSK…HDGH`](https://stellar.expert/explorer/testnet/account/GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH) — self-operated, see above |
+| Filled | 200.0001 XLM notional — the whole offer |
+| Premium paid | 4.9200024 XLM, i.e. 246 bps |
 
 The premium starts at `premium_start_bps` of notional and falls linearly to `premium_floor_bps`
 over the 45-minute window; both bounds are in the `epoch_opened` event, so the curve is public
@@ -106,9 +109,9 @@ Nothing happens on chain, and nothing needs to. The option is live until expiry.
 
 | | |
 |---|---|
-| Transaction | `TBD` |
-| Caller | `TBD` |
-| Bounty paid | `TBD` |
+| Transaction | [`2add1f5c…941c`](https://stellar.expert/explorer/testnet/tx/2add1f5c51628c42fe85f88a6c87c5f039a2a5ceab064bbc6fc9a873db8c941c) · 2026-08-27T15:22:10Z, 33 min after expiry |
+| Caller | [`GDFPSLES…KBQQ`](https://stellar.expert/explorer/testnet/account/GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ) |
+| Bounty paid | 0.0123 XLM |
 
 `close_round(bounty_to)` is one entry point with no outcome argument. The caller cannot choose
 whether the round settles, voids or resolves unpaid — the contract reads the oracle at the moment of
@@ -124,10 +127,10 @@ vault, like every other rounding in the system.
 
 | | |
 |---|---|
-| Settlement price | `TBD` |
-| Strike | `TBD` |
-| Payout to the bidder | `TBD` |
-| Share price before → after | `TBD` |
+| Settlement price | `1882978` — 0.1882978 USD/XLM, the 15-minute TWAP anchored at expiry |
+| Strike | `2046447` — 0.2046447 USD/XLM |
+| Payout to the bidder | **0** — the price finished 8.0 % below the strike |
+| Share price before → after | `10000000` → `10245384`, i.e. 1.0000000 → 1.0245384 (+2.4538 %) |
 
 If the price finished at or below the strike, the option expired worthless: the bidder paid for it
 and got nothing, the premium stays with depositors, and the share price rises by exactly the premium
@@ -150,14 +153,28 @@ bounty term, so it is named here.
 
 | | |
 |---|---|
-| Request | `TBD` |
-| Claim | `TBD` |
-| XLM out | `TBD` |
+| Request | [`3d5d8801…1826`](https://stellar.expert/explorer/testnet/tx/3d5d880129bad99a842115c855b6005cce7d3ceb4f1d125fc0d26f4029a21826) · 2026-08-27T15:29:10Z |
+| Claim | the same transaction — the vault was idle, so the exit paid out at once |
+| XLM out | 51.22692 XLM for 500 000 000 shares, a quarter of the position |
 
-The shares are burned when the exit is requested; what they are worth is decided by the round's
-settlement, and claimed afterwards. A depositor asking for an immediate exit can require the vault
-to be idle, so an `open_epoch` landing first can never silently convert an instant exit into a
-queued one (D-46).
+This exit took the instant path: the call passed `require_idle = true`, the vault was idle, and a
+single transaction burned the shares and paid the XLM. Four events record it — `burn`, the SAC
+`transfer`, `withdraw_requested` and `withdraw_claimed` — so the request and the claim stay
+separable in the log even though they share a transaction.
+
+The queued path is the same call in a different phase. Ask to exit during a live round and the
+shares burn immediately while what they are worth is decided by that round's settlement and claimed
+afterwards; `require_idle` is what lets a depositor refuse that, so an `open_epoch` landing first
+can never silently convert an instant exit into a queued one (D-46).
+
+**The number to check:** `⌊500 000 000 × 10 245 384 ÷ 10⁷⌋ = 512 269 200` stroops — the shares
+burned times the share price §6 settled at. Total assets fell from `2 049 078 024` to
+`1 536 808 824`, by exactly that amount, and the share price did not move: an exit prices itself at
+`pps`, so it cannot dilute the depositors who stay. The vault's on-chain XLM balance equals its
+accounted assets to the stroop — `1 536 808 824` read both ways. Of that, `1 536 807 600` is the
+depositor's and `1 024` is attached to the 1 000 dead shares minted on the first deposit; the
+remaining **200 stroops** are settlement dust that floored toward the vault, the direction every
+rounding in this system takes.
 
 ## The reviewer's two conditions, answered
 
