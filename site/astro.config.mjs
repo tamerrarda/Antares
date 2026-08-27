@@ -38,7 +38,8 @@ export default defineConfig({
     starlight({
       title: "Antares",
       logo: { src: "./public/antares-mark-48.webp", alt: "Antares" },
-      description: "Covered call vaults on Stellar, built so that the way out never runs through us.",
+      description:
+        "Covered call vaults on Stellar, built so that the way out never runs through us.",
       social: [
         {
           icon: "github",

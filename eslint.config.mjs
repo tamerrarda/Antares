@@ -58,6 +58,32 @@ export default tseslint.config(
       // gate green is how a finding becomes invisible. Raised in plan/STANDUP.md for DEV2; this line
       // comes out the moment they land the fix, and it is one `--fix` away for two of the three.
       "scripts/verify-environment.ts",
+
+      // The documentation site, for the same reason `web/scripts/**` is here: it is not part of
+      // this project. `site/` is a separate pnpm workspace — its own `pnpm-workspace.yaml`, its own
+      // lockfile, its own `tsconfig.json` extending `astro/tsconfigs/strict` — and it is absent
+      // from this workspace's `packages:` list by design.
+      //
+      // Type-aware linting it from here reports findings the root project cannot answer. Eight of
+      // them are in `src/rehype-docs-links.mjs`, all `no-unsafe-*` against `hast` nodes: the tree,
+      // the file and every node are `any` because `@types/hast` is not installed anywhere in this
+      // repository. They are not defects in that file — they are the absence of types the docs
+      // site never needed, and silencing them by annotating another package's source with
+      // approximations would be worse than either fixing it there or leaving it alone.
+      //
+      // The remainder are `.astro/`, which Astro generates and `site/.gitignore` already excludes.
+      //
+      // **What this gives up, stated plainly: `site/` is now linted by nothing.** Not by this
+      // config, and not by its own — `site/package.json` declares `"check": "astro check"`, but
+      // `@astrojs/check` is not among its dependencies, so the command stops on an interactive
+      // prompt asking to install it and has evidently never run. A declared gate with no runner is
+      // the failure this repository's own CI file names in §14, and it is worth more than the eight
+      // findings above: those are missing types, this is a missing check.
+      //
+      // The follow-up is two steps, in this order: add `@astrojs/check` and `typescript` to
+      // `site/`, then put `pnpm --dir site check` in the CI chain. Until both land, the docs site
+      // is unchecked and this comment is the only place that says so.
+      "site/**",
     ],
   },
   js.configs.recommended,

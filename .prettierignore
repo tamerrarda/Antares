@@ -8,6 +8,17 @@ plan
 contracts/
 deployments/
 
+# The documentation site is a separate pnpm workspace — its own `pnpm-workspace.yaml`, its own
+# lockfile, its own `tsconfig.json` extending `astro/tsconfigs/strict`, and its own gate in
+# `astro check`. It is not in this workspace's `packages:` list and never was.
+#
+# It is also formatted at a narrower width than this repository's 110. Running prettier over it
+# does not tidy it, it degrades it: `rehype-docs-links.mjs` has a method chain and a ternary that
+# are deliberately broken across lines, and at 110 they collapse into 108- and 106-character
+# lines. A formatter that makes a file harder to read is not enforcing a standard, it is imposing
+# a different one on a package that already has its own.
+site/
+
 # Markdown is deliberately NOT formatted by prettier.
 #
 # `docs/*` and the root README are **public-facing and take two sign-offs, never one**
