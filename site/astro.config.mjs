@@ -13,6 +13,10 @@ import rehypeDocsLinks from "./src/rehype-docs-links.mjs";
 // repository already assumes; `web/lib/links.ts` is the other half of that pair.
 const SITE = process.env.SITE_URL ?? "https://docsantares.vercel.app";
 const BASE = process.env.BASE_PATH ?? "";
+// The app itself, so the docs are not a one-way door: the landing page and the app both link here,
+// and until now nothing here linked back. Same treatment as SITE and BASE — an environment
+// variable rather than a commit, because where the app is published is a deploy decision.
+const APP = process.env.APP_URL ?? "https://antaresfinance.vercel.app/app/";
 
 export default defineConfig({
   site: SITE,
@@ -34,8 +38,7 @@ export default defineConfig({
     starlight({
       title: "Antares",
       logo: { src: "./public/antares-mark-48.webp", alt: "Antares" },
-      description:
-        "Covered call vaults on Stellar, built so that the way out never runs through us.",
+      description: "Covered call vaults on Stellar, built so that the way out never runs through us.",
       social: [
         {
           icon: "github",
@@ -56,6 +59,7 @@ export default defineConfig({
       pagination: true,
       lastUpdated: false,
       sidebar: [
+        { label: "Open the app", link: APP, attrs: { target: "_blank", rel: "noreferrer" } },
         {
           label: "Start here",
           items: [

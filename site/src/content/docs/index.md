@@ -4,6 +4,10 @@ deck: Covered call vaults on Stellar, built so that the way out never runs throu
 head:
   - tag: title
     content: Antares — covered call vaults on Stellar
+# The sidebar's first entry is the app, which is off-site. Left alone, Starlight's pagination
+# offers it as this page's "previous page" — a back arrow that leaves the documentation. The
+# sequence starts here.
+prev: false
 ---
 
 Deposit XLM. Each round the vault sells a call option against it, a descending auction discovers
