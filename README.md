@@ -14,10 +14,7 @@ Deposit XLM, an on-chain auction discovers what an option over it is worth, and 
 [![tests](https://img.shields.io/badge/tests-361%20passing-05060a?style=flat-square)](#testing)
 [![license](https://img.shields.io/badge/license-Apache--2.0-6f6a63?style=flat-square)](LICENSE)
 
-<!-- Replace this line with the live URL once the app is deployed:
-     **[Open the app](https://…)** · **[Docs](https://docsantares.vercel.app/)** · **[Report a vulnerability](SECURITY.md)** -->
-
-**Live app** *(not deployed yet)* · **[Docs](https://docsantares.vercel.app/)** · **[Report a vulnerability](SECURITY.md)**
+**[Open the app](https://antaresfinance.vercel.app/app/)** · **[Docs](https://docsantares.vercel.app/)** · **[Report a vulnerability](SECURITY.md)**
 
 </div>
 
