@@ -65,6 +65,27 @@ export function previewOpen(env: Record<string, string | undefined> = {}): Promi
   return preview<boolean>(vaultClient(env).open_epoch(), "open");
 }
 
+/**
+ * What a bid would fill, and for how much, before anybody signs it.
+ *
+ * A bid has more ways to be refused than any other entry point — nine, in BIDDER §2's table — and
+ * three of them (`InTheMoney`, `ZeroPremium`, `BelowMinFill`) depend on numbers the bidder cannot
+ * see from the auction card alone. Simulating answers all nine at once and costs nothing, which is
+ * the same argument `previewClose` makes: the refusal a bidder needs is the contract's own, not our
+ * guess at which rule they are about to hit.
+ *
+ * The returned value is the notional that would **actually** fill, which is `min(notional,
+ * remaining)` and may be less than was asked for.
+ */
+export function previewBid(
+  bidder: string,
+  notional: bigint,
+  maxPremiumBps: number,
+  env: Record<string, string | undefined> = {},
+): Promise<Preview<bigint>> {
+  return preview<bigint>(vaultClient(env).bid({ bidder, notional, max_premium_bps: maxPremiumBps }), "bid");
+}
+
 /** What closing would produce, said the way a depositor experiences it. */
 export const OUTCOME_SENTENCE: Readonly<Record<string, string>> = {
   Settled: "it would settle — the price is readable and the round pays out on it",

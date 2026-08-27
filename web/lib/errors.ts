@@ -319,7 +319,7 @@ const TABLE: Readonly<Record<number, ErrorText>> = {
  * no round running to close*. A single sentence cannot be true of both, and the generic one in the
  * table is what is true of neither in particular.
  */
-export type CallSite = "withdraw" | "close" | "open" | "collect";
+export type CallSite = "withdraw" | "close" | "open" | "collect" | "bid";
 
 const OVERRIDES: Readonly<Record<CallSite, Readonly<Record<number, ErrorText>>>> = {
   withdraw: {
@@ -362,6 +362,20 @@ const OVERRIDES: Readonly<Record<CallSite, Readonly<Record<number, ErrorText>>>>
       kind: "waiting",
       title: "A round is already running.",
       body: "The next one cannot be opened until this one is closed and the window after it has elapsed.",
+    },
+  },
+  // The auction is the one window a bid can land in, and it is roughly 1 % of an epoch. The generic
+  // sentence for code 2 talks about phases; a bidder who just watched a clock run out needs to be
+  // told it was the clock, and that nothing was spent finding out.
+  bid: {
+    2: {
+      name: "WrongPhase",
+      kind: "waiting",
+      title: "The auction window has closed.",
+      body:
+        "The phase moves before a late bid is evaluated, so this is the only refusal a late bid " +
+        "ever sees. Nothing was spent. The next auction opens after this round settles and the " +
+        "idle window after it has elapsed.",
     },
   },
 };

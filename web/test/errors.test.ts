@@ -94,3 +94,21 @@ test("NothingPending is about a deposit by default and about an exit when collec
 test("a call site with no override falls through to the table rather than inventing text", () => {
   assert.deepEqual(explain(20, "withdraw"), explain(20));
 });
+
+/**
+ * `WrongPhase` reaches four call sites and means something different at each, and the difference is
+ * not decoration: three of them are a clock and one is a guard. A bid that arrives after the auction
+ * window shut has to read as timing rather than as the bidder's mistake — `Refusal` paints `kind`
+ * `"blocked"` in the alarming register, and telling somebody their correct action was an error is
+ * how a UI teaches people that the safe option is dangerous.
+ *
+ * The assertion that matters is the last one: without the override, the site falls back to the
+ * generic sentence, which talks about phases in general and never mentions the window.
+ */
+test("a late bid is told it was the clock, not a mistake", () => {
+  const late = explain(2, "bid");
+  assert.equal(late.name, "WrongPhase");
+  assert.equal(late.kind, "waiting", "a shut window is timing, never an alarm");
+  assert.match(late.title, /auction window/i);
+  assert.notEqual(late.title, explain(2).title, "the bid site must not fall through to the generic text");
+});

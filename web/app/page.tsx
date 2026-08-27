@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { ActionPanel } from "../components/ActionPanel.tsx";
+import { BidPanel } from "../components/BidPanel.tsx";
 import { ChainDown } from "../components/ChainDown.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
 import { Calendar } from "../components/Calendar.tsx";
@@ -112,6 +113,13 @@ export default function VaultPage() {
                   </div>
                 </div>
               </div>
+              {/*
+                The buy side sits under the curve it is priced from, for the reason `Permissionless`
+                gives about its own buttons: state and the action that changes it belong in one
+                block. It exists only in this face — outside the auction window a bid cannot happen
+                at all, and a control that is always refused teaches people to ignore controls.
+              */}
+              <BidPanel epoch={epoch} wallet={wallet} onDone={reload} />
             </article>
           )}
 

@@ -63,6 +63,54 @@ RPC_URL=… NETWORK_PASSPHRASE=… VAULT_ID=C… BIDDER_SECRET=S… \
   pnpm --filter @antares/bidder start
 ```
 
+## Running it against testnet, from nothing
+
+The block above is a shape, not something you can paste. This is the version that runs.
+
+**One.** Make a key and fund it. The `stellar` CLI keeps the secret in its own store, so it never
+has to pass through your shell history or this file:
+
+```sh
+stellar keys generate --global my-bidder --network testnet --fund
+stellar keys address my-bidder
+```
+
+**Two.** Ask to be allowlisted, quoting that address — one transaction on our side, and only
+necessary until `allowlist_expires_at` in the vault's `config()` passes. After that timestamp the
+gate is inert and nothing can restore it.
+
+**Three.** Run it. The two network values below are testnet's, published by the network operator;
+`VAULT_ID` comes from [`deployments/testnet.json`](../deployments/testnet.json), which is the only
+place in this repository a contract id lives:
+
+```sh
+RPC_URL=https://soroban-testnet.stellar.org \
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015" \
+VAULT_ID=$(python3 -c "import json;print(json.load(open('deployments/testnet.json'))['instances'][0]['vaultId'])") \
+BIDDER_SECRET=$(stellar keys secret my-bidder) \
+TARGET_BPS=120 MAX_NOTIONAL=5000000000 MAX_PORTFOLIO_NOTIONAL=20000000000 \
+LOG_LEVEL=debug \
+  pnpm --filter @antares/bidder start
+```
+
+`TARGET_BPS=120` buys at 120 bps or better; `MAX_NOTIONAL=5000000000` is 500 XLM in stroops. Both
+are examples and neither has a default, deliberately.
+
+**What you should see.** Three lines of identity — vault, address, strategy — then the
+self-operated disclosure, then one line per pass saying what it is waiting for:
+
+```
+bidder: vault CCYAHS4D…, address GCTFTPSK…
+bidder: strategy=flat target=120bps
+bidder: SELF-OPERATED REFERENCE BIDDER. It prices nothing. …
+debug waiting: phase is Active, not Auction { openNotional: '3536809824' }
+```
+
+That last line is the normal state. A vault spends most of its life outside its auction window: with
+the shipped 3-day epoch and 45-minute auction, the window is open about **1 %** of the time. The
+process is supposed to sit there. `openNotional` is what it already holds and has not claimed,
+against `MAX_PORTFOLIO_NOTIONAL`.
+
 ## Three things worth knowing before running it
 
 **The total cap counts unclaimed rounds, not unsettled ones.** A settled round's option has expired

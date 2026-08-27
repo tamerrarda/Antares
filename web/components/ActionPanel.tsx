@@ -4,6 +4,7 @@ import type { ConfigView, EpochInfo, Position } from "@antares/bindings";
 import { blocksNewDeposit, canRedeemPending, queuedExit } from "../lib/phase.ts";
 import { useState } from "react";
 
+import { parseAmount } from "../lib/amount.ts";
 import { explain, type CallSite, type ErrorText } from "../lib/errors.ts";
 import { amount, toUnits } from "../lib/format.ts";
 import { writeClient } from "../lib/vault.ts";
@@ -22,44 +23,6 @@ const SCALE = 10_000_000n;
  */
 function asAmount(value: unknown): bigint | null {
   return typeof value === "bigint" ? value : null;
-}
-
-/**
- * What the field currently holds, or why it cannot be used.
- *
- * The previous version returned `null` for everything it could not parse, which disabled the button
- * and said nothing. Measured by typing into it: `-5`, `abc`, `1.2.3` and `1,5` all sat in the field
- * with a dead button and no explanation. The last one is the one that matters — a decimal **comma**
- * is how most of Europe writes a decimal, so the most likely "invalid" input is somebody typing the
- * number correctly for their own keyboard.
- *
- * So a comma is not an error, it is a separator: normalised and accepted. Everything genuinely
- * unusable gets a sentence, because a control that refuses without saying why is the same defect as
- * a transaction that fails without saying why.
- */
-type Parsed = { readonly stroops: bigint } | { readonly problem: string } | null;
-
-const DECIMALS = 7;
-
-function parseAmount(input: string): Parsed {
-  const raw = input.trim();
-  if (raw === "") return null;
-
-  // A decimal comma is a spelling, not a mistake.
-  const t = raw.replace(",", ".");
-
-  if (t.startsWith("-")) return { problem: "An amount cannot be negative." };
-  if (!/^\d*\.?\d*$/.test(t) || t === ".") {
-    return { problem: "An amount is digits, with at most one decimal point — nothing else." };
-  }
-
-  const [whole = "0", frac = ""] = t.split(".");
-  if (frac.length > DECIMALS) {
-    return {
-      problem: `XLM has ${DECIMALS} decimal places and that is more, so it could not be sent exactly.`,
-    };
-  }
-  return { stroops: BigInt(whole || "0") * SCALE + BigInt(frac.padEnd(DECIMALS, "0")) };
 }
 
 export function ActionPanel({

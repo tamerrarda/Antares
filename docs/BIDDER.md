@@ -133,6 +133,63 @@ bid(bidder: Address, notional: i128, max_premium_bps: u32) -> i128  // returns f
 | `Paused` | new deposits, new bids and new rounds can be paused by the admin. It can never block a claim, a refund, or the closing of a round — the exit path is unpausable — but it can stop you taking a *new* position |
 | `AllowlistForbidden` | launch control only, and it **expires on a timestamp fixed when the vault was deployed** — read it from `config()` before you spend any time on this. The admin can open bidding earlier (that transaction is itself on-chain evidence) but has no way to extend the gate; past the expiry this rejection cannot occur |
 
+### Placing one
+
+Everything above describes the mechanism. This part is the mechanics, because a document that
+argues you should bid and then leaves you at the door has not finished its job.
+
+You need [`stellar-cli`](https://developers.stellar.org/docs/tools/developer-tools/cli/stellar-cli)
+and a funded testnet key. The vault's address is in
+[`deployments/testnet.json`](../deployments/testnet.json) — that file is the only place in this
+repository a contract id is allowed to live, so read it from there rather than from a copy.
+
+**First, read the auction.** Every number you need to price a bid is in one view, and it costs
+nothing:
+
+```
+stellar contract invoke --id <vault> --network testnet --source <your-key> --send=no \
+  -- epoch
+```
+
+`phase` must be `Auction` — in any other phase a bid is refused with `WrongPhase`, and that is the
+only code a late bid ever sees. `current_premium_bps` is the curve right now, `notional_offered`
+minus `notional_sold` is what is left to take, and `auction_end` is when the window shuts.
+
+**Then bid.** Amounts are in **stroops**: 1 XLM = 10 000 000, and `notional` is the size of the
+option you are buying, not the premium you pay.
+
+```
+stellar contract invoke --id <vault> --network testnet --source <your-key> \
+  -- bid \
+  --bidder <your-address> \
+  --notional 1000000000 \
+  --max_premium_bps 210
+```
+
+That example buys an option over 100 XLM and refuses to pay more than 210 bps for it. The premium
+leaves your account inside the same transaction; the call returns the notional you were actually
+filled for, which is `min(notional, remaining)` and may be less than you asked. Nothing else is
+required of you until the round settles — and then only a `claim_payout`, which is yours to make
+whenever you like (§3).
+
+**Add `--send=no` to any of these to simulate without submitting.** The simulation runs the real
+contract against real state and reports the same rejection a live call would, so a bid that would
+be refused costs you nothing to discover.
+
+**One pre-step while the allowlist is still on.** Until the timestamp in `config()` passes, an
+address has to be allowed before it can bid — ask us and it takes one transaction, or read
+`allowlist_expires_at` and wait it out. After that timestamp the gate is inert and no setter can
+restore it.
+
+**There is also a form, while the auction is open.** The app's vault page grows a *Buy this option*
+panel inside the auction card — a size, your ceiling, and the contract's own simulated answer about
+what that would fill and cost, refusals included. It is deliberately not a pricing surface: no
+chart, no greeks, no suggestion about what to pay. Pricing an option is not a thing to do by
+clicking, and the reference bidder in [`bidder/`](../bidder/README.md) is the path we expect anyone
+automating this to start from. The panel exists because the one irreversible thing a counterparty
+does should not be reachable only from a shell, when whether an independent counterparty ever fills
+is the condition this project agreed to stop on.
+
 ---
 
 ## 3. Getting paid
