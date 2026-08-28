@@ -141,7 +141,7 @@ export default function ClaimsPage() {
             </h2>
             {error !== null ? (
               <div className="body">
-                <ChainDown detail={error} onRetry={reload} />
+                <ChainDown detail={error} onRetry={reload} suffix={suffix} />
               </div>
             ) : rows.length === 0 && !loading ? (
               <div className="body">

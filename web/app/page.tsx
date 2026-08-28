@@ -38,7 +38,7 @@ export default function VaultPage() {
   const d = deployment(suffix);
 
   if (error !== null) {
-    return <ChainDown detail={error} onRetry={reload} />;
+    return <ChainDown detail={error} onRetry={reload} suffix={suffix} />;
   }
 
   if (epoch === null || config === null) {

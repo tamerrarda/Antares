@@ -29,7 +29,7 @@ export default function RoundsPage() {
   const d = deployment(suffix);
 
   if (error !== null) {
-    return <ChainDown detail={error} onRetry={reload} />;
+    return <ChainDown detail={error} onRetry={reload} suffix={suffix} />;
   }
 
   if (page === null) {

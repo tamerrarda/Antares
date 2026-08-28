@@ -14,8 +14,17 @@ import { deployment } from "../lib/deployment.ts";
  * the page — and the failure is usually a moment of network, not a broken build. And the raw message
  * kept, but folded: it is what somebody debugging needs and the last thing somebody reading needs.
  */
-export function ChainDown({ detail, onRetry }: { detail: string; onRetry?: () => void }) {
-  const d = deployment();
+export function ChainDown({
+  detail,
+  onRetry,
+  suffix,
+}: {
+  detail: string;
+  onRetry?: () => void;
+  /** The vault the failed page was reading — the one worth pointing at when it cannot render it. */
+  suffix?: string;
+}) {
+  const d = deployment(suffix);
   return (
     <article className="card">
       <h2>

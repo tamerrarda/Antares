@@ -4,6 +4,8 @@ import { isUnrecognised, type AdminEvent } from "@antares/common/events";
 
 import { ChainDown } from "../../components/ChainDown.tsx";
 import { useEvents } from "../../components/useEvents.ts";
+import { useInstance } from "../../components/useInstance.ts";
+import { VaultPicker } from "../../components/VaultPicker.tsx";
 import { useVault } from "../../components/useVault.ts";
 import { deployment } from "../../lib/deployment.ts";
 import { amount, bps, when } from "../../lib/format.ts";
@@ -63,9 +65,11 @@ const CANNOT = [
 ] as const;
 
 export default function OperatorPage() {
-  const { page, error, reload } = useEvents();
-  const { config } = useVault(null);
-  const d = deployment();
+  const { all, current, select } = useInstance();
+  const suffix = current.tokenSuffix;
+  const { page, error, reload } = useEvents(suffix);
+  const { config } = useVault(null, suffix);
+  const d = deployment(suffix);
 
   const rows = page === null ? [] : [...page.admin].reverse();
   const unknown = rows.filter((r) => isUnrecognised(r.decoded)).length;
@@ -81,6 +85,12 @@ export default function OperatorPage() {
               page is filtered by us, and nothing is written by us.
             </span>
           </div>
+          {/*
+            Admin state is per vault: an allowlist entry, a pause, a cap all live in one instance's
+            storage. A log that read the first vault while claiming "every administrative call" was
+            missing two thirds of them the day the set grew to three.
+          */}
+          <VaultPicker all={all} current={current} onSelect={select} />
         </div>
       </div>
 
@@ -124,7 +134,7 @@ export default function OperatorPage() {
         </h2>
         {error !== null ? (
           <div className="body">
-            <ChainDown detail={error} onRetry={reload} />
+            <ChainDown detail={error} onRetry={reload} suffix={suffix} />
           </div>
         ) : page === null ? (
           <div className="body">
