@@ -4,20 +4,36 @@ import { useFleet } from "../../components/useFleet.ts";
 import { useWallet } from "../../components/useWallet.ts";
 import { amount, duration, when } from "../../lib/format.ts";
 import { faceOf, windowOpensAt } from "../../lib/phase.ts";
+import { summarise, waitingWorth } from "../../lib/positions.ts";
 import { vaultName } from "../../lib/vault-name.ts";
 
-const COLS = "200px 1fr 1fr 210px 1fr";
+/**
+ * `max-content` on the status column, not a fixed width.
+ *
+ * A `.pill` is `white-space: nowrap` and the longest label — "Sold — the round is running" —
+ * overruns 210 px, so on the deployed page it printed as `RUNNINGafter round 2 closes`: the badge
+ * ran straight into the next cell with no gap. Measured in the live DOM, not inferred. A wider
+ * fixed number would move the collision rather than remove it, because the label set can grow; a
+ * track sized to its own content cannot collide at all. The narrow layout is unaffected — it
+ * already stacks every cell and wraps the pill (see globals.css).
+ */
+const COLS = "200px 1fr 1fr max-content 1fr";
 
 export default function PositionsPage() {
   const wallet = useWallet();
   const { rows, loading } = useFleet(wallet.address);
   const now = Math.floor(Date.now() / 1000);
 
-  const held = rows.filter((r) => r.position !== null && r.position.shares > 0n);
-  const total = held.reduce((sum, r) => {
-    const pps = r.epoch === null ? 0n : r.epoch.last_pps;
-    return sum + (r.position === null ? 0n : (r.position.shares * pps) / 10_000_000n);
-  }, 0n);
+  /**
+   * A pending deposit is money in the vault, and this page counted it as nothing.
+   *
+   * Until it was measured on the deployed build the total read `position.shares` alone — so an
+   * address whose 2 999 XLM was waiting for a live round to end saw **"0.0 XLM in 0 of 1 vault"**
+   * and a row that said "no position". It is the common case rather than an edge: every deposit
+   * made while a round is running lands there, which is most of an epoch. The arithmetic moved to
+   * `lib/positions.ts` so it can be tested without a browser or a round.
+   */
+  const { total, waiting, vaults } = summarise(rows);
 
   return (
     <>
@@ -53,7 +69,7 @@ export default function PositionsPage() {
                 <small> XLM</small>
               </span>
               <span className="sub" style={{ margin: 0 }}>
-                in {held.length} of {rows.length} {rows.length === 1 ? "vault" : "vaults"}
+                in {vaults} of {rows.length} {rows.length === 1 ? "vault" : "vaults"}
               </span>
             </div>
             {/* No profit-and-loss curve, no allocation ring, no ranking of the vaults against each
@@ -61,6 +77,14 @@ export default function PositionsPage() {
                 which is the opposite of the product. */}
             <p className="sub" style={{ maxWidth: "82ch" }}>
               Worth follows price per share, which moves when a round settles and at no other time.
+              {waiting > 0n && (
+                <>
+                  {" "}
+                  <b>{amount(waiting)} XLM of this is still waiting</b> for a round to end: it is not shares
+                  yet, so it takes none of that round&rsquo;s result, and it can be taken back whole until it
+                  converts.
+                </>
+              )}
             </p>
           </div>
         </article>
@@ -85,6 +109,7 @@ export default function PositionsPage() {
             const untilOpen = opensAt === null ? null : duration(Number(opensAt) - now);
             const pps = r.epoch === null ? 0n : r.epoch.last_pps;
             const worth = r.position === null ? null : (r.position.shares * pps) / 10_000_000n;
+            const waitingHere = waitingWorth(r);
             return (
               <div className="tr" key={r.instance.vaultId} style={{ gridTemplateColumns: COLS }}>
                 <span data-l="Vault">
@@ -99,11 +124,16 @@ export default function PositionsPage() {
                   )}
                 </span>
                 <span data-l="Worth today" className="num">
-                  {worth === null || worth === 0n ? (
+                  {worth !== null && worth > 0n ? `${amount(worth)} XLM` : null}
+                  {waitingHere > 0n ? (
+                    <span className={worth !== null && worth > 0n ? "muted" : undefined}>
+                      {worth !== null && worth > 0n ? " + " : ""}
+                      {amount(waitingHere)} XLM waiting
+                    </span>
+                  ) : null}
+                  {(worth === null || worth === 0n) && waitingHere === 0n ? (
                     <span className="muted">no position</span>
-                  ) : (
-                    `${amount(worth)} XLM`
-                  )}
+                  ) : null}
                 </span>
                 <span data-l="What it is doing">
                   {r.error !== null ? (
