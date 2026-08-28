@@ -723,6 +723,32 @@ jobs:
         # has no business reflowing a sentence three people agreed on.
         run: pnpm fmt
 
+      # BEFORE lint and typecheck, not after — the order this job had until
+      # 2026-08-28, when restoring the automatic triggers ran it against the
+      # finished web app for the first time and it failed with 331 errors, every
+      # one of them "a type that could not be resolved".
+      #
+      # `packages/common` and `packages/bindings` are consumed through their
+      # compiled `dist/`, which is gitignored. Type-aware linting of anything
+      # that imports them therefore has nothing to resolve until they are built,
+      # so eslint was being asked to typecheck against packages that did not
+      # exist yet. The ordering was always wrong; it was invisible while there
+      # was almost no TypeScript importing them, and CI had been manual-only
+      # since 2026-08-18, so nothing ran against the app until the triggers came
+      # back. One automatic run found it.
+      - name: build (pnpm -r build)
+        # Real work rather than an echo for `packages/common`: Node does not
+        # type-strip files under `node_modules/`, and pnpm links workspace
+        # packages there — so a compiled `dist/` is the only thing keeper/,
+        # bidder/, web/ and integration/ can actually import.
+        #
+        # The network is a build input with no default anywhere — `next.config.mjs`
+        # throws without it rather than shipping a page pointed at a network
+        # nobody chose. CI has to supply it for the same reason a developer does.
+        env:
+          NEXT_PUBLIC_NETWORK: testnet
+        run: pnpm build
+
       - name: lint (eslint, --max-warnings 0)
         # `-D warnings`' equivalent. Type-aware rules are on, because the ones
         # worth having need types: an un-awaited promise in the keeper's loop is
@@ -731,13 +757,6 @@ jobs:
 
       - name: typecheck (tsc --noEmit, strict)
         run: pnpm typecheck
-
-      - name: build (pnpm -r build)
-        # Real work rather than an echo for `packages/common`: Node does not
-        # type-strip files under `node_modules/`, and pnpm links workspace
-        # packages there — so a compiled `dist/` is the only thing keeper/,
-        # bidder/, web/ and integration/ can actually import.
-        run: pnpm build
 
       - name: unit tests
         run: pnpm test
