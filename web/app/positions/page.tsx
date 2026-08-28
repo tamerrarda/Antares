@@ -4,6 +4,7 @@ import { useFleet } from "../../components/useFleet.ts";
 import { useWallet } from "../../components/useWallet.ts";
 import { amount, duration, when } from "../../lib/format.ts";
 import { faceOf, windowOpensAt } from "../../lib/phase.ts";
+import { instances } from "../../lib/deployment.ts";
 import { summarise, waitingWorth } from "../../lib/positions.ts";
 import { vaultName } from "../../lib/vault-name.ts";
 
@@ -18,6 +19,9 @@ import { vaultName } from "../../lib/vault-name.ts";
  * already stacks every cell and wraps the pill (see globals.css).
  */
 const COLS = "200px 1fr 1fr max-content 1fr";
+
+/** The Phase-2 set, D-47: five instances differing only in their terms. `scripts/instances.json` is its home. */
+const FLEET_SIZE = 5;
 
 export default function PositionsPage() {
   const wallet = useWallet();
@@ -34,6 +38,17 @@ export default function PositionsPage() {
    * `lib/positions.ts` so it can be tested without a browser or a round.
    */
   const { total, waiting, vaults } = summarise(rows);
+
+  /**
+   * How many the record names, which is not how many answered.
+   *
+   * `rows` starts empty and fills once every vault has been read, so a count taken from it says
+   * "five are planned and none exist" for as long as the chain takes — and says exactly that in the
+   * prerendered HTML, which is the first thing a visitor sees. How many instances are deployed is a
+   * fact about the deployment record, and the record is a build-time import: it needs no network to
+   * answer, and it cannot be wrong while loading.
+   */
+  const deployed = instances().length;
 
   return (
     <>
@@ -161,17 +176,26 @@ export default function PositionsPage() {
         </div>
       </article>
 
-      {rows.length < 5 && (
+      {deployed < FLEET_SIZE && (
         <article className="card">
           <h2>
-            <span>Four vaults are planned and not yet deployed</span>
+            {/*
+              Counted, not written down. This read "Four vaults are planned" while one was deployed,
+              which was true the day it was typed and false the morning two more went out — a number
+              in prose is a number nobody updates. The body already derived its half from the record;
+              the heading is the half that drifted.
+            */}
+            <span>
+              {FLEET_SIZE - deployed} {deployed === FLEET_SIZE - 1 ? "vault is" : "vaults are"} planned and
+              not yet deployed
+            </span>
           </h2>
           <div className="body">
             <p className="sub" style={{ marginTop: 0, maxWidth: "82ch" }}>
-              Phase 2 runs five instances at once, differing only in how long money is committed and how far
-              the price can rise before you stop keeping the gain. This build reads the deployment record, and
-              the record lists {rows.length}. The others will appear here the day they exist — drawing them
-              now would be showing you a plan and calling it a product.
+              Phase 2 runs {FLEET_SIZE} instances at once, differing only in how long money is committed and
+              how far the price can rise before you stop keeping the gain. This build reads the deployment
+              record, and the record lists {deployed}. The others will appear here the day they exist —
+              drawing them now would be showing you a plan and calling it a product.
             </p>
           </div>
         </article>
