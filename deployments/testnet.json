@@ -1,11 +1,11 @@
 {
-  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run — deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57).",
+  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run — deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain describe the MOST RECENT run; each instance carries its own copy of the three, because once the file holds instances from more than one run the top-level values are wrong for the older ones.",
   "network": "testnet",
-  "deployedAt": "2026-08-24T09:11:48.782Z",
+  "deployedAt": "2026-08-28T10:06:09.251Z",
   "deployerIdentity": "antares-testnet",
   "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
   "sourceTree": {
-    "commit": "87e4224a6b408acf3d1db98480d5c2d1e8e49244",
+    "commit": "1cbed1eb678f0813d6839a5d5114a8b4f0f37943",
     "dirty": false,
     "dirtyPaths": []
   },
@@ -42,6 +42,21 @@
       "label": "smoke:request_withdraw",
       "hash": "d299d00d4487eaa89d985224ea01653c1de35a09b83cb277a5f42921633eb731",
       "explorer": "https://stellar.expert/explorer/testnet/tx/d299d00d4487eaa89d985224ea01653c1de35a09b83cb277a5f42921633eb731"
+    },
+    {
+      "label": "create:vault-C",
+      "hash": "3a51bfb598cdb9d36c457d6ee47cf25d12941fb6b51f0c62328b887907a0d011",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/3a51bfb598cdb9d36c457d6ee47cf25d12941fb6b51f0c62328b887907a0d011"
+    },
+    {
+      "label": "smoke:deposit",
+      "hash": "70d8c592fc5afac529c17d269bf06ce5e6e40ca942821c1ab6e2a607c82b3c07",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/70d8c592fc5afac529c17d269bf06ce5e6e40ca942821c1ab6e2a607c82b3c07"
+    },
+    {
+      "label": "smoke:request_withdraw",
+      "hash": "e444da3ca8fc7ac5a679129face6bc81acd494374b39b219de6fb2525dab774d",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/e444da3ca8fc7ac5a679129face6bc81acd494374b39b219de6fb2525dab774d"
     }
   ],
   "instances": [
@@ -74,6 +89,50 @@
       "allowlistExpiresAt": 1788772283,
       "economicallyMeaningless": false,
       "explorer": "https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA"
+    },
+    {
+      "tokenSuffix": "-C",
+      "vaultId": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "createTx": "3a51bfb598cdb9d36c457d6ee47cf25d12941fb6b51f0c62328b887907a0d011",
+      "vaultWasmHash": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
+      "params": {
+        "epoch_duration": 259200,
+        "auction_duration": 2700,
+        "min_idle_gap": 7200,
+        "strike_bps_otm": 200,
+        "premium_start_bps": 325,
+        "premium_floor_bps": 72,
+        "twap_window": 900,
+        "guard_window": 3600,
+        "max_staleness": 600,
+        "max_deviation_bps": 90,
+        "oracle_dead_after": 43200,
+        "settle_grace": 7200,
+        "unresolved_after": 75600,
+        "min_fill": 1000000000,
+        "min_deposit": 100000000,
+        "settle_bounty_bps": 25
+      },
+      "depositCap": 1000000000000,
+      "rentThreshold": 120960,
+      "rentExtendTo": 518400,
+      "allowlistExpiresAt": 1789121135,
+      "economicallyMeaningless": false,
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "deployedAt": "2026-08-28T10:06:09.249Z",
+      "sourceTree": {
+        "commit": "1cbed1eb678f0813d6839a5d5114a8b4f0f37943",
+        "dirty": false,
+        "dirtyPaths": []
+      },
+      "toolchain": {
+        "rust": "1.95.0",
+        "stellarCli": "27.1.0",
+        "sorobanSdk": "=27.0.6",
+        "target": "wasm32v1-none",
+        "node": "v22.18.0",
+        "buildHost": "darwin-arm64"
+      }
     }
   ]
 }
