@@ -46,6 +46,19 @@ export interface DeployedInstance {
    * memory precisely so that a fast-test round can never be presented as demand evidence later.
    */
   readonly economicallyMeaningless: boolean;
+  /**
+   * The run that produced **this** instance, when the record holds more than one.
+   *
+   * Optional because records written before 2026-08-28 do not carry them: `deploy.ts` wrote the
+   * whole file from one run, so the top-level `deployedAt` / `sourceTree` / `toolchain` described
+   * every instance in it by construction. `--only` ended that — a record can now hold instances
+   * from different trees and different toolchains, and a `vaultWasmHash` without the tree and
+   * toolchain that produced it is not reproducible, which is the claim the file exists to make.
+   * Absent means "the top-level values", which is true of every record that predates the merge.
+   */
+  readonly deployedAt?: string;
+  readonly sourceTree?: Readonly<Record<string, unknown>>;
+  readonly toolchain?: Readonly<Record<string, unknown>>;
 }
 
 export interface DeploymentRecord {

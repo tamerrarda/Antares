@@ -896,6 +896,76 @@ const step6: Stage = {
   mutates: false,
   run: (ctx) => {
     const path = join(ctx.root, "deployments", `${ctx.net.name}.json`);
+
+    /**
+     * What is already on disk, because a deploy adds instances rather than replacing a file.
+     *
+     * This step wrote the whole record from `ctx.deployed` until 2026-08-28, which was correct for
+     * the only run it was written for: D-47's set goes out in one pass. `--only` makes that
+     * assumption false. Deploying `-C` against a file that names `-E` replaced the record with a
+     * single-instance one, and every reader — `web/lib/deployment.ts` takes `instances[0]`, the
+     * README's table, `WALKTHROUGH.md`'s provenance — would then have pointed at a vault that was
+     * minutes old while the live one held real deposits and a running round. Nothing warned; the
+     * file simply became a smaller truth.
+     */
+    const prior = existsSync(path)
+      ? (JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>)
+      : null;
+    const priorInstances = Array.isArray(prior?.["instances"])
+      ? (prior["instances"] as Record<string, unknown>[])
+      : [];
+    const priorTransactions = Array.isArray(prior?.["transactions"])
+      ? (prior["transactions"] as { label: string; hash: string; explorer: string }[])
+      : [];
+
+    /**
+     * The half of the record that is shared by every instance in it, checked before anything is
+     * written rather than after.
+     *
+     * `assetId` and `oracleId` sit at the top level and describe all of them. If a later run points
+     * at a different asset or a different adapter, merging would file two incompatible sets under
+     * one header and the header would be wrong for half of them. That is not a merge conflict to
+     * resolve quietly — it is a different deployment, and it belongs in a different file.
+     */
+    const moved =
+      prior === null
+        ? null
+        : prior["network"] !== ctx.net.name
+          ? "network"
+          : prior["assetId"] !== ctx.assetId
+            ? "assetId"
+            : prior["oracleId"] !== ctx.adapterId
+              ? "oracleId"
+              : null;
+    if (moved !== null) {
+      return Promise.resolve([
+        mkCheck(
+          "record.mergeable",
+          "the existing record describes the same asset, oracle and network as this run",
+          `${moved} unchanged`,
+          `${moved} differs`,
+          false,
+          `${path} already names a different ${moved}. Merging would put two deployments under one ` +
+            "header that is wrong for one of them. Move the old file aside deliberately, or deploy " +
+            "against the deployment it already describes.",
+        ),
+      ]);
+    }
+
+    /** The provenance that varies per run, so a carried-forward instance is not described by the newest one. */
+    const runStamp = {
+      deployedAt: new Date().toISOString(),
+      sourceTree: ctx.sourceTree,
+      toolchain: {
+        rust: ctx.pins!.rust,
+        stellarCli: ctx.pins!.stellarCli,
+        sorobanSdk: ctx.pins!.sorobanSdk,
+        target: "wasm32v1-none",
+        node: process.version,
+        buildHost: buildHost(),
+      },
+    };
+
     const record = {
       _what: RECORD_PREAMBLE,
       network: ctx.net.name,
@@ -949,27 +1019,41 @@ const step6: Stage = {
       // transactions themselves, so a hash not written down here cannot be recovered afterwards by
       // any amount of archaeology — and reconstructing them from the deployer account's history
       // only works while that account is young. D2 is evidenced by these.
-      transactions: ctx.transactions,
-      instances: ctx.deployed.map((d) => {
-        const inst = ctx.instances.find((i) => i.suffix === d.suffix)!;
-        return {
-          tokenSuffix: d.suffix,
-          vaultId: d.vaultId,
-          /** The transaction that created this instance — the one a reader follows first. */
-          createTx: d.txHash,
-          vaultWasmHash: ctx.wasm["antares_vault"]!.sha256,
-          params: epochParamsJson(inst),
-          depositCap: inst.depositCap,
-          rentThreshold: inst.rentThreshold,
-          rentExtendTo: inst.rentExtendTo,
-          allowlistExpiresAt: ctx.allowlistExpiresAt,
-          // D-57/§2 step 0b: a fast-test profile is stamped economically meaningless, permanently.
-          // It is a property of the record rather than of anyone's memory precisely so that a
-          // fast-test round can never be presented as demand evidence later.
-          economicallyMeaningless: ctx.opts.fastTest,
-          explorer: explorerContractUrl(ctx.net, d.vaultId),
-        };
-      }),
+      // Appended, never replaced. §3 says a testnet reset erases the transactions themselves, so a
+      // hash dropped from this list cannot be recovered by any amount of archaeology — and D2 is
+      // evidenced by exactly these. An incremental deploy that kept only its own would delete the
+      // evidence for every instance it did not create.
+      transactions: [...priorTransactions, ...ctx.transactions],
+      instances: mergeInstances(
+        priorInstances,
+        ctx.deployed.map((d) => {
+          const inst = ctx.instances.find((i) => i.suffix === d.suffix)!;
+          return {
+            tokenSuffix: d.suffix,
+            vaultId: d.vaultId,
+            /** The transaction that created this instance — the one a reader follows first. */
+            createTx: d.txHash,
+            vaultWasmHash: ctx.wasm["antares_vault"]!.sha256,
+            params: epochParamsJson(inst),
+            depositCap: inst.depositCap,
+            rentThreshold: inst.rentThreshold,
+            rentExtendTo: inst.rentExtendTo,
+            allowlistExpiresAt: ctx.allowlistExpiresAt,
+            // D-57/§2 step 0b: a fast-test profile is stamped economically meaningless, permanently.
+            // It is a property of the record rather than of anyone's memory precisely so that a
+            // fast-test round can never be presented as demand evidence later.
+            economicallyMeaningless: ctx.opts.fastTest,
+            explorer: explorerContractUrl(ctx.net, d.vaultId),
+            // **The run that produced THIS instance**, not the run that last touched the file.
+            // The top-level `sourceTree`, `toolchain` and `deployedAt` describe the most recent
+            // deploy; once a record holds instances from more than one run, they are wrong for the
+            // older ones. `vaultWasmHash` is already per-instance, and without the tree and the
+            // toolchain beside it that hash is not reproducible — which is the whole claim this
+            // file makes.
+            ...runStamp,
+          };
+        }),
+      ),
     };
     writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
     return Promise.resolve([
@@ -1005,6 +1089,28 @@ const step6: Stage = {
   },
 };
 
+/**
+ * Prior instances plus this run's, keyed by `tokenSuffix`.
+ *
+ * Order is the file's own: an instance keeps the position it had, and anything new is appended, so
+ * a reader that takes `instances[0]` keeps pointing at what it pointed at yesterday. Same suffix
+ * means the same instance was deployed again, and the newer entry wins — a redeploy replaces its
+ * own row rather than adding a second one that a reader would have to choose between.
+ *
+ * Exported because it is the whole of the merge and it is worth a test: getting it backwards
+ * either loses a live vault or files two rows for one suffix, and neither shows up until something
+ * reads the record much later.
+ */
+export function mergeInstances<T extends { tokenSuffix: string }>(
+  prior: readonly Record<string, unknown>[],
+  fresh: readonly T[],
+): (T | Record<string, unknown>)[] {
+  const bySuffix = new Map(fresh.map((f) => [f.tokenSuffix, f]));
+  const kept = prior.map((p) => bySuffix.get(String(p["tokenSuffix"])) ?? p);
+  const seen = new Set(prior.map((p) => String(p["tokenSuffix"])));
+  return [...kept, ...fresh.filter((f) => !seen.has(f.tokenSuffix))];
+}
+
 const RECORD_PREAMBLE =
   "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract " +
   "id is allowed to live outside packages/common/networks.ts, and every other tool reads its " +
@@ -1014,7 +1120,11 @@ const RECORD_PREAMBLE =
   "script builds the wasm during the same run — deployments/adapter-testnet.json separates them " +
   "because it profiles a contract deployed earlier, where they are genuinely different trees. " +
   "economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that " +
-  "way can never be presented as demand evidence (D-57).";
+  "way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only " +
+  "merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its " +
+  "transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain " +
+  "describe the MOST RECENT run; each instance carries its own copy of the three, because once the " +
+  "file holds instances from more than one run the top-level values are wrong for the older ones.";
 
 // =================================================================================================
 // The chain client step 5 runs against

@@ -17,6 +17,7 @@ import {
   DeployRefused,
   STAGES,
   epochParamsJson,
+  mergeInstances,
   namedArgsFor,
   parseOptions,
   recordTx,
@@ -377,4 +378,45 @@ test("the parser holds against real CLI output, not just against hand-written fi
     c.transactions.map((t) => [t.label, t.hash]),
     [["create:oracle", H1]],
   );
+});
+
+/**
+ * The merge, which is what makes `--only` safe.
+ *
+ * Step 6 wrote the whole record from one run until 2026-08-28. Deploying a second instance against
+ * a file that already named one replaced it: the record shrank to the newer vault, and every reader
+ * — `web/lib/deployment.ts` takes `instances[0]` — silently followed. The live vault kept the
+ * deposits and lost the only file allowed to name it. These assert both directions of the fix,
+ * because getting it backwards fails in two different ways and neither is visible at deploy time.
+ */
+const row = (tokenSuffix: string, vaultId: string) => ({ tokenSuffix, vaultId });
+
+test("a new suffix is appended and the existing instances survive", () => {
+  const merged = mergeInstances([row("-E", "C_E")], [row("-C", "C_C")]);
+  assert.deepEqual(
+    merged.map((m) => m["tokenSuffix"]),
+    ["-E", "-C"],
+    "the live instance is still in the record, and still first",
+  );
+  assert.equal(merged[0]?.["vaultId"], "C_E");
+});
+
+test("the same suffix deployed again replaces its own row rather than adding a second", () => {
+  const merged = mergeInstances([row("-E", "OLD"), row("-C", "C_C")], [row("-E", "NEW")]);
+  assert.equal(merged.length, 2, "one suffix must never occupy two rows");
+  assert.equal(merged[0]?.["vaultId"], "NEW", "the newer deploy wins");
+  assert.equal(merged[0]?.["tokenSuffix"], "-E", "and keeps its position, so instances[0] is stable");
+  assert.equal(merged[1]?.["vaultId"], "C_C");
+});
+
+test("a first deploy, with nothing on disk, is just this run", () => {
+  assert.deepEqual(
+    mergeInstances([], [row("-A", "C_A")]).map((m) => m["tokenSuffix"]),
+    ["-A"],
+  );
+});
+
+test("a run that deploys nothing leaves the record exactly as it found it", () => {
+  const prior = [row("-E", "C_E"), row("-C", "C_C")];
+  assert.deepEqual(mergeInstances(prior, []), prior);
 });
