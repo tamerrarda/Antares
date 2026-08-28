@@ -48,17 +48,22 @@ deliberate design choice that makes being a counterparty possible in a thin mark
 
 ## 1b. There is more than one auction
 
-During the counterparty phase **five vaults run concurrently** — the same contract, identical in
-every respect except their terms, each with its own share token (`aXLM-A` … `aXLM-E`) and its own
-auction, so you can price them against each other and fill only the terms that work for you:
+The counterparty phase runs **several vaults concurrently** — the same contract and the same price
+adapter, identical in every respect except their terms, each with its own share token (`aXLM-A` …
+`aXLM-E`) and its own auction, so you can price them against each other and fill only the terms that
+work for you. **Three are live as of 2026-08-28**, and this table says which:
 
-| | Duration | Strike |
-|---|---|---|
-| **A** | 7 days | 3 % out of the money — the mainnet-target configuration |
-| **B** | 7 days | 5 % |
-| **C** | 3 days | 2 % — the nearest to the money |
-| **D** | 14 days | 5 % |
-| **E** | 3 days | 3 % |
+| | Duration | Strike | |
+|---|---|---|---|
+| **A** | 7 days | 3 % out of the money — the mainnet-target configuration | **live** |
+| **B** | 7 days | 5 % | not deployed |
+| **C** | 3 days | 2 % — the nearest to the money | **live** |
+| **D** | 14 days | 5 % | not deployed |
+| **E** | 3 days | 3 % | **live** |
+
+The live three are addressed in [`deployments/testnet.json`](../deployments/testnet.json), which is
+the only place in this repository a contract id lives. **E against C isolates moneyness and E
+against A isolates duration** — one variable each, which is why those three and not any three.
 
 That is the whole point: we do not know which duration and which moneyness a real counterparty
 wants, and asking five questions at once is faster than asking the same one five times. Each vault

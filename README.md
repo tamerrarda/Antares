@@ -193,20 +193,27 @@ power in the system and who holds it, including the ones we would rather did not
 
 ## What's deployed
 
-Stellar **testnet**, one vault. Every address links to an explorer; every wasm hash can be reproduced
-by building this repository at the commit named.
+Stellar **testnet**, three vaults. They run the **same wasm** against the **same price adapter** and
+differ only in their terms — which is what makes them comparable, and is the whole point of running
+more than one. Every address links to an explorer; every wasm hash can be reproduced by building
+this repository at the commit named.
 
 | | Address | Wasm SHA-256 |
 |---|---|---|
 | **Vault** (`aXLM-E`, 3-day, 3 % OTM) | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2` |
-| **Price adapter** (what the vault reads) | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
+| **Vault** (`aXLM-C`, 3-day, 2 % OTM) | [`CAQY7L34…2J5ENSK6`](https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6) | *the same* |
+| **Vault** (`aXLM-A`, 7-day, 3 % OTM) | [`CD7QODWT…462Y7K2R`](https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R) | *the same* |
+| **Price adapter** (what all three read) | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
 | CEX & DEX XLM/USD feed (third-party) | [`CCYOZJCO…MJRN63`](https://stellar.expert/explorer/testnet/contract/CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63) | — |
 | XLM, native Stellar Asset Contract | [`CDLZFC3S…HHGCYSC`](https://stellar.expert/explorer/testnet/contract/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC) | — |
 
-Deployed 2026-08-24T09:11:48Z by `antares-testnet`
+`aXLM-E` was deployed 2026-08-24 from commit `87e4224a`; `aXLM-C` and `aXLM-A` on 2026-08-28, from
+`1cbed1eb` and `cac1632c`. All three by `antares-testnet`
 ([`GDFPSLES…EKBQQ`](https://stellar.expert/explorer/testnet/account/GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ)),
-from a **clean tree** at commit `87e4224a` — a deploy from a dirty tree is refused before anything is
-submitted, because a commit id identifies the code that ran only if the tree was clean.
+each from a **clean tree** — a deploy from a dirty tree is refused before anything is submitted,
+because a commit id identifies the code that ran only if the tree was clean. Three commits and one
+wasm hash is not a contradiction: the later two changed the deploy script, never the contract, and
+the hash column is what proves it.
 
 The full record — constructor arguments, all sixteen round parameters, the toolchain and the build host
 — is in [`deployments/testnet.json`](deployments/testnet.json), written by the deploy script as it

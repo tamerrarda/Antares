@@ -39,7 +39,7 @@ and prints it at startup.
 | | |
 |---|---|
 | Network | Stellar testnet |
-| Vault | [`CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) |
+| Vault | `aXLM-E` — [`CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) — one of three now running, and the only one this document follows |
 | Oracle adapter | [`CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) — pinned at construction and **immutable**; there is no setter |
 | Price source | Reflector's external CEX & DEX XLM/USD feed |
 | Epoch | 3 days (259 200 s), 2026-08-24T14:48:28Z → 2026-08-27T14:48:28Z |
@@ -50,6 +50,13 @@ and prints it at startup.
 
 The parameters are the shipped set, not a demonstration set. `deployments/testnet.json` records
 them alongside the toolchain and the host that built the wasm.
+
+**One vault, deliberately.** Two more — `aXLM-C` at 2 % out of the money and `aXLM-A` over seven
+days — went live on 2026-08-28 running the same wasm against the same adapter, so that a
+counterparty has terms to compare rather than one point to accept or refuse. This document follows
+`aXLM-E` from end to end because a cycle is only evidence if it is one cycle: three interleaved
+would be a longer page and a weaker proof. The others' rounds appear in the app's round history and
+in the same deployment record.
 
 ## The cycle
 
