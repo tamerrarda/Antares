@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { deployment } from "../lib/deployment.ts";
+import { deployment, instances } from "../lib/deployment.ts";
+import { vaultName } from "../lib/vault-name.ts";
 import { DOCS, FEEDBACK, REPO as REPO_ROOT } from "../lib/links.ts";
 
 /**
@@ -17,6 +18,15 @@ const REPO = `${REPO_ROOT}/blob/main`;
 export function SiteFooter() {
   const d = deployment();
   const explorer = (id: string) => `https://stellar.expert/explorer/${d.network}/contract/${id}`;
+  /**
+   * Every vault, not the first one.
+   *
+   * This column said "Vault contract on stellar.expert" and linked `instances[0]` — correct while
+   * one vault existed and quietly wrong from the morning three did, because the footer is on every
+   * page and cannot know which one a reader is looking at. Naming each by its terms is the version
+   * that stays true as the set grows, and a single-vault deployment reads exactly as it did before.
+   */
+  const vaults = instances();
   return (
     <footer>
       <div className="foot-in">
@@ -45,11 +55,16 @@ export function SiteFooter() {
             <li>
               <Link href="/rounds/">Round history</Link>
             </li>
-            <li>
-              <a href={explorer(d.vaultId)} target="_blank" rel="noreferrer">
-                Vault contract on stellar.expert ↗
-              </a>
-            </li>
+            {vaults.map((v) => (
+              <li key={v.tokenSuffix}>
+                <a href={explorer(v.vaultId)} target="_blank" rel="noreferrer">
+                  {vaults.length === 1
+                    ? "Vault contract on stellar.expert"
+                    : `${vaultName(v.epochDuration, v.strikeBpsOtm)} vault on stellar.expert`}{" "}
+                  ↗
+                </a>
+              </li>
+            ))}
             <li>
               <a href={explorer(d.oracleId)} target="_blank" rel="noreferrer">
                 Oracle adapter on stellar.expert ↗
