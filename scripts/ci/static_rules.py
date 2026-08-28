@@ -166,6 +166,50 @@ def no_temporary_storage():
     return out, []
 
 
+def unwrap_is_one_documented_pattern():
+    """07-SECURITY §4's `unsafe-unwrap`, made mechanical.
+
+    That detector is the one Scout names for which §4 records **no equivalent
+    instrument** — it "rests on review alone". Both static analysers that could
+    supply it are inoperative, measured 2026-08-28: `cargo-scout-audit` 0.3.16
+    cannot build against D-23's pinned target and reports "Analyzed" with zero
+    findings while exiting 0, and OpenZeppelin's scanner panics on any input,
+    a minimal ASCII contract included. Waiting for either is waiting.
+
+    So the property is asserted here instead, and it is narrow enough to be
+    honest: the vault's non-test code contains **no `.unwrap()` at all**, and
+    every `.expect()` is the same one — reading `Config` or `State`, which the
+    constructor makes unrepresentable-as-absent. Eleven of them at the time of
+    writing, all identical in shape.
+
+    This is not the detector. A detector reasons about whether an unwrap can
+    reach a panic; this asks whether the codebase keeps a rule it already keeps.
+    But the promise "no foreseeable condition panics" is exactly the kind that
+    decays by one convenient `.unwrap()` in a hurry, and that is what this
+    catches — every run, rather than at the next review.
+    """
+    out = []
+    comment = re.compile(r"^[^\S\n]*(//|/\*|\*)")
+    allowed = re.compile(
+        r"storage::get_(config|state)\(&?env\)\s*$|"
+        r"storage::get_(config|state)\(&?env\)\.expect\("
+    )
+    for f in vault_sources():
+        lines = f.read_text().split("\n")
+        for i, ln in enumerate(lines, 1):
+            if comment.match(ln):
+                continue
+            if ".unwrap()" in ln:
+                out.append(f"{rel(f)}:{i}  bare .unwrap() -> {ln.strip()[:56]}")
+            if ".expect(" in ln:
+                # The getter and its `.expect(` may sit on two lines; look at the
+                # pair, because the rule is about the call, not about wrapping.
+                window = ln + (lines[i - 2] if i >= 2 else "")
+                if not allowed.search(window):
+                    out.append(f"{rel(f)}:{i}  .expect() outside the storage-getter pattern -> {ln.strip()[:44]}")
+    return out, [f"{len(vault_sources())} non-test vault sources scanned"]
+
+
 # ------------------------------------------------------------ 07-SECURITY ---
 def outbound_calls():
     """07-SECURITY §3: the vault may not call an address it was not constructed with.
@@ -543,6 +587,7 @@ RULES = (
     ("07-SECURITY §3 outbound calls declared", outbound_calls),
     ("04-ORACLE §3b price-source calls are recoverable", oracle_calls_are_recoverable),
     ("07-SECURITY §6 no signing-capable secret", no_signing_secrets),
+    ("07-SECURITY §4 unwrap is one documented pattern", unwrap_is_one_documented_pattern),
     ("workflow keys unique", workflow_keys_unique),
     ("python is standard-library only", python_is_stdlib_only),
     ("typescript declarations are unique", typescript_declarations_are_unique),
