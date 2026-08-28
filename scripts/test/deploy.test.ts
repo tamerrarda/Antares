@@ -16,6 +16,7 @@ import {
   CALL_SIGNATURES,
   DeployRefused,
   STAGES,
+  USAGE,
   epochParamsJson,
   mergeInstances,
   namedArgsFor,
@@ -419,4 +420,26 @@ test("a first deploy, with nothing on disk, is just this run", () => {
 test("a run that deploys nothing leaves the record exactly as it found it", () => {
   const prior = [row("-E", "C_E"), row("-C", "C_C")];
   assert.deepEqual(mergeInstances(prior, []), prior);
+});
+
+/**
+ * `--oracle`, which is what keeps a five-instance experiment an experiment.
+ *
+ * Step 2 deployed a fresh adapter on every run. Adding `-C` to a set already running `-E` therefore
+ * gave `-C` a different oracle from the instance it exists to be compared against, and the record's
+ * one top-level `oracleId` could no longer describe both. The flag reuses instead — and step 2's
+ * served-bytes assertion still runs, so an adapter that has drifted from the tree fails rather than
+ * being adopted because it happened to be named.
+ */
+test("an adapter can be named, from a flag or the environment", () => {
+  assert.equal(parseOptions(["--identity", "d", "--oracle", "C_ORACLE"]).oracleId, "C_ORACLE");
+  assert.equal(parseOptions(["--identity", "d"], { ORACLE_ID: "C_ENV" }).oracleId, "C_ENV");
+});
+
+test("no adapter named means deploy one, which is the behaviour every prior run had", () => {
+  assert.equal(parseOptions(["--identity", "d"], {}).oracleId, undefined);
+});
+
+test("the flag is documented, because an undocumented deploy flag is a private one", () => {
+  assert.match(USAGE, /--oracle <C\.\.\.>/);
 });

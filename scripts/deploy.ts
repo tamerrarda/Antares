@@ -76,6 +76,20 @@ import type { ChainClient, ObservedEvent } from "./verify-deployment.ts";
 export interface Options {
   readonly identity: string;
   readonly reflectorId?: string;
+  /**
+   * An oracle adapter that is already deployed, reused instead of deploying another.
+   *
+   * The five-instance experiment is only an experiment if the instances differ in their terms and
+   * in nothing else — `BIDDER.md` §1b says "the same contract, identical in every respect except
+   * their terms". Step 2 deploys a fresh adapter every run, so adding an instance later gave it a
+   * different oracle from the ones already running, and the record's single top-level `oracleId`
+   * could no longer describe the set. Reuse keeps the comparison honest and the record coherent.
+   *
+   * It does not skip the assertion, only the deployment: the bytes the network serves for this id
+   * are still fetched and hashed against the adapter step 1 built. Reusing an adapter that has
+   * drifted from the tree fails there, which is the answer a reviewer needs.
+   */
+  readonly oracleId?: string;
   readonly seriesPath: string;
   readonly paramsPath: string;
   readonly fastTest: boolean;
@@ -456,16 +470,25 @@ const step2: Stage = {
         // the real-adapter path had been carried, reviewed and never executed.
         { feed: ctx.opts.reflectorId!, asset: "XLM" };
 
-    const out = runStellar(
-      buildDeployArgv({
-        wasmPath: built.path,
-        identity: ctx.opts.identity,
-        net: ctx.netArgs,
-        constructorArgs,
-      }),
-    );
-    ctx.adapterId = parseContractId(`${out.stdout}\n${out.stderr}`);
-    recordTx(ctx, out, `upload:${which}`, "create:oracle");
+    // Reuse, when one was named. Adding an instance to a running set must not give it a different
+    // oracle from the instances it is meant to be compared against — see `Options.oracleId`. The
+    // assertion below is unchanged either way, and on this path it is doing more work than on the
+    // other: it proves an adapter deployed by an earlier run is still the bytes this tree builds.
+    const reused = ctx.opts.oracleId;
+    if (reused === undefined) {
+      const out = runStellar(
+        buildDeployArgv({
+          wasmPath: built.path,
+          identity: ctx.opts.identity,
+          net: ctx.netArgs,
+          constructorArgs,
+        }),
+      );
+      ctx.adapterId = parseContractId(`${out.stdout}\n${out.stderr}`);
+      recordTx(ctx, out, `upload:${which}`, "create:oracle");
+    } else {
+      ctx.adapterId = reused;
+    }
 
     // D-50 end to end, and 04-ORACLE §1's claim, both read back off the network. Until this call
     // the surface assertion was about a file in our tree; after it, it is about the contract users
@@ -474,9 +497,11 @@ const step2: Stage = {
     const checks: Check[] = [
       mkCheck(
         "adapter.deployed",
-        "the adapter is deployed and its id was read unambiguously",
+        reused === undefined
+          ? "the adapter is deployed and its id was read unambiguously"
+          : "the named adapter is the one this run will pin, and it was not redeployed",
         "one contract id",
-        ctx.adapterId,
+        `${ctx.adapterId}${reused === undefined ? "" : " (reused)"}`,
         true,
         explorerContractUrl(ctx.net, ctx.adapterId),
       ),
@@ -1334,6 +1359,7 @@ export function parseOptions(argv: readonly string[], env = process.env): Option
   return {
     identity: values.get("identity") ?? env["DEPLOY_IDENTITY"] ?? "",
     reflectorId: values.get("reflector") ?? env["REFLECTOR_ID"],
+    oracleId: values.get("oracle") ?? env["ORACLE_ID"],
     seriesPath: resolvePath(values.get("series") ?? join(root, "deployments", "xlm-price-series.json")),
     // `--fast-test` points at the fast-test profile, because otherwise the flag points at nothing:
     // instances.json holds production parameter sets, whose seven-day epochs are the very thing the
@@ -1363,7 +1389,7 @@ function repoRoot(): string {
   );
 }
 
-const USAGE = `usage: NETWORK=testnet deploy.ts --identity <name> [options]
+export const USAGE = `usage: NETWORK=testnet deploy.ts --identity <name> [options]
 
   09-DEPLOYMENT §2's deploy procedure. Every gate runs in sequence and the first failure
   refuses the deploy; there is deliberately no flag to proceed past one.
@@ -1371,6 +1397,9 @@ const USAGE = `usage: NETWORK=testnet deploy.ts --identity <name> [options]
   --identity <name>   a stellar CLI identity NAME. The secret never reaches this process
                       (07-SECURITY §6), which is why the record can carry an identity name.
   --reflector <C...>  the pinned Reflector contract. Required unless --fast-test.
+  --oracle <C...>     reuse an adapter already deployed instead of deploying another. Its
+                      served bytes are still hashed against the one step 1 built, so a
+                      drifted adapter fails rather than being adopted silently.
   --series <path>     daily closes; sigma is MEASURED from them, never assumed (D-53).
   --params <path>     the instance set (default scripts/instances.json).
   --experiment        deploy all five instances from one upload (D-47/D-57). Without it,
