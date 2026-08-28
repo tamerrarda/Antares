@@ -64,7 +64,11 @@ export function useVault(address: string | null, suffix?: string): VaultRead {
     return () => {
       live = false;
     };
-  }, [address, nonce]);
+    // `suffix` belongs here, and leaving it out is not a lint nit. The picker changed the URL and
+    // the highlighted button while every figure on the page stayed the vault you had left — which
+    // reads as "these two vaults have identical terms" rather than as a control that did nothing.
+    // Measured on the deployed build the day the picker shipped.
+  }, [address, nonce, suffix]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);

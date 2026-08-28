@@ -93,7 +93,10 @@ function toRaw(e: RpcEvent): RawEvent {
  * page that refuses to render because it met one would be worse than one that renders the rest and
  * names what it skipped.
  */
-export async function fetchEvents(env: Record<string, string | undefined> = {}): Promise<EventPage> {
+export async function fetchEvents(
+  env: Record<string, string | undefined> = {},
+  suffix?: string,
+): Promise<EventPage> {
   const net = network(env);
   const server = new rpc.Server(net.rpcUrl ?? "https://soroban-testnet.stellar.org");
   const [health, latest] = await Promise.all([server.getHealth(), server.getLatestLedger()]);
@@ -120,7 +123,7 @@ export async function fetchEvents(env: Record<string, string | undefined> = {}):
   for (let page = 0; page < 40; page += 1) {
     const res = await server.getEvents({
       ...(cursor === undefined ? { startLedger: oldest } : { cursor }),
-      filters: [{ type: "contract", contractIds: [deployment().vaultId] }],
+      filters: [{ type: "contract", contractIds: [deployment(suffix).vaultId] }],
       limit: 200,
     });
 

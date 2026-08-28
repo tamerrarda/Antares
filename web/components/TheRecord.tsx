@@ -18,8 +18,8 @@ import { foldRounds, OUTCOME_LABEL, type Outcome } from "../lib/rounds.ts";
  * The premium figure is what was **kept**, not what was collected: an annulled round hands its
  * premium back, and counting it would credit depositors with money that left the vault.
  */
-export function TheRecord() {
-  const { page } = useEvents();
+export function TheRecord({ suffix }: { suffix?: string }) {
+  const { page } = useEvents(suffix);
   if (page === null) return null;
 
   const rounds = foldRounds(page.events);

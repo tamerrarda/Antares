@@ -11,7 +11,11 @@ import { fetchEvents, type EventPage } from "../lib/events.ts";
  * pages and the retention window is seven days of them. That is a few seconds, and it is why this
  * is not on a timer: the history only changes when a round ends.
  */
-export function useEvents(): { page: EventPage | null; error: string | null; reload: () => void } {
+export function useEvents(suffix?: string): {
+  page: EventPage | null;
+  error: string | null;
+  reload: () => void;
+} {
   const [page, setPage] = useState<EventPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -20,7 +24,7 @@ export function useEvents(): { page: EventPage | null; error: string | null; rel
     let live = true;
     void (async () => {
       try {
-        const p = await fetchEvents({ NETWORK: process.env["NEXT_PUBLIC_NETWORK"] });
+        const p = await fetchEvents({ NETWORK: process.env["NEXT_PUBLIC_NETWORK"] }, suffix);
         if (live) setPage(p);
       } catch (cause) {
         if (live) setError(cause instanceof Error ? cause.message : String(cause));
@@ -29,7 +33,7 @@ export function useEvents(): { page: EventPage | null; error: string | null; rel
     return () => {
       live = false;
     };
-  }, [nonce]);
+  }, [nonce, suffix]);
 
   return {
     page,

@@ -333,7 +333,7 @@ export default function VaultPage() {
           {/* The anti-APY card. It reads seven days of events, which is a few seconds — so it is
               placed after the round's own numbers and renders itself when it is ready rather than
               holding the page. */}
-          <TheRecord />
+          <TheRecord suffix={suffix} />
 
           {/* Before the operator card on purpose: what anyone can do comes above what only the
               operator can, because that is the order the trust claim runs in. In the idle face this
