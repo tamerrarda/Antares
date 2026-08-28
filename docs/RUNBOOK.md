@@ -20,6 +20,15 @@ Pause blocks exactly three things — `deposit`, `bid` and `open_epoch` — and 
 never ways out. Two of the nine are permissionless as well as unpausable: **anyone** can close a
 round or open one, including a depositor who is tired of waiting for us.
 
+**Seven of the nine are buttons; two are not, and neither is missing.** `claim_fee` pays the fee
+recipient rather than a depositor, so the app shows what it owes and offers no control for it.
+`restore_position` re-bumps a dormant entry's storage lifetime, and you should never need it: under
+Protocol 23 any ordinary transaction restores whatever it touches, so your own withdrawal restores
+your own position on its way through. It is callable by **anyone** precisely so a helper can keep a
+dormant position out of the archive without holding anything of yours — the keeper sweeps every
+known depositor monthly for exactly that reason. If you would rather not depend on either, the call
+takes your address and no authorization at all.
+
 ## Incidents
 
 ### 1. Stale oracle — the feed stops answering
