@@ -12,7 +12,10 @@ import { readEpoch, vaultClient } from "../lib/vault.ts";
  * every round the contract still holds — which is the whole reason 08-OFFCHAIN §3's warning about
  * a bidder "who looked a round late" finding an empty page does not apply here.
  */
-export function useClaims(bidder: string | null): {
+export function useClaims(
+  bidder: string | null,
+  suffix?: string,
+): {
   data: ClaimsRead | null;
   loading: boolean;
   error: string | null;
@@ -33,8 +36,8 @@ export function useClaims(bidder: string | null): {
     void (async () => {
       try {
         const env = { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] };
-        const epoch = await readEpoch(vaultClient(env));
-        const out = await readClaims(bidder, epoch.round, env);
+        const epoch = await readEpoch(vaultClient(env, suffix));
+        const out = await readClaims(bidder, epoch.round, env, suffix);
         if (live) setData(out);
       } catch (cause) {
         if (live) setError(cause instanceof Error ? cause.message : String(cause));
@@ -45,7 +48,7 @@ export function useClaims(bidder: string | null): {
     return () => {
       live = false;
     };
-  }, [bidder, nonce]);
+  }, [bidder, nonce, suffix]);
 
   return { data, loading, error, reload: useCallback(() => setNonce((n) => n + 1), []) };
 }

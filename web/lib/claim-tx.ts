@@ -22,8 +22,9 @@ export async function claim(
   bidder: string,
   signer: Parameters<typeof submit>[1],
   env: Record<string, string | undefined> = {},
+  suffix?: string,
 ): Promise<TxOutcome<bigint>> {
-  const client = writeClient(bidder, env);
+  const client = writeClient(bidder, env, suffix);
 
   const payout = await submit<bigint>(client.claim_payout({ round, bidder }), signer);
   if (payout.status === "sent") return payout;

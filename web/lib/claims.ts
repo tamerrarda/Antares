@@ -63,8 +63,9 @@ async function readOne(
   round: number,
   bidder: string,
   env: Record<string, string | undefined>,
+  suffix?: string,
 ): Promise<ClaimRow | null> {
-  const client = vaultClient(env);
+  const client = vaultClient(env, suffix);
   try {
     const tx = (await client.bidder_position({ round, bidder })) as unknown as Sim;
     if (typeof tx.simulation?.error === "string") return null;
@@ -101,6 +102,7 @@ export async function readClaims(
   bidder: string,
   currentRound: number,
   env: Record<string, string | undefined> = {},
+  suffix?: string,
 ): Promise<ClaimsRead> {
   const to = currentRound;
   const from = Math.max(1, to - MAX_ROUNDS + 1);
@@ -110,7 +112,7 @@ export async function readClaims(
   const rows: ClaimRow[] = [];
   for (let i = 0; i < rounds.length; i += BATCH) {
     const slice = rounds.slice(i, i + BATCH);
-    const found = await Promise.all(slice.map((r) => readOne(r, bidder, env)));
+    const found = await Promise.all(slice.map((r) => readOne(r, bidder, env, suffix)));
     for (const row of found) if (row !== null) rows.push(row);
   }
 

@@ -5,6 +5,8 @@ import { useState } from "react";
 import { ChainDown } from "../../components/ChainDown.tsx";
 import { Refusal } from "../../components/Refusal.tsx";
 import { useClaims } from "../../components/useClaims.ts";
+import { useInstance } from "../../components/useInstance.ts";
+import { VaultPicker } from "../../components/VaultPicker.tsx";
 import { useEvents } from "../../components/useEvents.ts";
 import { useWallet } from "../../components/useWallet.ts";
 import { claim } from "../../lib/claim-tx.ts";
@@ -18,9 +20,11 @@ const COLS = "58px 130px 1fr 1fr 190px";
 
 export default function ClaimsPage() {
   const wallet = useWallet();
-  const { data, loading, error, reload } = useClaims(wallet.address);
-  const { page } = useEvents();
-  const d = deployment();
+  const { all, current, select } = useInstance();
+  const suffix = current.tokenSuffix;
+  const { data, loading, error, reload } = useClaims(wallet.address, suffix);
+  const { page } = useEvents(suffix);
+  const d = deployment(suffix);
 
   const [busy, setBusy] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<TxOutcome<bigint> | null>(null);
@@ -50,6 +54,7 @@ export default function ClaimsPage() {
           },
         },
         { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] },
+        suffix,
       );
       setOutcome(result);
       if (result.status === "sent") reload();
@@ -72,6 +77,7 @@ export default function ClaimsPage() {
               ones.
             </span>
           </div>
+          <VaultPicker all={all} current={current} onSelect={select} />
         </div>
       </div>
 

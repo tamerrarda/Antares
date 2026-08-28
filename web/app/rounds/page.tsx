@@ -4,6 +4,8 @@ import Link from "next/link";
 
 import { ChainDown } from "../../components/ChainDown.tsx";
 import { useEvents } from "../../components/useEvents.ts";
+import { useInstance } from "../../components/useInstance.ts";
+import { VaultPicker } from "../../components/VaultPicker.tsx";
 import { deployment } from "../../lib/deployment.ts";
 import { amount, when } from "../../lib/format.ts";
 import { foldRounds, OUTCOME_LABEL, type Outcome } from "../../lib/rounds.ts";
@@ -21,8 +23,10 @@ function Pill({ outcome }: { outcome: Outcome }) {
 }
 
 export default function RoundsPage() {
-  const { page, error, reload } = useEvents();
-  const d = deployment();
+  const { all, current, select } = useInstance();
+  const suffix = current.tokenSuffix;
+  const { page, error, reload } = useEvents(suffix);
+  const d = deployment(suffix);
 
   if (error !== null) {
     return <ChainDown detail={error} onRetry={reload} />;
@@ -60,6 +64,7 @@ export default function RoundsPage() {
               Each row keeps the transaction that ended it.
             </span>
           </div>
+          <VaultPicker all={all} current={current} onSelect={select} />
         </div>
       </div>
 
