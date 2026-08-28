@@ -74,8 +74,15 @@ import { RECORD_CAP_TICKS, reachSeconds } from '@antares/common/oracle';
 /** The UI's live-window assumption, in seconds (`06-TEST-PLAN.md` §7b, DEV3's Claims page). */
 const UI_LIVE_WINDOW_SECONDS = 7 * 24 * 3600;
 
-/** The protocol version the deployed wasm is built against — `soroban-sdk =27.0.6`, D-23. */
-const EXPECTED_PROTOCOL_VERSION = 27;
+/**
+ * The protocol version the deployed wasm is **built against** — `soroban-sdk =27.0.6`, D-23.
+ *
+ * A floor, not a target. `09-DEPLOYMENT.md` states the rule as `protocolVersion >= the protocol the
+ * build targets` and gives the reason in the same sentence: *"testnet upgrades first, so this is the
+ * check that catches a testnet-only feature before it reaches production."* A network ahead of the
+ * build is the expected state, not the failure.
+ */
+const MIN_PROTOCOL_VERSION = 27;
 
 /**
  * The shipped testnet/mainnet parameter table, instance A (`02-CONTRACT-SPEC.md` §1). Used only
@@ -350,9 +357,20 @@ async function main(): Promise<void> {
   const protocolVersion = Number(network.protocolVersion ?? latest.protocolVersion ?? 0);
   record(
     'E-2',
-    'network protocolVersion matches the SDK the wasm was built against',
-    protocolVersion === EXPECTED_PROTOCOL_VERSION ? 'PASS' : 'FAIL',
-    `live ${protocolVersion}; expected ${EXPECTED_PROTOCOL_VERSION} (soroban-sdk =27.0.6, D-23)`,
+    'network protocolVersion is at or above the protocol the wasm was built against',
+    protocolVersion >= MIN_PROTOCOL_VERSION ? 'PASS' : 'FAIL',
+    `live ${protocolVersion}; build targets ${MIN_PROTOCOL_VERSION} (soroban-sdk =27.0.6, D-23)` +
+      (protocolVersion > MIN_PROTOCOL_VERSION
+        ? ' — ahead, which is expected: deployed contracts stay compatible across an upgrade, but the ' +
+          'recorded resource profile was measured on the older protocol and metering can move with one. ' +
+          'Re-run scripts/profile-resources.ts so the recorded numbers describe the live network.'
+        : ''),
+    'Asserted as a FLOOR, per 09-DEPLOYMENT: testnet upgrades before mainnet, so a network ahead of ' +
+      'the build is the normal state and the check exists to catch the opposite — a build that needs ' +
+      'a protocol the network does not have yet. It was written as an equality until 2026-08-28 and ' +
+      'refused a deploy the day testnet moved to 28, against a wasm the network was still running ' +
+      'happily. Its row in 06-TEST-PLAN is the only one in that table with no stated reason, which is ' +
+      'how an equality nobody argued for survived next to a design that says otherwise.',
   );
 
   const oracle = await Oracle.connect(env, network.friendbotUrl ?? undefined);
