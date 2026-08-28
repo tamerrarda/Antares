@@ -34,6 +34,51 @@ cap has no effect on value. (An earlier version of this paragraph said the oppos
 price it below a vanilla call. That was wrong, and it was wrong in your favour to notice: the
 Black-Scholes figures this project publishes have always assumed the vanilla payoff.)
 
+### Who this document was written for, and who else it might be for
+
+Everything below prices an option. It assumes you can estimate volatility, compare a premium
+against Black-Scholes, and decide whether the auction is cheap. That is a **desk** — and Stellar
+has no options desk, which this project has said in writing since before it deployed anything.
+
+There is a second reader, and the mechanism suits them better than it suits the first. Strip the
+vocabulary and what §1 describes is a **leveraged directional bet on XLM with the downside already
+paid**: you put up a premium, you never post collateral, there is no margin call and no
+liquidation, and if you are wrong you lose exactly what you put up and not a cent more. Somebody
+who wants XLM upside without a liquidation price is not doing options; they are doing the thing
+options were invented for.
+
+**What it costs, on the seven-day vault.** Read off the chain on **2026-08-28** rather than
+invented — and read off it again before you act, because the spot moves and every row below moves
+with it. The strike and the premium do not: they were fixed when the round opened and are what the
+vault will settle against.
+
+| | |
+|---|---|
+| Spot | $0.1782 |
+| Strike | $0.1874 — **5.2 %** above spot |
+| Premium | 472 bps, so a **100 XLM** ticket costs **4.72 XLM** |
+| Break-even | $0.1967 — XLM has to rise **10.4 %** before you are ahead |
+| Time | about six days |
+
+| If XLM ends at | you receive | net |
+|---|---|---|
+| $0.17 | 0 | **−4.72** |
+| $0.1874 (the strike) | 0 | **−4.72** |
+| $0.20 | 6.28 | +1.56 |
+| $0.22 | 14.80 | +10.08 |
+| $0.25 | 25.02 | +20.30 |
+
+**Read the first two rows before the last three.** A 10.4 % move in six days is not the base case,
+and the option is worth nothing at anything below it — not less, nothing. Of the rounds this
+project has settled so far, **one of one expired worthless**: the buyer paid 4.92 XLM and received
+zero. That is the ordinary outcome of buying a call, and any framing of this as an opportunity that
+hides it is a framing to distrust.
+
+Three vaults are live at once and their terms differ (§1b): the three-day vault struck 2 % out of
+the money is a shorter, nearer bet, and the seven-day 3 % is the one priced above. **Nothing here is
+advice**, and this project cannot give any — it is a description of a mechanism you can verify
+yourself before spending anything, which is the only thing it has ever claimed to offer.
+
 ### The capital point
 
 Under physical settlement a counterparty must hold `strike × notional` to write or take the other
