@@ -114,14 +114,27 @@ export function instances(): readonly Instance[] {
   });
 }
 
-export function deployment(): Deployment {
+/**
+ * The instance a page is looking at, by `tokenSuffix`; the first one when nothing is named.
+ *
+ * `instances[0]` was the whole answer while one vault existed. Three do now, and a reader who can
+ * see them in a list but cannot open any but the first is being shown a catalogue with one door.
+ * The default stays `instances[0]` on purpose — a URL with no selection is the vault every existing
+ * link already means, so nothing that was written down stops pointing where it pointed.
+ *
+ * An unknown suffix falls back rather than throwing: it arrives from a query string, which is to
+ * say from anywhere, and a stale link should open the default vault instead of an error page.
+ */
+export function deployment(suffix?: string): Deployment {
   const instances = record.instances as ReadonlyArray<Record<string, unknown>>;
-  const instance = instances[0];
+  const at = suffix === undefined ? -1 : instances.findIndex((i) => i["tokenSuffix"] === suffix);
+  const index = at === -1 ? 0 : at;
+  const instance = instances[index];
   if (instance === undefined) {
     throw new DeploymentError("deployments/testnet.json records no instance.");
   }
   return {
-    vaultId: requireString(instance["vaultId"], "instances[0].vaultId"),
+    vaultId: requireString(instance["vaultId"], `instances[${index}].vaultId`),
     oracleId: requireString(record.oracleId, "oracleId"),
     assetId: requireString(record.assetId, "assetId"),
     network: requireString(record.network, "network"),

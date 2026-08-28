@@ -28,7 +28,7 @@ export interface VaultRead {
  * The failure path is a first-class return rather than a thrown promise: a visitor whose RPC is
  * blocked should be told that, not shown an empty vault.
  */
-export function useVault(address: string | null): VaultRead {
+export function useVault(address: string | null, suffix?: string): VaultRead {
   const [epoch, setEpoch] = useState<EpochInfo | null>(null);
   const [config, setConfig] = useState<ConfigView | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
@@ -42,7 +42,7 @@ export function useVault(address: string | null): VaultRead {
     // is what tells the linter that the effect deliberately does not await its own body.
     void (async () => {
       try {
-        const client = vaultClient({ NETWORK: process.env["NEXT_PUBLIC_NETWORK"] });
+        const client = vaultClient({ NETWORK: process.env["NEXT_PUBLIC_NETWORK"] }, suffix);
         const [e, c] = await Promise.all([readEpoch(client), readConfig(client)]);
         if (!live) return;
         setEpoch(e);

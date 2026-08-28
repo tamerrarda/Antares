@@ -57,12 +57,16 @@ async function preview<T>(build: Promise<unknown>, site: CallSite): Promise<Prev
 export function previewClose(
   bountyTo: string,
   env: Record<string, string | undefined> = {},
+  suffix?: string,
 ): Promise<Preview<RoundOutcome>> {
-  return preview<RoundOutcome>(vaultClient(env).close_round({ bounty_to: bountyTo }), "close");
+  return preview<RoundOutcome>(vaultClient(env, suffix).close_round({ bounty_to: bountyTo }), "close");
 }
 
-export function previewOpen(env: Record<string, string | undefined> = {}): Promise<Preview<boolean>> {
-  return preview<boolean>(vaultClient(env).open_epoch(), "open");
+export function previewOpen(
+  env: Record<string, string | undefined> = {},
+  suffix?: string,
+): Promise<Preview<boolean>> {
+  return preview<boolean>(vaultClient(env, suffix).open_epoch(), "open");
 }
 
 /**
@@ -82,8 +86,12 @@ export function previewBid(
   notional: bigint,
   maxPremiumBps: number,
   env: Record<string, string | undefined> = {},
+  suffix?: string,
 ): Promise<Preview<bigint>> {
-  return preview<bigint>(vaultClient(env).bid({ bidder, notional, max_premium_bps: maxPremiumBps }), "bid");
+  return preview<bigint>(
+    vaultClient(env, suffix).bid({ bidder, notional, max_premium_bps: maxPremiumBps }),
+    "bid",
+  );
 }
 
 /** What closing would produce, said the way a depositor experiences it. */

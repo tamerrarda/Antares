@@ -32,6 +32,7 @@ export function ActionPanel({
   position,
   liveRound,
   onDone,
+  suffix,
 }: {
   epoch: EpochInfo;
   config: ConfigView;
@@ -39,6 +40,8 @@ export function ActionPanel({
   position: Position | null;
   liveRound: boolean;
   onDone: () => void;
+  /** Which vault this panel acts on — the page's current selection. */
+  suffix: string;
 }) {
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [value, setValue] = useState("");
@@ -127,7 +130,7 @@ export function ActionPanel({
     }
   }
 
-  const client = wallet.address === null ? null : writeClient(wallet.address, env);
+  const client = wallet.address === null ? null : writeClient(wallet.address, env, suffix);
   const who = wallet.address ?? "";
 
   // A button that says "connect wallet" and cannot be pressed is an instruction with nothing behind

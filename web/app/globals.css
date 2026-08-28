@@ -1407,3 +1407,29 @@ footer .said b {
     padding: 18px 0 0;
   }
 }
+
+/* ---- the vault picker ------------------------------------------------------------------- */
+/* Buttons that look like the `.pill` the tables already use, because they name the same thing:
+   a vault's terms. `.hot` is the current one, and `aria-current` carries that to a reader who
+   cannot see which is lit. */
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.picker .pill {
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: var(--dim);
+}
+.picker .pill:hover {
+  color: var(--ink);
+  border-color: var(--rule);
+}
+.picker .pill.hot {
+  color: var(--ember);
+  border-color: rgba(255, 107, 61, 0.45);
+}

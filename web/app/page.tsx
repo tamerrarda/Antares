@@ -3,6 +3,8 @@
 import Link from "next/link";
 
 import { ActionPanel } from "../components/ActionPanel.tsx";
+import { useInstance } from "../components/useInstance.ts";
+import { VaultPicker } from "../components/VaultPicker.tsx";
 import { BidPanel } from "../components/BidPanel.tsx";
 import { ChainDown } from "../components/ChainDown.tsx";
 import { AuctionCurve } from "../components/AuctionCurve.tsx";
@@ -30,8 +32,10 @@ function vaultName(epochSeconds: bigint, otmBps: number): string {
 
 export default function VaultPage() {
   const wallet = useWallet();
-  const { epoch, config, position, error, now, reload } = useVault(wallet.address);
-  const d = deployment();
+  const { all, current, select } = useInstance();
+  const suffix = current.tokenSuffix;
+  const { epoch, config, position, error, now, reload } = useVault(wallet.address, suffix);
+  const d = deployment(suffix);
 
   if (error !== null) {
     return <ChainDown detail={error} onRetry={reload} />;
@@ -77,6 +81,12 @@ export default function VaultPage() {
             <strong>{face.label}</strong>
             <span>{face.note}</span>
           </div>
+          {/*
+            Under the heading rather than in the site header: the choice is what this page is about,
+            not where you are in the site, and it changes every figure below it. It renders nothing
+            while one vault exists, so the page reads exactly as it did before the set grew.
+          */}
+          <VaultPicker all={all} current={current} onSelect={select} />
         </div>
         <div className="spot">
           <span className="k">Price per share</span>
@@ -119,7 +129,7 @@ export default function VaultPage() {
                 block. It exists only in this face — outside the auction window a bid cannot happen
                 at all, and a control that is always refused teaches people to ignore controls.
               */}
-              <BidPanel epoch={epoch} wallet={wallet} onDone={reload} />
+              <BidPanel epoch={epoch} wallet={wallet} onDone={reload} suffix={suffix} />
             </article>
           )}
 
@@ -274,6 +284,7 @@ export default function VaultPage() {
                 wallet={wallet}
                 bountyAddress={wallet.address ?? config.admin}
                 onDone={reload}
+                suffix={suffix}
               />
             </article>
           )}
@@ -328,7 +339,12 @@ export default function VaultPage() {
               operator can, because that is the order the trust claim runs in. In the idle face this
               is not rendered here — it is inside the window card, beside the state it acts on. */}
           {face.id !== "window" && (
-            <Permissionless wallet={wallet} bountyAddress={wallet.address ?? config.admin} onDone={reload} />
+            <Permissionless
+              wallet={wallet}
+              bountyAddress={wallet.address ?? config.admin}
+              onDone={reload}
+              suffix={suffix}
+            />
           )}
 
           <article className="card">
@@ -394,6 +410,7 @@ export default function VaultPage() {
             position={position}
             liveRound={face.id !== "window"}
             onDone={reload}
+            suffix={suffix}
           />
           <Calendar epoch={epoch} face={face.id} />
 

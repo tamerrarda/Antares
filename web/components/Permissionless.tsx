@@ -23,9 +23,12 @@ export function Permissionless({
   wallet,
   bountyAddress,
   onDone,
+  suffix,
   bare = false,
 }: {
   wallet: WalletState;
+  /** Which vault these two calls act on — the page's current selection. */
+  suffix: string;
   /** Whoever would collect the close bounty — the visitor, so the figure shown is theirs. */
   bountyAddress: string;
   onDone: () => void;
@@ -47,7 +50,7 @@ export function Permissionless({
     let live = true;
     const env = { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] };
     void (async () => {
-      const [c, o] = await Promise.all([previewClose(bountyAddress, env), previewOpen(env)]);
+      const [c, o] = await Promise.all([previewClose(bountyAddress, env, suffix), previewOpen(env, suffix)]);
       if (!live) return;
       setClose(c);
       setOpen(o);
@@ -55,7 +58,7 @@ export function Permissionless({
     return () => {
       live = false;
     };
-  }, [bountyAddress]);
+  }, [bountyAddress, suffix]);
 
   const canClose = close?.kind === "would-succeed";
   const canOpen = open?.kind === "would-succeed";
@@ -64,7 +67,7 @@ export function Permissionless({
   async function fire(key: "close" | "open") {
     const address = wallet.address;
     if (address === null) return;
-    const client = writeClient(address, { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] });
+    const client = writeClient(address, { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] }, suffix);
     const built = key === "close" ? client.close_round({ bounty_to: address }) : client.open_epoch();
     const result = await run(key, built, key);
     if (result?.status === "sent") onDone();

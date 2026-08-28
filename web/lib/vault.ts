@@ -39,10 +39,10 @@ export function network(env: Record<string, string | undefined> = {}): NetworkCo
 }
 
 /** A read-only client against the deployed vault. */
-export function vaultClient(env: Record<string, string | undefined> = {}): Client {
+export function vaultClient(env: Record<string, string | undefined> = {}, suffix?: string): Client {
   const net = network(env);
   return new Client({
-    contractId: deployment().vaultId,
+    contractId: deployment(suffix).vaultId,
     networkPassphrase: net.networkPassphrase,
     rpcUrl: resolveRpcUrl(net, env),
     // No `publicKey` and no signer: every call in this module simulates. A read that needed an
@@ -69,10 +69,14 @@ export function clientFor(contractId: string, env: Record<string, string | undef
   });
 }
 
-export function writeClient(address: string, env: Record<string, string | undefined> = {}): Client {
+export function writeClient(
+  address: string,
+  env: Record<string, string | undefined> = {},
+  suffix?: string,
+): Client {
   const net = network(env);
   return new Client({
-    contractId: deployment().vaultId,
+    contractId: deployment(suffix).vaultId,
     networkPassphrase: net.networkPassphrase,
     rpcUrl: resolveRpcUrl(net, env),
     publicKey: address,

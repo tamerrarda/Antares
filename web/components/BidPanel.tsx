@@ -31,10 +31,13 @@ export function BidPanel({
   epoch,
   wallet,
   onDone,
+  suffix,
 }: {
   epoch: EpochInfo;
   wallet: WalletState;
   onDone: () => void;
+  /** Which vault this panel bids into — the page's current selection. */
+  suffix: string;
 }) {
   const [size, setSize] = useState("");
   const [ceiling, setCeiling] = useState(String(epoch.current_premium_bps));
@@ -59,9 +62,13 @@ export function BidPanel({
     }
     let live = true;
     const id = setTimeout(() => {
-      void previewBid(address, notional, maxBps, {
-        NETWORK: process.env["NEXT_PUBLIC_NETWORK"],
-      }).then((r) => {
+      void previewBid(
+        address,
+        notional,
+        maxBps,
+        { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] },
+        suffix,
+      ).then((r) => {
         if (live) setSim(r);
       });
     }, 350);
@@ -69,7 +76,7 @@ export function BidPanel({
       live = false;
       clearTimeout(id);
     };
-  }, [address, notional, maxBps]);
+  }, [address, notional, maxBps, suffix]);
 
   const wouldFill = sim?.kind === "would-succeed" ? sim.value : null;
   // Two numbers, because the bidder pays one and escrows the other. The ceiling is what leaves the
@@ -80,7 +87,7 @@ export function BidPanel({
 
   async function fire() {
     if (address === null || notional === null || maxBps === null) return;
-    const client = writeClient(address, { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] });
+    const client = writeClient(address, { NETWORK: process.env["NEXT_PUBLIC_NETWORK"] }, suffix);
     const result = await run(
       "bid",
       client.bid({ bidder: address, notional, max_premium_bps: maxBps }),
