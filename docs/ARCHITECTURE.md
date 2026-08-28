@@ -405,6 +405,19 @@ an indexer that only read it on `settled` would drift permanently the first time
 with a queued exit. `upgraded` carries the wasm hash and the *schema* version, which `upgrade` does
 not change: code and schema are versioned separately and only `migrate` moves the second.
 
+**Three events report an increment, not a balance.** `deposited`, `withdraw_requested` and
+`bid_filled` each carry what *that call* added, and each writes into a slot that accumulates within
+a round: a second deposit adds to `PendingDeposit(user)`, a second exit request adds to
+`PendingWithdraw(user)`, and a re-bid adds to `Fill(round, bidder)`. An indexer that treats the
+latest event as the position reports the last increment and silently loses everything before it.
+Measured on testnet 2026-08-28: an address whose queued exit held **600 000 000** shares had a most
+recent `withdraw_requested` saying **100 000 000**. Sum them, per user and per round.
+
+`bid_filled` does carry a running total, `notional_sold_after` — but it is the **round's**, not the
+bidder's, so it does not close the gap for a bidder reconstructing their own position from events.
+`deposit_cancelled` is the exception in the other direction: cancelling removes the slot whole, so
+its `amount` is the entire pending balance rather than a decrement.
+
 `epoch_lapsed`, `epoch_voided` and `epoch_unresolved` are deliberately first-class. An auction that clears empty is a data point about demand, not a failure to hide.
 
 **Rejected settlements emit nothing**, because in Soroban a reverting invocation discards its events along with its state — an event on a failing path is not implementable. A stale or deviating feed is observed through the error code that simulation returns, which is what the keeper alerts on. The full event ABI, including which fields are topics, is specified in the contract spec.
