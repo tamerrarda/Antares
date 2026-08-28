@@ -1,5 +1,5 @@
 {
-  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run — deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain describe the MOST RECENT run; each instance carries its own copy of the three, because once the file holds instances from more than one run the top-level values are wrong for the older ones.",
+  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT \u00a72). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run \u2014 deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent \u2014 a profile stamped that way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain describe the MOST RECENT run; each instance carries its own copy of the three, because once the file holds instances from more than one run the top-level values are wrong for the older ones.",
   "network": "testnet",
   "deployedAt": "2026-08-28T10:07:55.563Z",
   "deployerIdentity": "antares-testnet",
@@ -103,7 +103,21 @@
       "rentExtendTo": 518400,
       "allowlistExpiresAt": 1788772283,
       "economicallyMeaningless": false,
-      "explorer": "https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA"
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
+      "deployedAt": "2026-08-24T09:11:48.782Z",
+      "sourceTree": {
+        "commit": "87e4224a6b408acf3d1db98480d5c2d1e8e49244",
+        "dirty": false,
+        "dirtyPaths": []
+      },
+      "toolchain": {
+        "rust": "1.95.0",
+        "stellarCli": "27.1.0",
+        "sorobanSdk": "=27.0.6",
+        "target": "wasm32v1-none",
+        "node": "v22.18.0",
+        "buildHost": "darwin-arm64"
+      }
     },
     {
       "tokenSuffix": "-C",

@@ -443,3 +443,34 @@ test("no adapter named means deploy one, which is the behaviour every prior run 
 test("the flag is documented, because an undocumented deploy flag is a private one", () => {
   assert.match(USAGE, /--oracle <C\.\.\.>/);
 });
+
+/**
+ * Provenance on an instance the merge carries forward, which is the half that decays silently.
+ *
+ * `deployedAt` / `sourceTree` / `toolchain` were added per-instance on 2026-08-28 and documented as
+ * "absent means the top-level values". That is true of a record written by one run and false the
+ * moment a second rewrites the header: instance `-E`, deployed 2026-08-24 from `87e4224a`, resolved
+ * to the 2026-08-28 deploy of `-A` because it had no stamp of its own. Nothing reported it — the
+ * record simply began attributing one deploy's bytes to another's tree.
+ */
+const RUN_ONE = { deployedAt: "2026-08-24T09:11:48.782Z", sourceTree: { commit: "87e4224a" } };
+
+/** `mergeInstances` returns a union, and only its carried-forward half has these fields. */
+const field = (m: unknown, k: string): unknown => (m as Record<string, unknown>)[k];
+
+test("an instance with no stamp is given the header that actually described it", () => {
+  const merged = mergeInstances([row("-E", "C_E")], [row("-C", "C_C")], RUN_ONE);
+  assert.equal(field(merged[0], "deployedAt"), RUN_ONE.deployedAt, "-E keeps the run that deployed it");
+  assert.deepEqual(field(merged[0], "sourceTree"), RUN_ONE.sourceTree);
+});
+
+test("an instance that already carries its own stamp is left alone", () => {
+  const stamped = { ...row("-C", "C_C"), deployedAt: "2026-08-28T10:00:00Z" };
+  const merged = mergeInstances([stamped], [row("-A", "C_A")], RUN_ONE);
+  assert.equal(field(merged[0], "deployedAt"), "2026-08-28T10:00:00Z", "a later run must not overwrite it");
+});
+
+test("with no prior header there is nothing to stamp, and nothing is invented", () => {
+  const merged = mergeInstances([row("-E", "C_E")], [row("-C", "C_C")]);
+  assert.equal(field(merged[0], "deployedAt"), undefined);
+});

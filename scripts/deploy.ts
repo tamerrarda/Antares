@@ -1078,6 +1078,16 @@ const step6: Stage = {
             ...runStamp,
           };
         }),
+        // The header this file carried before this run — what described every instance already in
+        // it. Passed so a pre-stamp instance keeps its own provenance instead of inheriting the
+        // newest deploy's.
+        prior === null
+          ? undefined
+          : {
+              deployedAt: prior["deployedAt"],
+              sourceTree: prior["sourceTree"],
+              toolchain: prior["toolchain"],
+            },
       ),
     };
     writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
@@ -1129,9 +1139,18 @@ const step6: Stage = {
 export function mergeInstances<T extends { tokenSuffix: string }>(
   prior: readonly Record<string, unknown>[],
   fresh: readonly T[],
+  priorRun?: Readonly<Record<string, unknown>>,
 ): (T | Record<string, unknown>)[] {
   const bySuffix = new Map(fresh.map((f) => [f.tokenSuffix, f]));
-  const kept = prior.map((p) => bySuffix.get(String(p["tokenSuffix"])) ?? p);
+  const kept = prior.map((p) => {
+    const replaced = bySuffix.get(String(p["tokenSuffix"]));
+    if (replaced !== undefined) return replaced;
+    // A record written before instances carried their own provenance leaves this undefined, and
+    // "undefined means the top-level values" stops being true the moment a second run rewrites the
+    // top level. The prior file's own header is what described this instance, so it is stamped on
+    // before that header is replaced — after which the information is only in git.
+    return p["deployedAt"] === undefined && priorRun !== undefined ? { ...p, ...priorRun } : p;
+  });
   const seen = new Set(prior.map((p) => String(p["tokenSuffix"])));
   return [...kept, ...fresh.filter((f) => !seen.has(f.tokenSuffix))];
 }
@@ -1149,7 +1168,9 @@ const RECORD_PREAMBLE =
   "merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its " +
   "transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain " +
   "describe the MOST RECENT run; each instance carries its own copy of the three, because once the " +
-  "file holds instances from more than one run the top-level values are wrong for the older ones.";
+  "file holds instances from more than one run the top-level values are wrong for the older ones. " +
+  "An instance carried forward from a run that predates those fields is stamped with the header " +
+  "this file held before the merge, which is the last moment that header still described it.";
 
 // =================================================================================================
 // The chain client step 5 runs against

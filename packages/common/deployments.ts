@@ -54,7 +54,12 @@ export interface DeployedInstance {
    * every instance in it by construction. `--only` ended that — a record can now hold instances
    * from different trees and different toolchains, and a `vaultWasmHash` without the tree and
    * toolchain that produced it is not reproducible, which is the claim the file exists to make.
-   * Absent means "the top-level values", which is true of every record that predates the merge.
+   *
+   * This comment read "absent means the top-level values" until it was checked. That holds for a
+   * file one run wrote and breaks the moment a second rewrites the header: instance `-E`, deployed
+   * 2026-08-24 from `87e4224a`, resolved to the 2026-08-28 deploy of `-A`. So the merge now stamps
+   * a carried-forward instance with the header that actually described it, before replacing that
+   * header — and absent means only that nothing has merged over this record yet.
    */
   readonly deployedAt?: string;
   readonly sourceTree?: Readonly<Record<string, unknown>>;
