@@ -1,7 +1,7 @@
 {
   "tool": "scripts/verify-environment.ts",
-  "generated": "2026-08-28T10:05:05.711Z",
-  "finished": "2026-08-28T10:05:25.490Z",
+  "generated": "2026-08-28T10:07:02.166Z",
+  "finished": "2026-08-28T10:07:18.909Z",
   "mode": "full",
   "network": "testnet",
   "rpc": "https://soroban-testnet.stellar.org",
@@ -13,7 +13,7 @@
     "resolution": 300,
     "decimals": 14,
     "version": 6,
-    "lastTimestamp": 1787911200
+    "lastTimestamp": 1787911500
   },
   "measurements": {
     "reachableDepthTicks": 255,
@@ -24,33 +24,33 @@
     "sevenPointCostByAnchorAge": [
       {
         "ageSeconds": 300,
-        "totalCpu": 6323227,
-        "totalFee": 96730,
-        "maxCpu": 909812
+        "totalCpu": 6328379,
+        "totalFee": 96736,
+        "maxCpu": 910548
       },
       {
         "ageSeconds": 7200,
-        "totalCpu": 6369373,
-        "totalFee": 97007,
-        "maxCpu": 910501
+        "totalCpu": 6374525,
+        "totalFee": 97013,
+        "maxCpu": 911237
       },
       {
         "ageSeconds": 28800,
-        "totalCpu": 6368684,
-        "totalFee": 97006,
-        "maxCpu": 909812
+        "totalCpu": 6373836,
+        "totalFee": 97013,
+        "maxCpu": 910548
       },
       {
         "ageSeconds": 50400,
-        "totalCpu": 6368684,
-        "totalFee": 97006,
-        "maxCpu": 909812
+        "totalCpu": 6373836,
+        "totalFee": 97013,
+        "maxCpu": 910548
       },
       {
         "ageSeconds": 72600,
-        "totalCpu": 6368684,
-        "totalFee": 97006,
-        "maxCpu": 909812
+        "totalCpu": 6375214,
+        "totalFee": 97013,
+        "maxCpu": 911237
       }
     ],
     "pricesCollapseAt": 20,
@@ -89,7 +89,7 @@
       "id": "E-5",
       "what": "the unit of resolution() and of PriceData.timestamp is SECONDS, asserted rather than assumed",
       "status": "PASS",
-      "measured": "last_timestamp = 1787911200; ledger closeTime = 1787911502; |difference| = 302 s; resolution = 300",
+      "measured": "last_timestamp = 1787911500; ledger closeTime = 1787911622; |difference| = 122 s; resolution = 300",
       "note": "A millisecond feed would put last_timestamp about 1000x above the ledger clock. This is D-49 applied to the one value every other row takes for granted."
     },
     {
@@ -110,7 +110,7 @@
       "id": "E-8",
       "what": "seven-point battery cost, and that it does NOT vary with the anchor's age",
       "status": "PASS",
-      "measured": "age 300 s = 0 h 05 m -> 6323227 CPU insn, 96730 stroops; age 7200 s = 2 h 00 m -> 6369373 CPU insn, 97007 stroops; age 28800 s = 8 h 00 m -> 6368684 CPU insn, 97006 stroops; age 50400 s = 14 h 00 m -> 6368684 CPU insn, 97006 stroops; age 72600 s = 20 h 10 m -> 6368684 CPU insn, 97006 stroops  | spread 0.73 %",
+      "measured": "age 300 s = 0 h 05 m -> 6328379 CPU insn, 96736 stroops; age 7200 s = 2 h 00 m -> 6374525 CPU insn, 97013 stroops; age 28800 s = 8 h 00 m -> 6373836 CPU insn, 97013 stroops; age 50400 s = 14 h 00 m -> 6373836 CPU insn, 97013 stroops; age 72600 s = 20 h 10 m -> 6375214 CPU insn, 97013 stroops  | spread 0.74 %",
       "note": "D-64's residual rests entirely on this constancy: budget exhaustion is then a never-worked-at-all failure rather than a latent time bomb. Phase 1 measures per-call cost and their sum as a LOWER BOUND — the authoritative aggregate is Phase 3's resource profile against the real adapter (DEV2.md §3.2)."
     },
     {
@@ -124,7 +124,7 @@
       "id": "E-10",
       "what": "feed expires() outlives epoch_duration + unresolved_after (supports_round condition 7)",
       "status": "PASS",
-      "measured": "expires = 1788706882 -> runway 795380 s = 220 h 56 m; round_span 680400 s = 189 h 00 m",
+      "measured": "expires = 1788706882 -> runway 795260 s = 220 h 54 m; round_span 680400 s = 189 h 00 m",
       "note": "Sponsored feeds die on a schedule (04-ORACLE §5). This is the exact span condition 7 enforces on-chain; the older \"+ oracle_dead_after\" form was weaker than the gate, so a deploy passed and the first open_epoch refused."
     },
     {

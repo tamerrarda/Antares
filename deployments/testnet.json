@@ -1,11 +1,11 @@
 {
   "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT §2). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run — deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent — a profile stamped that way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain describe the MOST RECENT run; each instance carries its own copy of the three, because once the file holds instances from more than one run the top-level values are wrong for the older ones.",
   "network": "testnet",
-  "deployedAt": "2026-08-28T10:06:09.251Z",
+  "deployedAt": "2026-08-28T10:07:55.563Z",
   "deployerIdentity": "antares-testnet",
   "deployerAddress": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
   "sourceTree": {
-    "commit": "1cbed1eb678f0813d6839a5d5114a8b4f0f37943",
+    "commit": "cac1632c30a95a91e7798901b4d1f2c6d8640b26",
     "dirty": false,
     "dirtyPaths": []
   },
@@ -57,6 +57,21 @@
       "label": "smoke:request_withdraw",
       "hash": "e444da3ca8fc7ac5a679129face6bc81acd494374b39b219de6fb2525dab774d",
       "explorer": "https://stellar.expert/explorer/testnet/tx/e444da3ca8fc7ac5a679129face6bc81acd494374b39b219de6fb2525dab774d"
+    },
+    {
+      "label": "create:vault-A",
+      "hash": "9e37530c8585dfc435dfac84b2132ca997ad9ffc33af17e9477de60fcfb93cc5",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/9e37530c8585dfc435dfac84b2132ca997ad9ffc33af17e9477de60fcfb93cc5"
+    },
+    {
+      "label": "smoke:deposit",
+      "hash": "7ed087162da7a784f2c7e74b1ad11f3cc453a7f39bc774ab1b57663f42e1f94c",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/7ed087162da7a784f2c7e74b1ad11f3cc453a7f39bc774ab1b57663f42e1f94c"
+    },
+    {
+      "label": "smoke:request_withdraw",
+      "hash": "10a2280e49bc09c1e28edeb5f71a63e92f7590126c6c9729fb2f5d8eb48f5734",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/10a2280e49bc09c1e28edeb5f71a63e92f7590126c6c9729fb2f5d8eb48f5734"
     }
   ],
   "instances": [
@@ -122,6 +137,50 @@
       "deployedAt": "2026-08-28T10:06:09.249Z",
       "sourceTree": {
         "commit": "1cbed1eb678f0813d6839a5d5114a8b4f0f37943",
+        "dirty": false,
+        "dirtyPaths": []
+      },
+      "toolchain": {
+        "rust": "1.95.0",
+        "stellarCli": "27.1.0",
+        "sorobanSdk": "=27.0.6",
+        "target": "wasm32v1-none",
+        "node": "v22.18.0",
+        "buildHost": "darwin-arm64"
+      }
+    },
+    {
+      "tokenSuffix": "-A",
+      "vaultId": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "createTx": "9e37530c8585dfc435dfac84b2132ca997ad9ffc33af17e9477de60fcfb93cc5",
+      "vaultWasmHash": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
+      "params": {
+        "epoch_duration": 604800,
+        "auction_duration": 2700,
+        "min_idle_gap": 14400,
+        "strike_bps_otm": 300,
+        "premium_start_bps": 500,
+        "premium_floor_bps": 112,
+        "twap_window": 900,
+        "guard_window": 3600,
+        "max_staleness": 600,
+        "max_deviation_bps": 100,
+        "oracle_dead_after": 43200,
+        "settle_grace": 7200,
+        "unresolved_after": 75600,
+        "min_fill": 1000000000,
+        "min_deposit": 100000000,
+        "settle_bounty_bps": 25
+      },
+      "depositCap": 1000000000000,
+      "rentThreshold": 120960,
+      "rentExtendTo": 518400,
+      "allowlistExpiresAt": 1789121248,
+      "economicallyMeaningless": false,
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "deployedAt": "2026-08-28T10:07:55.562Z",
+      "sourceTree": {
+        "commit": "cac1632c30a95a91e7798901b4d1f2c6d8640b26",
         "dirty": false,
         "dirtyPaths": []
       },
