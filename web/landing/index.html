@@ -8,7 +8,13 @@
       name="description"
       content="Covered call vaults on Stellar. Deposit XLM, an on-chain auction prices an option over it, and the premium goes to depositors. Pre-alpha, testnet, unaudited."
     />
-    <link rel="icon" type="image/webp" href="./antares-mark-96.webp" />
+    <!-- Square, opaque PNGs rather than the mark itself: antares-mark-96.webp is 96×109 and a
+         near-white shape on transparency, so a browser squashes it into the tab's square slot and
+         then shows it against a light strip it cannot be seen on. Generated from the mark on
+         --void; web/app/layout.tsx carries the same three and says how. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./favicon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://antaresfinance.vercel.app/" />
     <meta property="og:title" content="Antares — covered call vaults on Stellar" />

@@ -7,39 +7,38 @@ import { WalletProvider } from "../components/useWallet.ts";
 import "./globals.css";
 
 /**
- * The mark, at the three sizes `public/` carries.
+ * The tab icon, and why it is a generated PNG rather than the mark itself.
  *
- * Written out with the base path rather than as `app/icon.webp`, for two reasons that both bite.
- * Next's file convention does not accept `.webp` — `.ico`, `.png`, `.jpg` and `.svg` only — and the
- * mark exists here as webp. And a bare `/antares-mark-96.webp` is a root-relative asset path, which
- * `basePath` does not rewrite; the header and the footer already carry the same prefix by hand for
- * the same reason, and `eslint.config.mjs` has a rule about it.
+ * `antares-mark-*.webp` is what the header draws, and it is the wrong file for this: it is
+ * **not square** (192×218, and 48×55, and 96×109), so a browser fits it into a square slot by
+ * squashing or letterboxing; and it is a near-white shape on transparency, so on a light tab strip
+ * it is invisible. Declaring it with `sizes="48x48"` — which this file did for one commit — also
+ * told the browser a size the image does not have.
  *
- * The landing page and the docs site both had a tab icon and the app had none, which is the surface
- * a depositor keeps open.
+ * `favicon-32.png`, `favicon-192.png` and `apple-touch-icon.png` are square, opaque, and carry the
+ * mark centred on `--void` (#05060a), which is the background it is drawn against everywhere else.
+ * Generated once from `antares-mark-192.webp` with Pillow — square canvas, mark at 86 % and
+ * centred — and committed, the same way `public/`'s other artwork is generated from sources kept
+ * out of the repository.
+ *
+ * Written out with the base path rather than as `app/icon.png`, because a root-relative asset path
+ * is not rewritten by `basePath`; the header and the footer carry the same prefix by hand and
+ * `eslint.config.mjs` has a rule about it.
  */
-const ICON = `${process.env["NEXT_PUBLIC_BASE_PATH"] ?? ""}/antares-mark-96.webp`;
-const ICON_LARGE = `${process.env["NEXT_PUBLIC_BASE_PATH"] ?? ""}/antares-mark-192.webp`;
-const ICON_SMALL = `${process.env["NEXT_PUBLIC_BASE_PATH"] ?? ""}/antares-mark-48.webp`;
+const BASE = process.env["NEXT_PUBLIC_BASE_PATH"] ?? "";
 
 export const metadata: Metadata = {
   title: "Antares",
   description: "A covered-call vault on Stellar. Unaudited, on testnet, and operated by nobody.",
   icons: {
     icon: [
-      { url: ICON_SMALL, sizes: "48x48", type: "image/webp" },
-      { url: ICON, sizes: "96x96", type: "image/webp" },
-      { url: ICON_LARGE, sizes: "192x192", type: "image/webp" },
+      { url: `${BASE}/favicon-32.png`, sizes: "32x32", type: "image/png" },
+      { url: `${BASE}/favicon-192.png`, sizes: "192x192", type: "image/png" },
     ],
-    apple: ICON_LARGE,
+    apple: { url: `${BASE}/apple-touch-icon.png`, sizes: "180x180", type: "image/png" },
   },
 };
 
-/**
- * The disclosure bar is permanent and not dismissible — 08-OFFCHAIN §3 puts it in the page rather
- * than in a toast, and the reference-bidder line is the one a reader is least likely to guess and
- * most entitled to know: the project may be the counterparty to its own user's round.
- */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
