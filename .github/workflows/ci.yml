@@ -22,26 +22,34 @@
 
 name: CI
 
-# MANUAL ONLY, and deliberately so (decided 2026-08-18).
+# AUTOMATIC AGAIN since 2026-08-28, on the condition this file set itself.
 #
-# The repository is private for now, so Actions minutes come out of a monthly
-# allowance rather than being free as they are on a public repository. Nothing
-# here fires on a push, a pull request or a schedule: run it from the Actions
-# tab, or `gh workflow run ci.yml --ref <branch>`.
+# It was manual-only from 2026-08-18 because the repository was private and
+# Actions minutes came out of a monthly allowance. That reason expired when the
+# repository went public on 2026-08-27 — minutes are free — and the note here
+# named two things to fix before restoring the triggers. Both are met:
 #
-# **It must be run, and its result recorded in `plan/STANDUP.md`, before every
-# integration-point signature.** That is what keeps D-50's reproducibility gate
-# a gate — the rule is that it is asserted from the first commit rather than
-# discovered at the mainnet deploy, and a workflow nobody runs asserts nothing.
-# 06-TEST-PLAN §8 carries this as the standing policy.
+#   1. `scout-audit` compiling itself on every run, 13 minutes to analyse
+#      nothing. It became `workflow_dispatch`-only on 2026-08-19, so no
+#      automatic trigger starts it: `inputs.run_scout` is undefined on `push`
+#      and `pull_request`, which is false. The same is true of the fuzz smoke
+#      and the mutation run.
+#   2. `push` plus `pull_request` running the whole chain twice for one commit.
+#      Solved by scope rather than by a condition: `push` fires on `main` only
+#      and `pull_request` only for PRs into `main`, so a branch gets exactly one
+#      run while it is a PR and exactly one when it lands. Pushing a branch with
+#      no PR open runs nothing, which is the case the old configuration paid
+#      for twice.
 #
-# Restore the automatic triggers when the repository goes public. When that
-# happens, fix two things first, both measured on the only automatic run this
-# workflow ever had (2026-08-18): `scout-audit` compiles itself from source on
-# every run — 13 minutes to analyse nothing — and `push` plus `pull_request`
-# together ran the whole chain twice for one commit. Without those two, a full
-# run is about ten billable minutes.
+# **The standing policy does not change.** 06-TEST-PLAN §8 requires a run whose
+# result is recorded in `plan/STANDUP.md` before every integration-point
+# signature; automatic runs are in addition to that, never instead of it. A
+# green tick nobody read is not the same as a result somebody wrote down.
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       # Off by default, and each is opt-in for its own reason. The fuzz smoke
@@ -76,6 +84,11 @@ env:
   # D-50's gate. Measured 2026-08-18: 27.1.0, released 2026-07-31.
   STELLAR_CLI_VERSION: "27.1.0"
   STELLAR_CLI_SHA256: "9915fe63753d7154c26bb9e6410cf1d1ff9727a9b378e663c2790ab7a266af94"
+  # The same release for aarch64, because the reproducible job now builds on both
+  # architectures. Measured against the published asset on 2026-08-28; the x86_64
+  # line above was re-derived the same way and matched, which is how this one is
+  # known to have been obtained correctly rather than pasted from somewhere.
+  STELLAR_CLI_SHA256_ARM: "750a8dcda225fab33c87fa0d0dc79936266ed62cd316245fba234f18aab385bd"
   WASM_HARD_LIMIT_BYTES: "65536" # 64 KB — the protocol's limit; hard fail
   WASM_WARN_BYTES: "49152" # 48 KB — warn, per 06-TEST-PLAN §8
   # NOTE: RUSTFLAGS is deliberately NOT set here. `stellar contract build` passes
@@ -352,9 +365,13 @@ jobs:
       - name: Install the pinned stellar-cli
         run: |
           set -euo pipefail
-          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          case "$(uname -m)" in
+            aarch64|arm64) arch=aarch64; sum="${STELLAR_CLI_SHA256_ARM}" ;;
+            *)             arch=x86_64;  sum="${STELLAR_CLI_SHA256}" ;;
+          esac
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-${arch}-unknown-linux-gnu.tar.gz"
           curl -fsSL -o stellar-cli.tar.gz "$url"
-          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          echo "${sum}  stellar-cli.tar.gz" | sha256sum -c -
           tar xzf stellar-cli.tar.gz
           install -m755 stellar "$HOME/.local/bin/stellar" 2>/dev/null || { mkdir -p "$HOME/.local/bin"; install -m755 stellar "$HOME/.local/bin/stellar"; }
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -399,9 +416,27 @@ jobs:
 
   # ------------------------------------------- 9. reproducible build (D-50) ---
   reproducible:
-    name: reproducible build (byte-identical wasm)
+    name: reproducible build (${{ matrix.host }})
     needs: wasm
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.host }}
+    # TWO HOSTS, and the second one is a measurement rather than a gate.
+    #
+    # This job proved path-independence and nothing else: two checkouts at
+    # different path lengths, on one runner. README's *Reproducing the hashes*
+    # says so in as many words — the same commit builds to the same 65 374 bytes
+    # and a different SHA-256 on `aarch64-apple-darwin` and
+    # `x86_64-unknown-linux-gnu`, and this job could not see it.
+    #
+    # That measurement moved two variables at once, the OS and the architecture,
+    # and nobody has separated them. Two Linux runners of different architectures
+    # separate them exactly: if the hashes agree, the divergence belongs to macOS
+    # and any Linux container fixes it for every builder; if they disagree, it is
+    # the architecture and only a fixed-platform container will do. The answer
+    # decides which remedy O-7 gets, so it is worth one runner.
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       # Two checkouts of the same commit at deliberately different path lengths.
       # The path is the thing that leaks: rustc embeds source paths in panic
@@ -422,9 +457,13 @@ jobs:
       - name: Install the pinned stellar-cli
         run: |
           set -euo pipefail
-          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          case "$(uname -m)" in
+            aarch64|arm64) arch=aarch64; sum="${STELLAR_CLI_SHA256_ARM}" ;;
+            *)             arch=x86_64;  sum="${STELLAR_CLI_SHA256}" ;;
+          esac
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-${arch}-unknown-linux-gnu.tar.gz"
           curl -fsSL -o stellar-cli.tar.gz "$url"
-          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          echo "${sum}  stellar-cli.tar.gz" | sha256sum -c -
           tar xzf stellar-cli.tar.gz
           mkdir -p "$HOME/.local/bin"
           install -m755 stellar "$HOME/.local/bin/stellar"
@@ -457,8 +496,38 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wasm-hashes
+          name: wasm-hashes-${{ matrix.host }}
           path: wasm-hashes.txt
+
+  # ---------------------------------------------------------------------------
+  cross-host:
+    name: same commit, two architectures — measured, not gated
+    needs: reproducible
+    runs-on: ubuntu-latest
+    # **Reports; does not block.** The answer is not known at the time of
+    # writing, and a job that fails on a finding the project has already
+    # published would be a red branch teaching people to ignore red branches —
+    # the same reason `scout-audit` sits outside the blocking chain. What it must
+    # never do is call a divergence a pass, so it prints both hashes either way
+    # and names which case it found.
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wasm-hashes-*
+          path: hashes
+      - name: Compare the two architectures
+        run: |
+          set -euo pipefail
+          x="hashes/wasm-hashes-ubuntu-latest/wasm-hashes.txt"
+          a="hashes/wasm-hashes-ubuntu-24.04-arm/wasm-hashes.txt"
+          echo "x86_64:"; cat "$x"
+          echo "aarch64:"; cat "$a"
+          if diff -q "$x" "$a" >/dev/null; then
+            echo "::notice::Identical across x86_64 and aarch64 Linux. The divergence README records is the OS, not the architecture — a Linux container is a sufficient remedy for O-7."
+          else
+            echo "::warning::Different across x86_64 and aarch64 Linux. The divergence is the architecture, so O-7's remedy has to pin the platform, not just the OS."
+            diff "$x" "$a" || true
+          fi
 
   # ------------------------------------------------ 10. nightly fuzz smoke ---
   fuzz-smoke:
@@ -733,9 +802,13 @@ jobs:
         # problems, which is why `GENERATED.json` records which one produced it.
         run: |
           set -euo pipefail
-          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          case "$(uname -m)" in
+            aarch64|arm64) arch=aarch64; sum="${STELLAR_CLI_SHA256_ARM}" ;;
+            *)             arch=x86_64;  sum="${STELLAR_CLI_SHA256}" ;;
+          esac
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-${arch}-unknown-linux-gnu.tar.gz"
           curl -fsSL -o stellar-cli.tar.gz "$url"
-          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          echo "${sum}  stellar-cli.tar.gz" | sha256sum -c -
           tar xzf stellar-cli.tar.gz
           mkdir -p "$HOME/.local/bin"
           install -m755 stellar "$HOME/.local/bin/stellar"

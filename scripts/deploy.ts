@@ -1031,8 +1031,11 @@ const step6: Stage = {
         //
         // So the hash is reproducible against a host, not in the abstract, and a record that names
         // the commit but not the host tells a reviewer to expect bytes they will not get. The
-        // reproducible-build CI job cannot catch this — it builds twice on ONE runner at different
-        // path lengths, which is a different property.
+        // reproducible-build job could not see this until 2026-08-28 — it built twice on ONE runner
+        // at different path lengths, which is a different property. It now also builds the same
+        // commit on x86_64 and aarch64 Linux and reports whether they agree, which separates the
+        // operating system from the architecture; the field below stays either way, because a
+        // record still has to name the host that produced these particular bytes.
         buildHost: buildHost(),
       },
       assetId: ctx.assetId,

@@ -241,9 +241,13 @@ record, and that gap is exactly what `toolchain.buildHost` closes from 2026-08-2
 here rather than backfilled, because a record of what happened is worth less once it is edited after
 the fact.
 
-CI's reproducible-build job proves a narrower property than its name suggests: it builds twice on one
+CI's reproducible-build job proved a narrower property than its name suggests: it built twice on one
 runner at deliberately different path lengths, which shows the output does not depend on where the
-source sits, and says nothing about which machine compiled it.
+source sits and says nothing about which machine compiled it. **Since 2026-08-28 it also builds the
+same commit on x86_64 and aarch64 Linux and prints both hashes**, which separates the two variables
+the measurement above moved at once — the operating system and the architecture. That comparison
+reports rather than blocks: the answer decides which remedy this needs, and a job that failed on a
+finding already published here would be a red branch teaching people to ignore red branches.
 
 </details>
 
