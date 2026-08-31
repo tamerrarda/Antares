@@ -268,6 +268,85 @@ export function floorOverFair(
   });
 }
 
+/**
+ * The measured cost of one `close_round`, in stroops.
+ *
+ * Taken from testnet on 2026-08-31: instance C's round 1 closed in ledger 4 430 159
+ * (`8829215a…`) for 228 075, and instance E's round 2 an hour earlier for 230 309. The **lower**
+ * of the two is used, because a warning that overstates the fee would fire on instances that are
+ * in fact fine.
+ *
+ * **A constant here where σ is an input, and the difference is deliberate.** σ varies by a factor
+ * of two across the windows this script measures, which is why D-53 forbids a default for it. A
+ * Soroban resource fee for one fixed call path does not vary that way, and the alternative —
+ * making every operator supply it — would mean the margin below is usually not computed at all,
+ * which is the worst of the three outcomes. `--settle-fee` overrides it and the figure used is
+ * printed, so a stale constant is visible rather than load-bearing.
+ */
+export const SETTLE_FEE_STROOPS = 228_075;
+
+/**
+ * The two fields the bounty margin reads.
+ *
+ * Absent from `CoherenceParams` because no *gate* reads them, and widening that type would say
+ * they were gated. `Partial` at the call site for the same reason: a caller that supplies only the
+ * five gated fields gets no margin and is told so, rather than getting one computed off a default.
+ */
+export interface BountyParams {
+  readonly min_fill: number;
+  readonly settle_bounty_bps: number;
+}
+
+/**
+ * Does closing a round on this instance pay for itself? — D-86, and **not a gate**.
+ *
+ * The bounty is `settle_bounty_bps` of the premium, so whether a third party closes a round
+ * promptly depends on the premium, which depends on the fill. The binding case is therefore not
+ * the round that happens to run but the **worst one the parameters allow**: a partial fill of
+ * exactly `min_fill`, cleared at `premium_floor_bps`.
+ *
+ * **A refusal here would be wrong twice.** It would block exactly the small demonstration
+ * instances this project exists to run — no shipped set is near the line — and it would claim a
+ * safety property the bounty does not carry. When nobody closes a round, `settle.rs` step 2 closes
+ * it on the clock at `expiry + unresolved_after` with byte-identical accounting, and every case
+ * where *money* turns on the timing already has a party whose stake dwarfs the fee: an
+ * in-the-money buyer loses the whole payout by waiting, and a refund after a dead oracle is the
+ * bidder's to collect. What an unprofitable bounty costs is **latency** — idle collateral and
+ * blocked withdrawals, bounded by a constant already in the parameters. So this warns, and the
+ * sentence it prints is the useful part.
+ */
+export function bountyMargin(
+  params: CoherenceParams & Partial<BountyParams>,
+  settleFeeStroops: number = SETTLE_FEE_STROOPS,
+): {
+  minFill: number;
+  floorBps: number;
+  premium: number;
+  bounty: number;
+  fee: number;
+  ratio: number;
+  pays: boolean;
+} | null {
+  const minFill = params.min_fill;
+  const bountyBps = params.settle_bounty_bps;
+  if (minFill === undefined || bountyBps === undefined) return null;
+  // Floored twice, exactly as the contract floors them.
+  const premium = Math.floor((minFill * params.premium_floor_bps) / BPS);
+  const bounty = Math.floor((premium * bountyBps) / BPS);
+  return {
+    // Carried rather than re-read from `params` at the call site: `InstanceCheck.params` is typed
+    // as the gated five, and reaching past that type to print a sixth field is how a printed line
+    // and the number it describes drift apart.
+    minFill,
+    floorBps: params.premium_floor_bps,
+    premium,
+    bounty,
+    fee: settleFeeStroops,
+    ratio: settleFeeStroops > 0 ? bounty / settleFeeStroops : Infinity,
+    pays: bounty >= settleFeeStroops,
+  };
+}
+
 // --------------------------------------------------------------------------------------------
 // The series
 // --------------------------------------------------------------------------------------------
@@ -329,6 +408,8 @@ export interface InstanceCheck {
   readonly params: CoherenceParams;
   readonly results: GateResult[];
   readonly margins: ReturnType<typeof floorOverFair>;
+  /** D-86's latency margin. `null` when the caller supplied only the five gated fields. */
+  readonly bounty: ReturnType<typeof bountyMargin>;
   readonly passed: boolean;
 }
 
@@ -341,9 +422,9 @@ export interface InstanceCheck {
  * an operator who has to fix five parameter sets one deploy at a time will stop reading.
  */
 export function checkSet(
-  instances: ReadonlyArray<{ suffix: string; params: CoherenceParams }>,
+  instances: ReadonlyArray<{ suffix: string; params: CoherenceParams & Partial<BountyParams> }>,
   sigma: SigmaRange,
-  options: { fastTest?: boolean } = {},
+  options: { fastTest?: boolean; settleFeeStroops?: number } = {},
 ): { instances: InstanceCheck[]; passed: boolean } {
   const checked = instances.map(({ suffix, params }) => {
     const results = checkGates(params, sigma, options);
@@ -352,6 +433,8 @@ export function checkSet(
       params,
       results,
       margins: floorOverFair(params, sigma),
+      bounty: bountyMargin(params, options.settleFeeStroops),
+      // D-86's margin is deliberately absent from this: it warns and never refuses.
       passed: results.every((r) => r.passed),
     };
   });
@@ -377,6 +460,29 @@ function render(check: InstanceCheck, sigma: SigmaRange): string[] {
     lines.push(
       `    ${String(m.days).padStart(3)}d  σ ${(m.sigma * 100).toFixed(1)}%  ` +
         `fair ${m.fair.toFixed(1)} bps  floor/fair ${m.ratio.toFixed(3)}`,
+    );
+  }
+  // D-86's margin, printed whether or not the gates passed, and never able to change the verdict.
+  const stroops = (n: number): string => (n / 10_000_000).toFixed(7);
+  if (check.bounty === null) {
+    lines.push(
+      "  settle bounty margin (D-86): not computed — min_fill and settle_bounty_bps were not supplied.",
+    );
+  } else {
+    const b = check.bounty;
+    lines.push("  settle bounty at the worst allowed fill (D-86 — latency, not safety):");
+    lines.push(
+      `    min_fill ${stroops(b.minFill)} at floor ${b.floorBps} bps  ` +
+        `→ premium ${stroops(b.premium)}  bounty ${stroops(b.bounty)}  fee ${stroops(b.fee)}`,
+    );
+    lines.push(
+      b.pays
+        ? `    covers ${(b.ratio * 100).toFixed(0)} % of the fee — closing a round here pays for itself.`
+        : // Floored, not rounded: at 99.96 % a rounded figure prints "100.0 %" beside a sentence
+          // saying it does not cover the fee, which reads as a contradiction of itself.
+          `    covers ${(Math.floor(b.ratio * 1000) / 10).toFixed(1)} % of the fee — settling costs more than it pays, so\n` +
+            `    rounds on this instance will often close on settle.rs's unresolved_after clock rather\n` +
+            `    than promptly. That is a latency cost, not a safety one.`,
     );
   }
   const _ = sigma;
@@ -610,7 +716,11 @@ export function main(argv: readonly string[]): number {
         "  --series  daily closes for the underlying. σ is MEASURED from this and never assumed\n" +
         "            (D-53) — a default baked into the script is the defect the gate exists to stop.\n" +
         "  --params  one instance or an array of them, each { suffix, params }.\n" +
-        "  --fast-test  exempts gates 1, 2, 4 and 5 — never gate 3 (§1b).",
+        "  --fast-test  exempts gates 1, 2, 4 and 5 — never gate 3 (§1b).\n" +
+        "  --settle-fee <stroops>  overrides the measured close_round fee D-86's margin is judged\n" +
+        "            against. Defaults to " +
+        String(SETTLE_FEE_STROOPS) +
+        ", measured on 2026-08-31. Warns; never refuses.",
     );
     return 2;
   }
@@ -632,7 +742,17 @@ export function main(argv: readonly string[]): number {
     );
   }
 
-  const { instances: checked, passed } = checkSet(instances, sigma, { fastTest });
+  const feeRaw = args.get("settle-fee");
+  const settleFeeStroops = feeRaw === undefined ? SETTLE_FEE_STROOPS : Number(feeRaw);
+  if (!Number.isFinite(settleFeeStroops) || settleFeeStroops < 0) {
+    console.error(`--settle-fee must be a non-negative number of stroops, got ${feeRaw ?? ""}`);
+    return 2;
+  }
+
+  const { instances: checked, passed } = checkSet(instances, sigma, {
+    fastTest,
+    settleFeeStroops,
+  });
   for (const c of checked) {
     for (const line of render(c, sigma)) console.log(line);
   }

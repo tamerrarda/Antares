@@ -4,7 +4,8 @@
  * Four things are required of this file and each has a test below: **one rejecting case per gate**;
  * a `--fast-test` profile that violates gate 3 is **still rejected** while the same profile
  * violating 1, 2, 4 and 5 passes; **σ is read from measured data rather than a constant**; and
- * `floor / fair` is printed across the σ range.
+ * `floor / fair` is printed across the σ range. D-86's bounty margin is tested here too, and the
+ * assertion that matters most is the one saying it can never change a verdict.
  *
  * Run: `node --experimental-strip-types --test test/*.test.ts`
  */
@@ -27,7 +28,9 @@ import {
   loadSeries,
   normalCdf,
   realizedVolatility,
+  bountyMargin,
   sigmaRange,
+  SETTLE_FEE_STROOPS,
   type CoherenceParams,
   type SigmaRange,
 } from "../check-params.ts";
@@ -466,5 +469,70 @@ test("the rent pair is required and validate_rent's ordering is enforced before 
 test("the committed instances.json carries the rent pair on every instance", () => {
   for (const s of loadInstances(new URL("../instances.json", import.meta.url).pathname)) {
     assert.ok(s.rentThreshold > 0 && s.rentThreshold < s.rentExtendTo, s.suffix);
+  }
+});
+
+// -------------------------------------------------------------------------------------------
+// D-86 — the settle-bounty margin. A warning, and the tests exist to keep it one.
+// -------------------------------------------------------------------------------------------
+
+test("the bounty margin is judged at the worst fill the parameters allow, not at a typical one", () => {
+  // min_fill = 100 XLM cleared at instance E's 55 bps floor: the case D-86 measured.
+  const m = bountyMargin({ ...A, premium_floor_bps: 55, min_fill: 1_000_000_000, settle_bounty_bps: 25 });
+  assert.ok(m !== null);
+  assert.equal(m.premium, 5_500_000); // 100 XLM × 55 bps
+  assert.equal(m.bounty, 13_750); // × 25 bps
+  assert.equal(m.fee, SETTLE_FEE_STROOPS);
+  assert.equal(m.pays, false);
+});
+
+test("the margin flips at exactly the min_fill D-86 derived, and one stroop-tick below it does not", () => {
+  const at = (minFill: number) =>
+    bountyMargin({ ...A, premium_floor_bps: 55, min_fill: minFill, settle_bounty_bps: 25 });
+  // 1 659 XLM at a 55 bps floor is the first fill whose bounty clears the measured fee.
+  assert.equal(at(16_590_000_000)?.pays, true);
+  assert.equal(at(16_580_000_000)?.pays, false);
+  // And 912 bps at min_fill = 100 XLM is the figure that does NOT clear it: 228 000 < 228 075.
+  const twelve = bountyMargin({
+    ...A,
+    premium_floor_bps: 912,
+    min_fill: 1_000_000_000,
+    settle_bounty_bps: 25,
+  });
+  assert.equal(twelve?.bounty, 228_000);
+  assert.equal(twelve?.pays, false);
+  assert.equal(
+    bountyMargin({ ...A, premium_floor_bps: 913, min_fill: 1_000_000_000, settle_bounty_bps: 25 })?.pays,
+    true,
+  );
+});
+
+test("a caller who supplies only the gated five gets no margin rather than one off a default", () => {
+  // Silence would be worse than either answer: it would look like a computed pass.
+  assert.equal(bountyMargin(A), null);
+  assert.equal(bountyMargin({ ...A, min_fill: 1_000_000_000 }), null);
+  assert.equal(bountyMargin({ ...A, settle_bounty_bps: 25 }), null);
+});
+
+test("the margin never changes a verdict — this is the whole point of D-86", () => {
+  const sigma = range(SIGMA_LOW, SIGMA_HIGH);
+  // A floor so low that no bounty could ever pay, on a parameter set that passes every gate.
+  const starved = { ...A, min_fill: 1, settle_bounty_bps: 1 };
+  const out = checkSet([{ suffix: "-A", params: starved }], sigma);
+  assert.equal(out.instances[0]!.bounty?.pays, false);
+  assert.equal(out.passed, true);
+  // And the converse: a bounty that pays handsomely rescues nothing.
+  const rich = { ...A, premium_floor_bps: 76, min_fill: 100_000_000_000, settle_bounty_bps: 25 };
+  const bad = checkSet([{ suffix: "-A", params: rich }], sigma);
+  assert.equal(bad.instances[0]!.bounty?.pays, true);
+  assert.equal(bad.passed, false);
+});
+
+test("every committed instance is below the line, which is why this warns instead of refusing", () => {
+  const specs = loadInstances(new URL("../instances.json", import.meta.url).pathname);
+  for (const spec of specs) {
+    const m = bountyMargin(spec.params);
+    assert.ok(m !== null, `${spec.suffix} carries min_fill and settle_bounty_bps`);
+    assert.equal(m.pays, false, `${spec.suffix} would be refused by a gate, and should not be`);
   }
 });

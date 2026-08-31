@@ -47,18 +47,18 @@ liquidation, and if you are wrong you lose exactly what you put up and not a cen
 who wants XLM upside without a liquidation price is not doing options; they are doing the thing
 options were invented for.
 
-**What it costs, on the seven-day vault.** Read off the chain on **2026-08-28** rather than
+**What it costs, on the seven-day vault.** Read off the chain on **2026-08-31** rather than
 invented — and read off it again before you act, because the spot moves and every row below moves
 with it. The strike and the premium do not: they were fixed when the round opened and are what the
 vault will settle against.
 
 | | |
 |---|---|
-| Spot | $0.1782 |
-| Strike | $0.1874 — **5.2 %** above spot |
+| Spot | $0.1771 |
+| Strike | $0.1874 — **5.9 %** above spot |
 | Premium | 472 bps, so a **100 XLM** ticket costs **4.72 XLM** |
-| Break-even | $0.1967 — XLM has to rise **10.4 %** before you are ahead |
-| Time | about six days |
+| Break-even | $0.1967 — XLM has to rise **11.1 %** before you are ahead |
+| Time | about four days |
 
 | If XLM ends at | you receive | net |
 |---|---|---|
@@ -68,16 +68,21 @@ vault will settle against.
 | $0.22 | 14.80 | +10.08 |
 | $0.25 | 25.02 | +20.30 |
 
-**Read the first two rows before the last three.** A 10.4 % move in six days is not the base case,
+**Read the first two rows before the last three.** An 11.1 % move in four days is not the base case,
 and the option is worth nothing at anything below it — not less, nothing. Of the rounds this
-project has settled so far, **one of one expired worthless**: the buyer paid 4.92 XLM and received
-zero. That is the ordinary outcome of buying a call, and any framing of this as an opportunity that
-hides it is a framing to distrust.
+project has settled so far, **three of three expired worthless**: buyers paid 4.9200024, 3.0582495
+and 6.1400030 XLM — **14.12 XLM in total** — and received nothing at all. That is the ordinary
+outcome of buying a call, and any framing of this as an opportunity that hides it is a framing to
+distrust.
 
 Three vaults are live at once and their terms differ (§1b): the three-day vault struck 2 % out of
-the money is a shorter, nearer bet, and the seven-day 3 % is the one priced above. **Nothing here is
-advice**, and this project cannot give any — it is a description of a mechanism you can verify
-yourself before spending anything, which is the only thing it has ever claimed to offer.
+the money is a shorter, nearer bet, and the seven-day 3 % is the one priced above. You can only buy
+during a round's auction, which is the **45 minutes** after its epoch opens; outside that window
+there is nothing to bid on, and the next window is the next epoch.
+
+**Nothing here is advice**, and this project cannot give any — it is a description of a mechanism
+you can verify yourself before spending anything, which is the only thing it has ever claimed to
+offer.
 
 ### The capital point
 
