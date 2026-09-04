@@ -47,22 +47,24 @@ liquidation, and if you are wrong you lose exactly what you put up and not a cen
 who wants XLM upside without a liquidation price is not doing options; they are doing the thing
 options were invented for.
 
-**What it costs, on the seven-day vault.** Read off the chain on **2026-08-31** rather than
-invented — and read off it again before you act, because the spot moves and every row below moves
-with it. The strike and the premium do not: they were fixed when the round opened and are what the
-vault will settle against.
+**What it cost, on the seven-day vault — and how it ended.** That round opened 2026-08-28 and
+expired 2026-09-04. Every figure below was read off the chain on **2026-08-31**, while it was still
+live and still buyable; the last row is what the vault actually settled against. Nothing here was
+invented, and nothing was revised after the fact.
 
 | | |
 |---|---|
-| Spot | $0.1771 |
-| Strike | $0.1874 — **5.9 %** above spot |
-| Premium | 472 bps, so a **100 XLM** ticket costs **4.72 XLM** |
-| Break-even | $0.1967 — XLM has to rise **11.1 %** before you are ahead |
-| Time | about four days |
+| Spot, on 2026-08-31 | $0.1771 |
+| Strike | $0.1874 — **5.9 %** above that spot |
+| Premium | 472 bps, so a **100 XLM** ticket cost **4.72 XLM** |
+| Break-even | $0.1967 — XLM had to rise **11.1 %** before the buyer was ahead |
+| Time left, that day | about four days |
+| **Settled at** | **$0.18536** — short of the strike by **1.1 %**. Payout **0**. |
 
 | If XLM ends at | you receive | net |
 |---|---|---|
 | $0.17 | 0 | **−4.72** |
+| **$0.18536 — what happened** | **0** | **−4.72** |
 | $0.1874 (the strike) | 0 | **−4.72** |
 | $0.20 | 6.28 | +1.56 |
 | $0.22 | 14.80 | +10.08 |
@@ -70,15 +72,17 @@ vault will settle against.
 
 **Read the first two rows before the last three.** An 11.1 % move in four days is not the base case,
 and the option is worth nothing at anything below it — not less, nothing. Of the rounds this
-project has settled so far, **three of three expired worthless**: buyers paid 4.9200024, 3.0582495
-and 6.1400030 XLM — **14.12 XLM in total** — and received nothing at all. That is the ordinary
-outcome of buying a call, and any framing of this as an opportunity that hides it is a framing to
-distrust.
+project has settled so far, **four of four expired worthless**: buyers paid 4.9200024, 3.0582495,
+6.1400030 and 9.4400047 XLM — **23.56 XLM in total** — and received nothing at all. The closest of
+the four is the one in the table above: it missed by 1.1 % and paid exactly what the ones that
+missed by 8 % paid, which is nothing. That is the ordinary outcome of buying a call, and any
+framing of this as an opportunity that hides it is a framing to distrust.
 
-Three vaults are live at once and their terms differ (§1b): the three-day vault struck 2 % out of
-the money is a shorter, nearer bet, and the seven-day 3 % is the one priced above. You can only buy
+Three vaults are deployed and their terms differ (§1b): the three-day vault struck 2 % out of the
+money is a shorter, nearer bet, and the seven-day 3 % is the one priced above. You can only buy
 during a round's auction, which is the **45 minutes** after its epoch opens; outside that window
-there is nothing to bid on, and the next window is the next epoch.
+there is nothing to bid on, and the next window is the next epoch. **As of 2026-09-04 none of the
+three has a live round** — all three are between epochs — so there is nothing to bid on today.
 
 **Nothing here is advice**, and this project cannot give any — it is a description of a mechanism
 you can verify yourself before spending anything, which is the only thing it has ever claimed to
@@ -101,17 +105,17 @@ deliberate design choice that makes being a counterparty possible in a thin mark
 The counterparty phase runs **several vaults concurrently** — the same contract and the same price
 adapter, identical in every respect except their terms, each with its own share token (`aXLM-A` …
 `aXLM-E`) and its own auction, so you can price them against each other and fill only the terms that
-work for you. **Three are live as of 2026-08-28**, and this table says which:
+work for you. **Three are deployed as of 2026-08-28**, and this table says which:
 
 | | Duration | Strike | |
 |---|---|---|---|
-| **A** | 7 days | 3 % out of the money — the mainnet-target configuration | **live** |
+| **A** | 7 days | 3 % out of the money — the mainnet-target configuration | **deployed** |
 | **B** | 7 days | 5 % | not deployed |
-| **C** | 3 days | 2 % — the nearest to the money | **live** |
+| **C** | 3 days | 2 % — the nearest to the money | **deployed** |
 | **D** | 14 days | 5 % | not deployed |
-| **E** | 3 days | 3 % | **live** |
+| **E** | 3 days | 3 % | **deployed** |
 
-The live three are addressed in [`deployments/testnet.json`](../deployments/testnet.json), which is
+The three are addressed in [`deployments/testnet.json`](../deployments/testnet.json), which is
 the only place in this repository a contract id lives. **E against C isolates moneyness and E
 against A isolates duration** — one variable each, which is why those three and not any three.
 
