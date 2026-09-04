@@ -489,22 +489,36 @@ test("the bounty margin is judged at the worst fill the parameters allow, not at
 test("the margin flips at exactly the min_fill D-86 derived, and one stroop-tick below it does not", () => {
   const at = (minFill: number) =>
     bountyMargin({ ...A, premium_floor_bps: 55, min_fill: minFill, settle_bounty_bps: 25 });
-  // 1 659 XLM at a 55 bps floor is the first fill whose bounty clears the measured fee.
-  assert.equal(at(16_590_000_000)?.pays, true);
-  assert.equal(at(16_580_000_000)?.pays, false);
-  // And 912 bps at min_fill = 100 XLM is the figure that does NOT clear it: 228 000 < 228 075.
-  const twelve = bountyMargin({
+  // 1 761 XLM at a 55 bps floor is the first fill whose bounty clears the measured fee.
+  assert.equal(at(17_610_000_000)?.pays, true);
+  assert.equal(at(17_600_000_000)?.pays, false);
+  // And 968 bps at min_fill = 100 XLM is the figure that does NOT clear it: 242 000 < 242 033.
+  const justUnder = bountyMargin({
     ...A,
-    premium_floor_bps: 912,
+    premium_floor_bps: 968,
     min_fill: 1_000_000_000,
     settle_bounty_bps: 25,
   });
-  assert.equal(twelve?.bounty, 228_000);
-  assert.equal(twelve?.pays, false);
+  assert.equal(justUnder?.bounty, 242_000);
+  assert.equal(justUnder?.pays, false);
   assert.equal(
-    bountyMargin({ ...A, premium_floor_bps: 913, min_fill: 1_000_000_000, settle_bounty_bps: 25 })?.pays,
+    bountyMargin({ ...A, premium_floor_bps: 969, min_fill: 1_000_000_000, settle_bounty_bps: 25 })?.pays,
     true,
   );
+});
+
+// The premium that first pays for its own settlement, stated in XLM rather than in bps of a
+// min_fill — because this is the figure a round is judged against, and A's round 1 landed inside
+// the gap the old constant opened. It collected 9.4400047 XLM: above 9.123, the break-even under
+// the 228 075 this constant used to carry, and below 9.68132, the break-even under what its own
+// settle was actually charged. Pinned so the two numbers can never silently drift back together.
+test("A's round 1 sits between the old constant's break-even and the real one", () => {
+  const breakEven = (feeStroops: number) => feeStroops * (10_000 / 25);
+  assert.equal(breakEven(228_075), 91_230_000);
+  assert.equal(breakEven(SETTLE_FEE_STROOPS), 96_813_200);
+  const aRound1Premium = 94_400_047;
+  assert.ok(aRound1Premium > breakEven(228_075), "the old constant called it profitable");
+  assert.ok(aRound1Premium < breakEven(SETTLE_FEE_STROOPS), "its own fee says it was not");
 });
 
 test("a caller who supplies only the gated five gets no margin rather than one off a default", () => {

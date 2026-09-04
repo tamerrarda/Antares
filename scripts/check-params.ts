@@ -271,19 +271,33 @@ export function floorOverFair(
 /**
  * The measured cost of one `close_round`, in stroops.
  *
- * Taken from testnet on 2026-08-31: instance C's round 1 closed in ledger 4 430 159
- * (`8829215a…`) for 228 075, and instance E's round 2 an hour earlier for 230 309. The **lower**
- * of the two is used, because a warning that overstates the fee would fire on instances that are
- * in fact fine.
+ * Every `close_round` this project has ever landed, and what each was charged:
  *
- * **A constant here where σ is an input, and the difference is deliberate.** σ varies by a factor
- * of two across the windows this script measures, which is why D-53 forbids a default for it. A
- * Soroban resource fee for one fixed call path does not vary that way, and the alternative —
- * making every operator supply it — would mean the margin below is usually not computed at all,
- * which is the worst of the three outcomes. `--settle-fee` overrides it and the figure used is
- * printed, so a stale constant is visible rather than load-bearing.
+ * | round | ledger | tx | fee_charged |
+ * |---|---|---|---|
+ * | E round 2 | 4 429 048 | `36970bf0…` | 230 309 |
+ * | C round 1 | 4 430 159 | `8829215a…` | 228 075 |
+ * | A round 1 | 4 507 695 | `9180eb5b…` | **242 033** |
+ *
+ * **The highest is used, and that reverses the reason this constant first carried.** It was
+ * introduced at the *lowest* of the two then known, on the argument that a warning which
+ * overstates the fee fires on instances that are in fact fine. Three observations later that
+ * argument is the wrong way round. The two errors are not symmetric: warning on an instance that
+ * would have paid costs an operator a second look, while *failing* to warn on one that does not
+ * pay tells them a bounty motivates a keeper when it does not, and the rounds then sit until
+ * `settle.rs`'s `unresolved_after` clock with nobody having been told to expect it. Only the
+ * second failure is silent, so the constant is pinned where it cannot happen.
+ *
+ * **A constant here where σ is an input, and the difference is still deliberate** — but it is a
+ * narrower claim than the one this comment used to make. It said a Soroban resource fee for one
+ * fixed call path does not vary. It varies: 228 075 to 242 033 is 6.1 % across three calls to the
+ * same function. That is an order of magnitude tighter than σ, which moves by a factor of two
+ * across the windows measured here and is why D-53 forbids a default for it, and the alternative —
+ * making every operator supply the fee — would mean the margin below is usually not computed at
+ * all. So it stays a constant, pinned high, with `--settle-fee` to override it and the figure it
+ * used printed beside the answer, so a stale constant is visible rather than load-bearing.
  */
-export const SETTLE_FEE_STROOPS = 228_075;
+export const SETTLE_FEE_STROOPS = 242_033;
 
 /**
  * The two fields the bounty margin reads.
@@ -720,7 +734,8 @@ export function main(argv: readonly string[]): number {
         "  --settle-fee <stroops>  overrides the measured close_round fee D-86's margin is judged\n" +
         "            against. Defaults to " +
         String(SETTLE_FEE_STROOPS) +
-        ", measured on 2026-08-31. Warns; never refuses.",
+        ", the dearest of the three settles measured so far.\n" +
+        "            Warns; never refuses.",
     );
     return 2;
   }
