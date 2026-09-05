@@ -19,14 +19,14 @@
  * cannot be recovered afterwards.
  */
 
-import { Keypair, rpc, scValToNative } from "@stellar/stellar-sdk";
+import { Keypair, rpc } from "@stellar/stellar-sdk";
 
 import type { Alert } from "./decide.ts";
 import { fileStore } from "./archive.ts";
 import { makeArchivist } from "./archivist.ts";
-import type { RpcLike } from "./events-source.ts";
-import { loop, type Sink } from "./runner.ts";
-import { makeVaultClient } from "./vault.ts";
+import { rpcSource } from "./rpc-source.ts";
+import { archivePass, loop, type Sink } from "./runner.ts";
+import { makeVaultClient, makeVaultReader } from "./vault.ts";
 
 function need(name: string): string {
   const v = process.env[name]?.trim();
@@ -61,47 +61,6 @@ function alertChannel(): (alert: Alert) => void {
   };
 }
 
-/**
- * `rpc.Server` narrowed to what the archive reads.
- *
- * The SDK types `getEvents`'s argument as a union — `startLedger` **xor** `cursor`, each forbidding
- * the other — while `RpcLike` states both optional so a test double can be one plain object. The
- * union is the more precise type and this call site is the only code that knows which arm it is
- * in, so the split happens here rather than by loosening `events-source.ts`'s interface to match a
- * vendor's shape it does not otherwise depend on.
- */
-function rpcSource(server: rpc.Server): RpcLike {
-  return {
-    getHealth: async () => {
-      const h = await server.getHealth();
-      return { oldestLedger: h.oldestLedger, latestLedger: h.latestLedger };
-    },
-    getEvents: async (request) => {
-      const common = {
-        filters: request.filters,
-        ...(request.limit === undefined ? {} : { limit: request.limit }),
-      };
-      const res = await (request.cursor === undefined
-        ? server.getEvents({ startLedger: request.startLedger ?? 0, ...common })
-        : server.getEvents({ cursor: request.cursor, ...common }));
-      // `RpcLike` promises native values; the SDK returns `xdr.ScVal`. Converting here is the whole
-      // job of an adapter, and forwarding instead type-checks — `unknown[]` accepts anything — and
-      // then turns every event in the stream into `<unnameable>` at `eventName`.
-      return {
-        events: res.events.map((e) => ({
-          ...(e.contractId === undefined ? {} : { contractId: e.contractId }),
-          topic: e.topic.map((t) => scValToNative(t) as unknown),
-          value: scValToNative(e.value) as unknown,
-          txHash: e.txHash,
-          ledger: e.ledger,
-        })),
-        latestLedger: res.latestLedger,
-        ...(res.cursor === undefined ? {} : { cursor: res.cursor }),
-      };
-    },
-  };
-}
-
 async function main(): Promise<void> {
   const rpcUrl = need("RPC_URL");
   const passphrase = need("NETWORK_PASSPHRASE");
@@ -110,8 +69,14 @@ async function main(): Promise<void> {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   const feedId = need("FEED_ID");
-  const signer = Keypair.fromSecret(need("KEEPER_SECRET"));
   const assetSymbol = process.env["ASSET_SYMBOL"]?.trim() ?? "XLM";
+
+  // **Archiving needs no key, and waiting for one is how history gets lost.** Every read this mode
+  // makes is a simulation against a public address; it decides nothing and signs nothing. The
+  // unrecoverable job therefore does not wait on the recoverable one's credential — see
+  // `archivePass`, and D-90 for what the waiting cost the first time.
+  const archiveOnly = process.argv.includes("--archive-only");
+  const signer = archiveOnly ? null : Keypair.fromSecret(need("KEEPER_SECRET"));
 
   const server = new rpc.Server(rpcUrl);
   const emit = alertChannel();
@@ -124,9 +89,12 @@ async function main(): Promise<void> {
     alert: emit,
   };
 
-  const vaults = vaultIds.map((vaultId) =>
-    makeVaultClient({ server, passphrase, vaultId, signer, feedId, assetSymbol }),
-  );
+  const vaults =
+    signer === null
+      ? []
+      : vaultIds.map((vaultId) =>
+          makeVaultClient({ server, passphrase, vaultId, signer, feedId, assetSymbol }),
+        );
 
   // The archive is not optional in production and is constructed here rather than inside `loop`,
   // because where the evidence lands is deployment configuration and the loop has no business
@@ -140,9 +108,24 @@ async function main(): Promise<void> {
     network,
   });
 
+  console.log(`keeper: archiving to ${evidenceRoot}/ — a round not watched from its opening is not written`);
+
+  if (signer === null) {
+    // `SOURCE_ADDRESS` is any account that exists on this network — the simulations quote a
+    // sequence number from it and nothing else. It is read from the deployment record rather than
+    // written here for the same reason the vault ids are.
+    const sourceAddress = need("SOURCE_ADDRESS");
+    const readers = vaultIds.map((vaultId) =>
+      makeVaultReader({ server, passphrase, vaultId, sourceAddress, feedId, assetSymbol }),
+    );
+    console.log(`keeper: --archive-only over ${readers.length} vault(s); nothing will be signed`);
+    await archivePass(readers, sink, archivist);
+    console.log("keeper: archive pass complete");
+    return;
+  }
+
   console.log(`keeper: ${vaults.length} vault(s), signer ${signer.publicKey()}`);
   console.log("keeper: holds no admin key; every call it makes is permissionless (D-09)");
-  console.log(`keeper: archiving to ${evidenceRoot}/ — a round not watched from its opening is not written`);
 
   // One pass over every vault, then exit — for a scheduler that owns the interval instead of us.
   //

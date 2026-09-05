@@ -13,7 +13,7 @@ import { ConsecutiveFailures } from "@antares/common/retry";
 
 import type { Alert, EpochView, VaultConfig } from "../decide.ts";
 import { CODES } from "../errors.ts";
-import { loop, pass, type Sink, type VaultClient } from "../runner.ts";
+import { archivePass, loop, pass, type Sink, type VaultClient, type VaultReader } from "../runner.ts";
 
 const NOW = 1_787_000_000;
 const DAY = 86_400;
@@ -336,4 +336,46 @@ test("one vault's pass throwing does not stop the rest of the sweep", async () =
   });
   assert.deepEqual(reached, ["A", "C"]);
   assert.ok(s.recorded.warn.some((m) => m.includes("before a decision could be made")));
+});
+
+// ---------------------------------------------------------------------------------------------
+// archivePass — the half that needs no key
+// ---------------------------------------------------------------------------------------------
+
+/** A reader is a client minus `submit`, which is the whole point of the split. */
+const reader = (id: string, over: Partial<VaultReader> = {}): VaultReader => ({
+  id,
+  epoch: () => Promise.resolve(VIEW),
+  config: () => Promise.resolve<VaultConfig>({ paused: false }),
+  feedExpiresAt: () => Promise.resolve(NOW + 400 * DAY),
+  ...over,
+});
+
+test("an archive pass collects and finalizes every vault and signs nothing", async () => {
+  const a = archivist();
+  await archivePass([reader("A"), reader("B")], sink(), a);
+  assert.deepEqual(a.calls, ["collect:A", "close:A", "collect:B", "close:B"]);
+});
+
+test("a vault whose epoch cannot be read does not stop the others being collected", async () => {
+  // The one failure outside `archive`'s own catch: `epoch()` is awaited to have something to
+  // finalize against, and an RPC that cannot answer for one vault must not cost the other four
+  // their events — those are the unrecoverable ones.
+  const s = sink();
+  const a = archivist();
+  await archivePass(
+    [reader("A"), reader("B", { epoch: () => Promise.reject(new Error("rpc down")) }), reader("C")],
+    s,
+    a,
+  );
+  assert.deepEqual(a.calls, ["collect:A", "close:A", "collect:C", "close:C"]);
+  assert.ok(s.recorded.warn.some((m) => m.includes("could not read the epoch")));
+});
+
+test("an archive pass uses the same failure policy as a full pass, not a copy of it", async () => {
+  // `archivePass` calls `pass`'s own archive step. If that ever became a second implementation,
+  // this is the assertion that would notice: a throwing archivist is a warning in both.
+  const s = sink();
+  await archivePass([reader("A")], s, archivist({ throws: true }));
+  assert.ok(s.recorded.warn.some((m) => m.includes("archiving failed")));
 });

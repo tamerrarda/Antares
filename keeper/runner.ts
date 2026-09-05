@@ -27,13 +27,24 @@ import type { Archivist } from "./archivist.ts";
 import { alerts, decide, type Action, type Alert, type EpochView, type VaultConfig } from "./decide.ts";
 import { classify, isRetryable } from "./errors.ts";
 
-/** Every read and write the runner needs, behind an interface so the loop is testable without a chain. */
-export interface VaultClient {
+/**
+ * The reads, alone.
+ *
+ * Split from {@link VaultClient} because **the two halves of this keeper need different
+ * credentials**. Everything here is a simulation — it signs nothing and needs no secret, only some
+ * existing account to name as the transaction source. Archiving is built entirely out of these, so
+ * it can run on a schedule from the first day, before anybody has decided who holds the key.
+ */
+export interface VaultReader {
   readonly id: string;
   epoch(): Promise<EpochView>;
   config(): Promise<VaultConfig>;
   /** `expires(XLM)` on the feed this vault's adapter is pinned to. */
   feedExpiresAt(): Promise<number | null>;
+}
+
+/** Every read and write the runner needs, behind an interface so the loop is testable without a chain. */
+export interface VaultClient extends VaultReader {
   /**
    * Simulate, then send. **Both**, in that order, in one call — so no caller can send without
    * simulating first. A separate `simulate()` on this interface would be an invitation to skip it.
@@ -191,6 +202,37 @@ async function archive(
     sink.warn(`${vaultId}: archiving failed; the round is unaffected`, {
       why: classify(error).why,
     });
+  }
+}
+
+/**
+ * The archive over every vault, and nothing else — no decision, no signature, no key.
+ *
+ * **The two jobs in this keeper fail in opposite ways, and only one of them needs a secret.**
+ * Settling is permissionless and idempotent: a pass that does not happen means a round closes late,
+ * and anyone at all can do the same work by hand (D-09). Archiving is not recoverable at all —
+ * Soroban RPC holds ~7 days of events against a 3-to-14-day epoch, so what no pass collects while
+ * it is there, nobody collects afterwards, which is what D-90 cost. Tying the recoverable job's
+ * credential to the unrecoverable job's schedule gets the priority exactly backwards.
+ *
+ * So this exists to be run without one. It reuses {@link pass}'s archive step verbatim, including
+ * its failure policy, rather than restating the sequence — the two must not be able to drift.
+ */
+export async function archivePass(
+  readers: readonly VaultReader[],
+  sink: Sink,
+  archivist: Archivist,
+): Promise<void> {
+  for (const reader of readers) {
+    try {
+      await archive(reader.id, await reader.epoch(), sink, archivist);
+    } catch (error) {
+      // Reading `epoch()` is the one thing here that can fail outside `archive`'s own catch, and
+      // one vault's RPC failure must not stop the others being collected.
+      sink.warn(`${reader.id}: could not read the epoch to archive against`, {
+        why: classify(error).why,
+      });
+    }
   }
 }
 

@@ -32,7 +32,7 @@ import {
 } from "@stellar/stellar-sdk";
 
 import type { Action, EpochView, VaultConfig } from "./decide.ts";
-import type { VaultClient } from "./runner.ts";
+import type { VaultClient, VaultReader } from "./runner.ts";
 
 export class VaultError extends Error {
   constructor(message: string) {
@@ -41,16 +41,28 @@ export class VaultError extends Error {
   }
 }
 
-export interface VaultClientOptions {
+export interface VaultReaderOptions {
   readonly server: rpc.Server;
   readonly passphrase: string;
   readonly vaultId: string;
-  readonly signer: Keypair;
+  /**
+   * Any account that exists on this network, named as the simulation's source.
+   *
+   * A **public** address, and that is the point: `simulateCall` signs nothing, so the reads below
+   * need an account to quote a sequence number from and nothing else. It is not the keeper's key
+   * and it does not have to be one — `makeVaultClient` passes its signer's public half only
+   * because it happens to have one.
+   */
+  readonly sourceAddress: string;
   /** The Reflector instance this vault's adapter is pinned to, for the sponsorship watch. */
   readonly feedId: string;
   readonly assetSymbol: string;
   /** Fee in stroops. The base fee times a headroom factor; simulation sets the resource fee. */
   readonly feeStroops?: string;
+}
+
+export interface VaultClientOptions extends Omit<VaultReaderOptions, "sourceAddress"> {
+  readonly signer: Keypair;
   /** How long to poll for a send to land, in milliseconds. */
   readonly sendTimeoutMs?: number;
 }
@@ -76,10 +88,15 @@ async function simulateCall(
   return sim.result === undefined ? null : scValToNative(sim.result.retval);
 }
 
-export function makeVaultClient(options: VaultClientOptions): VaultClient {
-  const { server, passphrase, vaultId, signer, feedId, assetSymbol } = options;
-  const fee = options.feeStroops ?? DEFAULT_FEE;
-  const timeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+/**
+ * The reads, against a public address. Signs nothing and cannot.
+ *
+ * `makeVaultClient` is this plus `submit`, so there is exactly one implementation of `epoch()` —
+ * the mapping from the contract's field names to {@link EpochView} is the kind of thing that gets
+ * copied and then quietly disagrees with itself.
+ */
+export function makeVaultReader(options: VaultReaderOptions): VaultReader {
+  const { server, passphrase, vaultId, sourceAddress, feedId, assetSymbol } = options;
 
   const asset = xdr.ScVal.scvVec([
     nativeToScVal("Other", { type: "symbol" }),
@@ -87,7 +104,7 @@ export function makeVaultClient(options: VaultClientOptions): VaultClient {
   ]);
 
   /** Freshly, every time. An account whose sequence is cached sends one transaction and then stops. */
-  const account = () => server.getAccount(signer.publicKey());
+  const account = () => server.getAccount(sourceAddress);
 
   return {
     id: vaultId,
@@ -128,6 +145,18 @@ export function makeVaultClient(options: VaultClientOptions): VaultClient {
       const v = await simulateCall(server, await account(), passphrase, feedId, "expires", [asset]);
       return v === null || v === undefined ? null : Number(v);
     },
+
+  };
+}
+
+export function makeVaultClient(options: VaultClientOptions): VaultClient {
+  const { server, passphrase, vaultId, signer } = options;
+  const fee = options.feeStroops ?? DEFAULT_FEE;
+  const timeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+  const account = () => server.getAccount(signer.publicKey());
+
+  return {
+    ...makeVaultReader({ ...options, sourceAddress: signer.publicKey() }),
 
     async submit(action: Exclude<Action, { kind: "wait" }>): Promise<string> {
       const source = await account();

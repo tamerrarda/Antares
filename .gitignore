@@ -106,4 +106,13 @@ web/next-env.d.ts
 # is a resumption point, not a record. The record is the `evidence/*.json` beside it, which IS
 # committed: that file is the thing that outlives a testnet reset (09-DEPLOYMENT §3), and a
 # deliverable nobody can reconstruct is a deliverable that has to be in the repository.
+#
+# Ignored **on this branch specifically**. The cursor moves every pass, so committing it here would
+# be ~144 commits a day on `main`, each one also starting `ci.yml`. `.github/workflows/keeper.yml`
+# force-adds it onto the `keeper-state` branch instead, where that rate is the point; the rule here
+# is what stops a local run putting a cursor on `main` by accident.
 evidence/.working/
+
+# Where that workflow checks the state branch out, so the code and the state can be two trees in
+# one runner without a `git switch` dragging `node_modules` across branches.
+.keeper-state/

@@ -1,0 +1,196 @@
+# The keeper, on a schedule — 08-OFFCHAIN §1's loop with the interval moved out.
+#
+# TWO JOBS IN ONE PROCESS, AND THEY FAIL IN OPPOSITE DIRECTIONS
+#
+# **Settling** is permissionless and idempotent (D-09). A pass that does not
+# happen means a round closes late, never that it cannot close, and anybody — a
+# depositor, a bidder, a passer-by — can do the same work by hand. It needs a
+# key, because somebody has to pay the fee and receive the bounty.
+#
+# **Archiving** is not recoverable at all. Soroban RPC holds ~7 days of events
+# against a 3-to-14-day epoch, so what no pass collects while it is there,
+# nobody collects afterwards — D-90 is the entry about what that already cost:
+# four rounds' openings and fills, gone. It needs **no key at all**: every read
+# it makes is a simulation against a public address.
+#
+# So this workflow does not wait for a secret. With `KEEPER_SECRET` set it runs
+# `--once`, the full pass. Without one it runs `--archive-only`, which decides
+# nothing and signs nothing and still collects everything. Tying the recoverable
+# job's schedule to the unrecoverable job's credential would be exactly backwards.
+#
+# WHY A STATE BRANCH, AND NOT `main`
+#
+# The working state is a cursor plus the events of a round that has not closed
+# yet. It changes on **every** pass, because the cursor follows the chain's tip.
+# At this cadence that is ~144 commits a day, and on `main` each one would also
+# start `ci.yml`, which fires on push there. A branch nobody reads absorbs that;
+# `main`'s history and CI budget do not.
+#
+# It is not a cache. `actions/cache` is evictable and its loss is silent, and a
+# silently lost cursor means the next round is watched from the middle and its
+# record is refused — a component failing quietly is the exact shape D-90 and
+# D-91 were both written about. A branch is durable, auditable, and its `git
+# log` answers "was the keeper running on the 8th?" without a dashboard.
+#
+# The evidence records land there too. Moving them onto `main` at delivery is
+# `git checkout keeper-state -- evidence/`, one command, done deliberately and
+# once — rather than 144 times a day by a robot.
+
+name: keeper
+
+on:
+  schedule:
+    # Every ten minutes. The lower bound is what settlement wants: `open_epoch`
+    # after `next_open_at` and `close_round` after `expiry` both pay a bounty to
+    # whoever is first, so lateness is a real cost (D-86). The upper bound is
+    # what archiving needs, which is far looser — anything under a day beats the
+    # 7-day horizon. Ten minutes is the settlement number; archiving rides along.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# **Never two at once.** Two passes would each simulate and could each send the
+# same `close_round` — the second is refused as `WrongPhase`, which is harmless
+# to the vault and still spends a fee. Worse, two runs writing the state branch
+# race, and the loser's cursor overwrites the winner's with an older one.
+# `cancel-in-progress: false` because a run that is mid-write must be allowed to
+# finish; the next tick is ten minutes away and nothing is lost by waiting.
+concurrency:
+  group: keeper
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  pass:
+    name: one pass over every deployed vault
+    runs-on: ubuntu-latest
+    # A fork must not run this: it would have no state branch to push to and
+    # would mail its owner about the failure every ten minutes.
+    if: github.repository == 'tamerrarda/Antares'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Settle too, or only archive?
+        id: mode
+        env:
+          KEEPER_SECRET: ${{ secrets.KEEPER_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEEPER_SECRET:-}" ]; then
+            echo "flag=--once" >> "$GITHUB_OUTPUT"
+            echo "### keeper: full pass" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "flag=--archive-only" >> "$GITHUB_OUTPUT"
+            {
+              echo "### keeper: archiving only"
+              echo
+              echo "\`KEEPER_SECRET\` is unset, so this pass collected events and settled nothing."
+              echo "**That is a working state, not a broken one** — archiving needs no key, and"
+              echo "settling is permissionless, so rounds still close whenever anyone calls them."
+              echo
+              echo "To settle here too, set \`KEEPER_SECRET\` to a **funded testnet throwaway** in"
+              echo "Settings → Secrets → Actions. The keeper holds no admin key, so the worst a"
+              echo "leak of it buys is the right to pay our transaction fees (D-09)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Separate checkout, separate directory: the code comes from `main` and
+      # the state from `keeper-state`, and a `git switch` in one tree would have
+      # to move `node_modules` and the build with it.
+      - name: Bring the archive's state alongside the code
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: keeper-state
+          path: .keeper-state
+
+      - name: Start a state branch if this is the first pass
+        run: |
+          set -euo pipefail
+          # Not `[ -d .keeper-state/.git ]`: a checkout that failed part-way can leave the
+          # directory behind without a usable repository in it, and `git init` over that would
+          # then be skipped and every later command in this step would fail on the real cause
+          # four lines from where it was caused. Ask git whether it is a repository.
+          if ! git -C .keeper-state rev-parse --git-dir >/dev/null 2>&1; then
+            echo "no keeper-state branch yet — starting one"
+            rm -rf .keeper-state
+            git init -q -b keeper-state .keeper-state
+            git -C .keeper-state remote add origin \
+              "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          fi
+          mkdir -p .keeper-state/evidence
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # `deployments/testnet.json` states that it is the only place a contract
+      # id may live outside `packages/common/networks.ts`. Pasting the ids here
+      # would be the second copy, and it would drift the first time an instance
+      # is redeployed — silently, because a keeper pointed at a dead contract
+      # just reports errors it is designed to tolerate.
+      - name: Read the addresses from the deployment record
+        id: deployed
+        run: |
+          set -euo pipefail
+          node -e '
+            const d = require("./deployments/testnet.json");
+            const ids = (d.instances ?? []).map((i) => i.vaultId).filter(Boolean);
+            if (ids.length === 0) throw new Error("deployments/testnet.json lists no instances");
+            if (!d.reflectorId) throw new Error("deployments/testnet.json has no reflectorId");
+            if (!d.deployerAddress) throw new Error("deployments/testnet.json has no deployerAddress");
+            console.log(`vault_ids=${ids.join(",")}`);
+            console.log(`feed_id=${d.reflectorId}`);
+            console.log(`source_address=${d.deployerAddress}`);
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: One pass
+        env:
+          RPC_URL: https://soroban-testnet.stellar.org
+          NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+          NETWORK: testnet
+          VAULT_IDS: ${{ steps.deployed.outputs.vault_ids }}
+          FEED_ID: ${{ steps.deployed.outputs.feed_id }}
+          # Public, and only ever named as a simulation's source account. The
+          # `--archive-only` path signs nothing, so this is not a credential.
+          SOURCE_ADDRESS: ${{ steps.deployed.outputs.source_address }}
+          EVIDENCE_ROOT: ${{ github.workspace }}/.keeper-state/evidence
+          # Empty on the archive-only path, where nothing reads it.
+          KEEPER_SECRET: ${{ secrets.KEEPER_SECRET }}
+          ALERT_WEBHOOK: ${{ secrets.ALERT_WEBHOOK }}
+        run: node --experimental-strip-types keeper/index.ts ${{ steps.mode.outputs.flag }}
+
+      - name: Commit what the pass observed
+        # `!cancelled()` rather than `always()`: a pass that *threw* must still
+        # save what it collected before it did — those events are as
+        # unrecoverable as any others — but a cancelled run may be mid-write.
+        if: ${{ !cancelled() }}
+        working-directory: .keeper-state
+        run: |
+          set -euo pipefail
+          git config user.name "antares-keeper"
+          git config user.email "keeper@antares.invalid"
+          # `-f` because `evidence/.working/` is gitignored in the main tree —
+          # deliberately, so a local run cannot put a cursor on `main` by
+          # accident. On this branch it is the entire point.
+          git add -f evidence
+          if git diff --cached --quiet; then
+            echo "nothing observed this pass"
+            exit 0
+          fi
+          git diff --cached --stat
+          git commit -q -m "keeper pass $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          # Rebase rather than force: a concurrent run is prevented by the
+          # concurrency group, but a human pushing to this branch is not, and
+          # the loser of that race must not be silently discarded.
+          git pull --rebase --quiet origin keeper-state 2>/dev/null || true
+          git push -q origin HEAD:keeper-state
+
+      - name: Say what is on the branch now
+        if: ${{ !cancelled() }}
+        working-directory: .keeper-state
+        run: ls -1 evidence/*.json 2>/dev/null || echo "no closed-round records yet"
