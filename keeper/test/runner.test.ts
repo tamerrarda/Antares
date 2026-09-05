@@ -41,17 +41,22 @@ const NO_SLEEP = { sleep: () => Promise.resolve() };
 interface Recorded {
   readonly debug: string[];
   readonly warn: string[];
+  /** The structured half of a warning, where the cause lives. */
+  readonly warnFields: (Record<string, unknown> | undefined)[];
   readonly info: string[];
   readonly alerts: Alert[];
 }
 
 function sink(): Sink & { recorded: Recorded } {
-  const recorded: Recorded = { debug: [], warn: [], info: [], alerts: [] };
+  const recorded: Recorded = { debug: [], warn: [], warnFields: [], info: [], alerts: [] };
   return {
     recorded,
     debug: (m) => recorded.debug.push(m),
     info: (m) => recorded.info.push(m),
-    warn: (m) => recorded.warn.push(m),
+    warn: (m, f) => {
+      recorded.warn.push(m);
+      recorded.warnFields.push(f);
+    },
     alert: (a) => recorded.alerts.push(a),
   };
 }
@@ -210,13 +215,19 @@ test("alerts from the read are raised even when the pass then does nothing", asy
 // ---------------------------------------------------------------------------------------------
 
 /** Records the calls and, optionally, throws the way a dead RPC would. */
-function archivist(over: { throws?: boolean; path?: string } = {}) {
+function archivist(over: { throws?: boolean; path?: string; failFirst?: number } = {}) {
   const calls: string[] = [];
+  let failures = over.failFirst ?? 0;
   return {
     calls,
     collect: (v: string) => {
       calls.push(`collect:${v}`);
-      return over.throws === true ? Promise.reject(new Error("rpc is down")) : Promise.resolve();
+      if (over.throws === true) return Promise.reject(new Error("rpc is down"));
+      if (failures > 0) {
+        failures -= 1;
+        return Promise.reject(new Error("rpc is down"));
+      }
+      return Promise.resolve();
     },
     close: (v: string) => {
       calls.push(`close:${v}`);
@@ -357,10 +368,7 @@ test("an archive pass collects and finalizes every vault and signs nothing", asy
   assert.deepEqual(a.calls, ["collect:A", "close:A", "collect:B", "close:B"]);
 });
 
-test("a vault whose epoch cannot be read does not stop the others being collected", async () => {
-  // The one failure outside `archive`'s own catch: `epoch()` is awaited to have something to
-  // finalize against, and an RPC that cannot answer for one vault must not cost the other four
-  // their events — those are the unrecoverable ones.
+test("a vault whose epoch cannot be read does not stop the others", async () => {
   const s = sink();
   const a = archivist();
   await archivePass(
@@ -368,8 +376,9 @@ test("a vault whose epoch cannot be read does not stop the others being collecte
     s,
     a,
   );
-  assert.deepEqual(a.calls, ["collect:A", "close:A", "collect:C", "close:C"]);
-  assert.ok(s.recorded.warn.some((m) => m.includes("could not read the epoch")));
+  // B is collected too — only its finalize is skipped, because that is the part that needs a view.
+  assert.deepEqual(a.calls, ["collect:A", "close:A", "collect:B", "collect:C", "close:C"]);
+  assert.ok(s.recorded.warn.some((m) => m.includes("no epoch to finalize against")));
 });
 
 test("an archive pass uses the same failure policy as a full pass, not a copy of it", async () => {
@@ -378,4 +387,41 @@ test("an archive pass uses the same failure policy as a full pass, not a copy of
   const s = sink();
   await archivePass([reader("A")], s, archivist({ throws: true }));
   assert.ok(s.recorded.warn.some((m) => m.includes("archiving failed")));
+});
+
+// ---------------------------------------------------------------------------------------------
+// What the first real run taught it
+// ---------------------------------------------------------------------------------------------
+
+test("a collection that fails once is retried, not lost", async () => {
+  // Measured: the first pass against the public RPC lost one vault of three to a transport
+  // failure while the other two succeeded. Events are the half nobody can fetch again, so a
+  // transient must not cost a pass its collection.
+  const s = sink();
+  const a = archivist({ failFirst: 1 });
+  await archivePass([reader("A")], s, a);
+  assert.deepEqual(a.calls, ["collect:A", "collect:A", "close:A"]);
+  assert.equal(s.recorded.warn.length, 0, "a retry that succeeded is not a warning");
+});
+
+test("a collection that keeps failing reports what actually went wrong", async () => {
+  // `classify(error).why` used to stand here and answered "a transport or signing failure" for
+  // every transport error, discarding the message. The first failure this code had was diagnosed
+  // by guessing because of it.
+  const s = sink();
+  await archivePass([reader("A")], s, archivist({ throws: true }));
+  assert.ok(
+    s.recorded.warnFields.some((f) => String(f?.["why"]).includes("rpc is down")),
+    "the error's own message reaches the log",
+  );
+});
+
+test("a vault whose epoch cannot be read is still collected", async () => {
+  // Fetching events does not need the epoch; only finalizing does. An RPC that cannot answer
+  // `epoch` must not also cost this pass the events.
+  const s = sink();
+  const a = archivist();
+  await archivePass([reader("A", { epoch: () => Promise.reject(new Error("epoch is down")) })], s, a);
+  assert.deepEqual(a.calls, ["collect:A"], "collected, and not finalized");
+  assert.ok(s.recorded.warn.some((m) => m.includes("no epoch to finalize against")));
 });

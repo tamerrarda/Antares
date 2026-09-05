@@ -179,6 +179,13 @@ export async function pass(
   }
 }
 
+/** How many times a collection is attempted before a pass gives up on it. */
+export const ARCHIVE_ATTEMPTS = 3;
+
+/** The delay cap for those attempts. Seconds, not `withBackoff`'s ten-minute default: a pass that
+ * sat on a retry schedule that long would hold the settlement decision behind a file write. */
+export const ARCHIVE_MAX_DELAY_MS = 5_000;
+
 /**
  * The archive's whole contact with the pass, including its failure policy.
  *
@@ -186,23 +193,47 @@ export async function pass(
  * that stopped settling because it could not write a file would have inverted its own priorities —
  * the round is the fact, the record is the account of it. A write that fails is reported at `warn`
  * and the working state stays on disk, so the next pass retries from the same cursor.
+ *
+ * **`view` may be `null`, and collecting still happens.** Reading `epoch()` is how a round is
+ * finalized, not how its events are fetched, so an RPC that cannot answer `epoch` must not also
+ * cost this pass its collection — the events are the half nobody can get back.
  */
 async function archive(
   vaultId: string,
-  view: EpochView,
+  view: EpochView | null,
   sink: Sink,
   archivist: Archivist | undefined,
 ): Promise<void> {
   if (archivist === undefined) return;
   try {
-    await archivist.collect(vaultId);
+    // **Retried, and on anything.** The first run of this on a real endpoint lost one vault of
+    // three to a transport failure while the other two succeeded — the shared public RPC, asked
+    // for ~13 pages per vault back to back. `isRetryable` is deliberately not passed: it answers
+    // for *contract* rejections, of which a read has none, and it would have refused exactly the
+    // transport error that caused the loss. Collection is read-only, so a retry cannot double an
+    // effect, and a genuinely permanent failure is simply retried again next pass.
+    await withBackoff(() => archivist.collect(vaultId), {
+      attempts: ARCHIVE_ATTEMPTS,
+      maxDelayMs: ARCHIVE_MAX_DELAY_MS,
+      onRetry: (error, attempt, delayMs) => {
+        sink.debug(`${vaultId}: collect retrying in ${delayMs}ms`, { attempt, why: reason(error) });
+      },
+    });
+    if (view === null) return;
     const path = await archivist.close(vaultId, view);
     if (path !== null) sink.info(`${vaultId}: round ${view.round} archived`, { path });
   } catch (error) {
-    sink.warn(`${vaultId}: archiving failed; the round is unaffected`, {
-      why: classify(error).why,
-    });
+    // `classify(error).why` is not used here, and that is the fix for a real loss of information:
+    // it maps *contract* error codes, so every transport failure came out as the same sentence
+    // about "a transport or signing failure" with the actual cause discarded. The first failure
+    // this code ever had was diagnosed by guessing, because of that line.
+    sink.warn(`${vaultId}: archiving failed; the round is unaffected`, { why: reason(error) });
   }
+}
+
+/** The error as written, not as categorised. */
+function reason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -224,15 +255,17 @@ export async function archivePass(
   archivist: Archivist,
 ): Promise<void> {
   for (const reader of readers) {
+    // Read the view if it can be read, and collect either way. A vault whose `epoch()` is
+    // unavailable can still have its events fetched; only the finalize needs the round's span.
+    let view: EpochView | null = null;
     try {
-      await archive(reader.id, await reader.epoch(), sink, archivist);
+      view = await reader.epoch();
     } catch (error) {
-      // Reading `epoch()` is the one thing here that can fail outside `archive`'s own catch, and
-      // one vault's RPC failure must not stop the others being collected.
-      sink.warn(`${reader.id}: could not read the epoch to archive against`, {
-        why: classify(error).why,
+      sink.warn(`${reader.id}: no epoch to finalize against; collecting anyway`, {
+        why: reason(error),
       });
     }
+    await archive(reader.id, view, sink, archivist);
   }
 }
 
