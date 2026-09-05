@@ -1,0 +1,35 @@
+{
+  "cursor": "0019401136075177983-4294967295",
+  "rounds": {
+    "1": [
+      {
+        "event": {
+          "name": "settled",
+          "round": 1,
+          "spot": "1763391",
+          "strike": "1856210",
+          "notionalSold": "2000001000",
+          "payoutTotal": "0",
+          "premium": "61400030",
+          "fee": "0",
+          "pps": "10306232",
+          "wclaims": "0"
+        },
+        "txHash": "8829215aa503d05104e75a22f81ea524ff20ae518d2b0484106f56847156c87b",
+        "ledger": 4430159
+      },
+      {
+        "event": {
+          "name": "settle_bounty",
+          "round": 1,
+          "to": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+          "amount": "153500"
+        },
+        "txHash": "8829215aa503d05104e75a22f81ea524ff20ae518d2b0484106f56847156c87b",
+        "ledger": 4430159
+      }
+    ]
+  },
+  "missedLedgers": 0,
+  "skipped": []
+}

@@ -1,0 +1,46 @@
+{
+  "cursor": "0019401136075177983-4294967295",
+  "rounds": {
+    "2": [
+      {
+        "event": {
+          "name": "settled",
+          "round": 2,
+          "spot": "1782048",
+          "strike": "1934996",
+          "notionalSold": "1536808824",
+          "payoutTotal": "0",
+          "premium": "30582495",
+          "fee": "0",
+          "pps": "10448758",
+          "wclaims": "626925480"
+        },
+        "txHash": "36970bf0ca3bed1b9553992b9195250e451ca44a17c502872e6aacdc65616325",
+        "ledger": 4429048
+      },
+      {
+        "event": {
+          "name": "settle_bounty",
+          "round": 2,
+          "to": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+          "amount": "76456"
+        },
+        "txHash": "36970bf0ca3bed1b9553992b9195250e451ca44a17c502872e6aacdc65616325",
+        "ledger": 4429048
+      },
+      {
+        "event": {
+          "name": "withdraw_claimed",
+          "user": "GAM7T6J7LNKWH3R2OTVMCNJDFGT5ZEPZMEE5ZNALELLVVAPIJEMLMYVL",
+          "round": 2,
+          "shares": "600000000",
+          "amount": "626925480"
+        },
+        "txHash": "ed64428c3b51ace674f5bfd7ad767983b5da7060017e1d5192f9a16d27bed412",
+        "ledger": 4508165
+      }
+    ]
+  },
+  "missedLedgers": 0,
+  "skipped": []
+}
