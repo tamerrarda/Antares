@@ -13,7 +13,7 @@ import { ConsecutiveFailures } from "@antares/common/retry";
 
 import type { Alert, EpochView, VaultConfig } from "../decide.ts";
 import { CODES } from "../errors.ts";
-import { pass, type Sink, type VaultClient } from "../runner.ts";
+import { loop, pass, type Sink, type VaultClient } from "../runner.ts";
 
 const NOW = 1_787_000_000;
 const DAY = 86_400;
@@ -272,4 +272,68 @@ test("a keeper with no archivist behaves exactly as it did before there was one"
   assert.equal(result.action.kind, "close_round");
   assert.equal(result.txHash, "tx-hash");
   assert.equal(s.recorded.warn.length, 0);
+});
+
+// ---------------------------------------------------------------------------------------------
+// loop — because `--once` is `loop` with a `running` that is false after one sweep
+// ---------------------------------------------------------------------------------------------
+
+test("a running() that is true once sweeps every vault exactly once and never sleeps", async () => {
+  // This is the contract `index.ts --once` rests on. Asserting it here rather than in the entry
+  // point is the point: a cron and a daemon must execute the same `pass` in the same order, and
+  // the way to guarantee that is for `--once` to have no code path of its own.
+  const seen: string[] = [];
+  let swept = false;
+  let slept = 0;
+  const v = (id: string): VaultClient => client({ id, submit: () => Promise.resolve(`tx-${id}`) });
+  await loop([v("A"), v("B"), v("C")], sink(), {
+    ...NO_SLEEP,
+    sleep: () => {
+      slept += 1;
+      return Promise.resolve();
+    },
+    running: () => {
+      if (swept) return false;
+      swept = true;
+      return true;
+    },
+    clock: () => NOW,
+    archivist: {
+      collect: (id) => {
+        seen.push(id);
+        return Promise.resolve();
+      },
+      close: () => Promise.resolve(null),
+    },
+  });
+  assert.deepEqual(seen, ["A", "B", "C"], "each vault swept once, in order");
+  assert.equal(slept, 0, "a single sweep must not wait for an interval it will never use");
+});
+
+test("one vault's pass throwing does not stop the rest of the sweep", async () => {
+  // A keeper that exits on the first error is a keeper that is off — survivable by design (D-09)
+  // but pointless by accident.
+  const s = sink();
+  const reached: string[] = [];
+  const ok = (id: string): VaultClient =>
+    client({
+      id,
+      epoch: () => {
+        reached.push(id);
+        return Promise.resolve(VIEW);
+      },
+    });
+  const bad: VaultClient = client({ id: "B", epoch: () => Promise.reject(new Error("rpc down")) });
+  let swept = false;
+  await loop([ok("A"), bad, ok("C")], s, {
+    ...NO_SLEEP,
+    running: () => {
+      if (swept) return false;
+      swept = true;
+      return true;
+    },
+    clock: () => NOW,
+  });
+  assert.deepEqual(reached, ["A", "C"]);
+  assert.ok(s.recorded.warn.some((m) => m.includes("before a decision could be made")));
 });

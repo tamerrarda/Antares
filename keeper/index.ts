@@ -19,7 +19,7 @@
  * cannot be recovered afterwards.
  */
 
-import { Keypair, rpc } from "@stellar/stellar-sdk";
+import { Keypair, rpc, scValToNative } from "@stellar/stellar-sdk";
 
 import type { Alert } from "./decide.ts";
 import { fileStore } from "./archive.ts";
@@ -84,7 +84,20 @@ function rpcSource(server: rpc.Server): RpcLike {
       const res = await (request.cursor === undefined
         ? server.getEvents({ startLedger: request.startLedger ?? 0, ...common })
         : server.getEvents({ cursor: request.cursor, ...common }));
-      return { events: res.events, latestLedger: res.latestLedger, ...(res.cursor === undefined ? {} : { cursor: res.cursor }) };
+      // `RpcLike` promises native values; the SDK returns `xdr.ScVal`. Converting here is the whole
+      // job of an adapter, and forwarding instead type-checks — `unknown[]` accepts anything — and
+      // then turns every event in the stream into `<unnameable>` at `eventName`.
+      return {
+        events: res.events.map((e) => ({
+          ...(e.contractId === undefined ? {} : { contractId: e.contractId }),
+          topic: e.topic.map((t) => scValToNative(t) as unknown),
+          value: scValToNative(e.value) as unknown,
+          txHash: e.txHash,
+          ledger: e.ledger,
+        })),
+        latestLedger: res.latestLedger,
+        ...(res.cursor === undefined ? {} : { cursor: res.cursor }),
+      };
     },
   };
 }
@@ -130,6 +143,27 @@ async function main(): Promise<void> {
   console.log(`keeper: ${vaults.length} vault(s), signer ${signer.publicKey()}`);
   console.log("keeper: holds no admin key; every call it makes is permissionless (D-09)");
   console.log(`keeper: archiving to ${evidenceRoot}/ — a round not watched from its opening is not written`);
+
+  // One pass over every vault, then exit — for a scheduler that owns the interval instead of us.
+  //
+  // **Not a second code path.** It is `loop` with a `running` that is false after the first sweep,
+  // so a cron and a daemon execute the same `pass` in the same order and a bug cannot exist in one
+  // and not the other. The exit code is the *scheduler's* concern, not the vault's: a pass that
+  // could not settle is normal (somebody else did, or the guard said no) and must not be reported
+  // as a failed job, so `--once` exits 0 unless the process itself could not run.
+  if (process.argv.includes("--once")) {
+    let swept = false;
+    await loop(vaults, sink, {
+      archivist,
+      running: () => {
+        if (swept) return false;
+        swept = true;
+        return true;
+      },
+    });
+    console.log("keeper: one pass complete");
+    return;
+  }
 
   let running = true;
   for (const sig of ["SIGINT", "SIGTERM"] as const) {

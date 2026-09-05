@@ -35,7 +35,17 @@ export class EventSourceError extends Error {
   }
 }
 
-/** Only what this module needs from `rpc.Server`, so the paging is testable without a network. */
+/**
+ * Only what this module needs from `rpc.Server`, so the paging is testable without a network.
+ *
+ * **`topic` and `value` are already `scValToNative`-converted**, which is what {@link RawEvent}
+ * documents and what every decoder in `@antares/common/events` reads. The SDK hands back
+ * `xdr.ScVal`, so an adapter over the real server has to convert; one that forwards the SDK's
+ * objects compiles cleanly against the `unknown[]` below and then fails at `eventName`, where every
+ * event in the stream comes back as `<unnameable>`. That is the shape this interface was measured
+ * producing on 2026-09-05, so the contract is stated here rather than left to the docstring on a
+ * type two files away.
+ */
 export interface RpcLike {
   getHealth(): Promise<{ oldestLedger: number; latestLedger: number }>;
   getEvents(request: {
@@ -79,6 +89,20 @@ export const PAGE_LIMIT = 200;
 /** A hard stop on paging, so a misconfigured cursor cannot spin forever against a shared endpoint. */
 export const MAX_PAGES = 50;
 
+/**
+ * The ledger a pagination cursor sits at, or `null` if it is not a TOID.
+ *
+ * Stellar's TOID packs `ledger << 32 | txIndex << 12 | opIndex` into an int64, so the ledger is the
+ * high half. `Number` loses precision above 2^53 and the low half is discarded anyway, so the parse
+ * goes through `BigInt` and comes back down after the shift.
+ */
+export function cursorLedger(cursor: string): number | null {
+  const head = cursor.split("-")[0];
+  if (head === undefined || !/^\d+$/.test(head)) return null;
+  const ledger = Number(BigInt(head) >> 32n);
+  return Number.isSafeInteger(ledger) && ledger > 0 ? ledger : null;
+}
+
 const asRaw = (e: { topic: unknown[]; value: unknown; txHash: string; ledger: number }): RawEvent => ({
   topics: e.topic,
   data: e.value,
@@ -98,7 +122,7 @@ const asRaw = (e: { topic: unknown[]; value: unknown; txHash: string; ledger: nu
 export async function fetchSince(
   rpc: RpcLike,
   contractIds: readonly string[],
-  from: { startLedger: number } | { cursor: string },
+  from: { startLedger: number | "oldest" } | { cursor: string },
 ): Promise<FetchResult & { readonly skipped: readonly string[] }> {
   const health = await rpc.getHealth();
   let missedLedgers = 0;
@@ -106,6 +130,14 @@ export async function fetchSince(
 
   if ("cursor" in from) {
     request = { cursor: from.cursor };
+  } else if (from.startLedger === "oldest") {
+    // **The caller must not compute this itself.** `oldestLedger` moves forward as ledgers close,
+    // so a caller that reads health, takes the floor, and passes it back here reads a moving number
+    // twice — and the one ledger that closed in between is reported as a real shortfall. Measured:
+    // a first collect against testnet came back `missedLedgers: 1`, which `Working` accumulates and
+    // never resets, so that single ledger would have stamped `complete: false` on every record the
+    // keeper ever wrote. One read, here, where the floor is already in hand.
+    request = { startLedger: health.oldestLedger };
   } else {
     if (from.startLedger < health.oldestLedger) {
       // Reported, not thrown and not clamped. The caller still wants what survives; what it must
@@ -148,12 +180,24 @@ export async function fetchSince(
       }
     }
 
-    if (res.cursor === undefined || res.events.length === 0) {
-      cursor = res.cursor ?? cursor;
+    if (res.cursor === undefined) {
       break;
     }
     cursor = res.cursor;
     request = { cursor: res.cursor };
+
+    // **An empty page is not the end of the range**, and treating it as one was a live defect: the
+    // RPC pages by a ledger window (~10 000 ledgers), not by a count of results, so a contract with
+    // few events returns page after empty page while its cursor walks forward. Measured against
+    // instance A on 2026-09-05: the 7-day retained window took **13 pages**, the first eleven of
+    // them empty, and the two settlement events arrived on page twelve. A scan that stopped at the
+    // first empty page returned nothing at all — from a contract whose events were plainly there.
+    //
+    // So the terminator is the cursor reaching the tip. It is read out of the cursor itself, which
+    // is a TOID with the ledger in its high 32 bits; a cursor that does not parse falls through to
+    // the `undefined` check and the page cap, which is why neither of those was removed.
+    const at = cursorLedger(res.cursor);
+    if (at !== null && at >= res.latestLedger) break;
 
     if (page === MAX_PAGES - 1) {
       throw new EventSourceError(

@@ -79,10 +79,10 @@ export function makeArchivist(deps: ArchivistDeps): Archivist {
   return {
     async collect(vaultId: string): Promise<void> {
       const held = deps.store.load(vaultId);
-      const from =
-        held.cursor === null
-          ? { startLedger: (await deps.rpc.getHealth()).oldestLedger }
-          : { cursor: held.cursor };
+      // `"oldest"` rather than a number we read ourselves: `fetchSince` already has the health
+      // response in hand, and a second read of a moving floor reports the ledgers that closed in
+      // between as lost history. See its own comment — this was measured, not anticipated.
+      const from = held.cursor === null ? { startLedger: "oldest" as const } : { cursor: held.cursor };
       const page = await fetchSince(deps.rpc, [vaultId], from);
       deps.store.save(
         vaultId,
