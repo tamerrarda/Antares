@@ -38,6 +38,9 @@ const view = (over: Partial<EpochView> = {}): EpochView => ({
   nextOpenAt: NOW,
   epochDuration: 7 * DAY,
   unresolvedAfter: SHIPPED_UNRESOLVED_AFTER,
+  // No branch in `decide` or `alerts` reads either; they are carried for the archive.
+  openedAt: NOW - 7 * DAY,
+  lastFinalizeTime: 0,
   ...over,
 });
 

@@ -111,6 +111,8 @@ export function makeVaultClient(options: VaultClientOptions): VaultClient {
         nextOpenAt: Number(raw["next_open_at"]),
         epochDuration: Number(params["epoch_duration"]),
         unresolvedAfter: Number(params["unresolved_after"]),
+        openedAt: Number(raw["opened_at"]),
+        lastFinalizeTime: Number(raw["last_finalize_time"]),
       };
     },
 

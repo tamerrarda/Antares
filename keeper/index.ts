@@ -22,6 +22,9 @@
 import { Keypair, rpc } from "@stellar/stellar-sdk";
 
 import type { Alert } from "./decide.ts";
+import { fileStore } from "./archive.ts";
+import { makeArchivist } from "./archivist.ts";
+import type { RpcLike } from "./events-source.ts";
 import { loop, type Sink } from "./runner.ts";
 import { makeVaultClient } from "./vault.ts";
 
@@ -58,6 +61,34 @@ function alertChannel(): (alert: Alert) => void {
   };
 }
 
+/**
+ * `rpc.Server` narrowed to what the archive reads.
+ *
+ * The SDK types `getEvents`'s argument as a union — `startLedger` **xor** `cursor`, each forbidding
+ * the other — while `RpcLike` states both optional so a test double can be one plain object. The
+ * union is the more precise type and this call site is the only code that knows which arm it is
+ * in, so the split happens here rather than by loosening `events-source.ts`'s interface to match a
+ * vendor's shape it does not otherwise depend on.
+ */
+function rpcSource(server: rpc.Server): RpcLike {
+  return {
+    getHealth: async () => {
+      const h = await server.getHealth();
+      return { oldestLedger: h.oldestLedger, latestLedger: h.latestLedger };
+    },
+    getEvents: async (request) => {
+      const common = {
+        filters: request.filters,
+        ...(request.limit === undefined ? {} : { limit: request.limit }),
+      };
+      const res = await (request.cursor === undefined
+        ? server.getEvents({ startLedger: request.startLedger ?? 0, ...common })
+        : server.getEvents({ cursor: request.cursor, ...common }));
+      return { events: res.events, latestLedger: res.latestLedger, ...(res.cursor === undefined ? {} : { cursor: res.cursor }) };
+    },
+  };
+}
+
 async function main(): Promise<void> {
   const rpcUrl = need("RPC_URL");
   const passphrase = need("NETWORK_PASSPHRASE");
@@ -84,8 +115,21 @@ async function main(): Promise<void> {
     makeVaultClient({ server, passphrase, vaultId, signer, feedId, assetSymbol }),
   );
 
+  // The archive is not optional in production and is constructed here rather than inside `loop`,
+  // because where the evidence lands is deployment configuration and the loop has no business
+  // knowing a filesystem exists. `EVIDENCE_ROOT` defaults beside the repo's own `evidence/`.
+  const evidenceRoot = process.env["EVIDENCE_ROOT"]?.trim() ?? "evidence";
+  const network = process.env["NETWORK"]?.trim() ?? "testnet";
+  const archivist = makeArchivist({
+    rpc: rpcSource(server),
+    store: fileStore(evidenceRoot),
+    root: evidenceRoot,
+    network,
+  });
+
   console.log(`keeper: ${vaults.length} vault(s), signer ${signer.publicKey()}`);
   console.log("keeper: holds no admin key; every call it makes is permissionless (D-09)");
+  console.log(`keeper: archiving to ${evidenceRoot}/ — a round not watched from its opening is not written`);
 
   let running = true;
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
@@ -95,7 +139,7 @@ async function main(): Promise<void> {
     });
   }
 
-  await loop(vaults, sink, { running: () => running });
+  await loop(vaults, sink, { running: () => running, archivist });
 }
 
 await main();

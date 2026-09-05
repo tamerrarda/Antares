@@ -23,6 +23,7 @@
 
 import { ConsecutiveFailures, DEFAULT_MAX_DELAY_MS, withBackoff } from "@antares/common/retry";
 
+import type { Archivist } from "./archivist.ts";
 import { alerts, decide, type Action, type Alert, type EpochView, type VaultConfig } from "./decide.ts";
 import { classify, isRetryable } from "./errors.ts";
 
@@ -70,6 +71,15 @@ export const LOOP_INTERVAL_MS = 30_000;
 export interface PassOptions {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly attempts?: number;
+  /**
+   * When present, every pass collects the vault's events and writes a round's record at its close.
+   *
+   * Optional because a keeper with no archive is still a correct keeper — D-09's claim is that
+   * rounds close without us, and archiving is a second job that must never be able to stop the
+   * first. That is also why its failures are caught below rather than allowed to abort the pass:
+   * an RPC that cannot serve events must not prevent a settlement that is already late.
+   */
+  readonly archivist?: Archivist;
 }
 
 /**
@@ -89,6 +99,11 @@ export async function pass(
 
   const raised = alerts(vault.id, view, { expiresAt }, now);
   for (const a of raised) sink.alert(a);
+
+  // Collect first, then finalize: a round we closed ourselves last pass has its terminal event on
+  // the chain by now, and this is the fetch that picks it up. Finalizing before collecting would
+  // always be one pass behind, and on a vault nobody else touches that pass may never come.
+  await archive(vault.id, view, sink, options.archivist);
 
   const action = decide(view, config, now);
   if (action.kind === "wait") {
@@ -150,6 +165,32 @@ export async function pass(
       return { action, alerts: [...raised, alert], disposition };
     }
     return { action, alerts: raised, disposition };
+  }
+}
+
+/**
+ * The archive's whole contact with the pass, including its failure policy.
+ *
+ * **Nothing in here may throw into `pass`.** Evidence is written *about* the chain, and a keeper
+ * that stopped settling because it could not write a file would have inverted its own priorities —
+ * the round is the fact, the record is the account of it. A write that fails is reported at `warn`
+ * and the working state stays on disk, so the next pass retries from the same cursor.
+ */
+async function archive(
+  vaultId: string,
+  view: EpochView,
+  sink: Sink,
+  archivist: Archivist | undefined,
+): Promise<void> {
+  if (archivist === undefined) return;
+  try {
+    await archivist.collect(vaultId);
+    const path = await archivist.close(vaultId, view);
+    if (path !== null) sink.info(`${vaultId}: round ${view.round} archived`, { path });
+  } catch (error) {
+    sink.warn(`${vaultId}: archiving failed; the round is unaffected`, {
+      why: classify(error).why,
+    });
   }
 }
 

@@ -99,3 +99,11 @@ web/out/
 # Assembled by web/scripts/build-site.mjs: the landing and the export in one servable tree.
 web/site/
 web/next-env.d.ts
+
+# The keeper's between-passes state (`keeper/archivist.ts`): a cursor and the events of a round
+# that has not closed yet. It is deliberately on disk rather than in memory — what the RPC's
+# retention window drops cannot be fetched again by anybody, so a restart must not lose it — but it
+# is a resumption point, not a record. The record is the `evidence/*.json` beside it, which IS
+# committed: that file is the thing that outlives a testnet reset (09-DEPLOYMENT §3), and a
+# deliverable nobody can reconstruct is a deliverable that has to be in the repository.
+evidence/.working/

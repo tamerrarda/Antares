@@ -45,6 +45,16 @@ export interface EpochView {
   readonly nextOpenAt: number;
   readonly epochDuration: number;
   readonly unresolvedAfter: number;
+  /**
+   * When the current round opened, and when it reached a terminal outcome — `0` while it has not.
+   *
+   * **No decision reads either of these**, and they are here anyway. The archive needs a round's
+   * span to write its record, `epoch()` is the only call that reports it, and the alternative was a
+   * second read of the same view through a second interface. `decide` ignoring a field is cheaper
+   * than the keeper asking the chain the same question twice per pass.
+   */
+  readonly openedAt: number;
+  readonly lastFinalizeTime: number;
 }
 
 export interface VaultConfig {

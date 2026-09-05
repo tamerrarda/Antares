@@ -26,6 +26,8 @@ const VIEW: EpochView = {
   nextOpenAt: NOW,
   epochDuration: 7 * DAY,
   unresolvedAfter: 75_600,
+  openedAt: NOW - 7 * DAY,
+  lastFinalizeTime: 0,
 };
 
 const contractError = (code: number) => new Error(`HostError: Error(Contract, #${code})`);
@@ -201,4 +203,73 @@ test("alerts from the read are raised even when the pass then does nothing", asy
   const r = await pass(c, new ConsecutiveFailures("t"), s, NOW, NO_SLEEP);
   const kinds = r.alerts.map((a) => a.kind).sort();
   assert.deepEqual(kinds, ["expiry_passed_still_active", "feed_runway_low"]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The archive is a second job, and it may never stop the first
+// ---------------------------------------------------------------------------------------------
+
+/** Records the calls and, optionally, throws the way a dead RPC would. */
+function archivist(over: { throws?: boolean; path?: string } = {}) {
+  const calls: string[] = [];
+  return {
+    calls,
+    collect: (v: string) => {
+      calls.push(`collect:${v}`);
+      return over.throws === true ? Promise.reject(new Error("rpc is down")) : Promise.resolve();
+    },
+    close: (v: string) => {
+      calls.push(`close:${v}`);
+      return Promise.resolve(over.path ?? null);
+    },
+  };
+}
+
+test("every pass collects, then finalizes — in that order, and before the decision", async () => {
+  const s = sink();
+  const a = archivist();
+  await pass(client(), new ConsecutiveFailures("t"), s, NOW, { ...NO_SLEEP, archivist: a });
+  assert.deepEqual(a.calls, ["collect:CVAULT", "close:CVAULT"]);
+});
+
+test("an archive that throws is a warning, not a failed pass — the round still closes", async () => {
+  // D-09 inverted would be a keeper that stopped settling because it could not write a file. The
+  // round is the fact; the record is the account of it, and the account may never block the fact.
+  const s = sink();
+  const failures = new ConsecutiveFailures("t");
+  let submitted = false;
+  const result = await pass(
+    client({
+      epoch: () => Promise.resolve({ ...VIEW, expiry: NOW - 1 }),
+      submit: () => {
+        submitted = true;
+        return Promise.resolve("tx-hash");
+      },
+    }),
+    failures,
+    s,
+    NOW,
+    { ...NO_SLEEP, archivist: archivist({ throws: true }) },
+  );
+  assert.equal(submitted, true, "the settlement went out anyway");
+  assert.equal(result.txHash, "tx-hash");
+  assert.equal(failures.count, 0, "an archive failure is not a keeper failure streak");
+  assert.ok(s.recorded.warn.some((m) => m.includes("archiving failed")));
+});
+
+test("a written record is reported at info, so an operator sees the file appear", async () => {
+  const s = sink();
+  await pass(client(), new ConsecutiveFailures("t"), s, NOW, {
+    ...NO_SLEEP,
+    archivist: archivist({ path: "evidence/2026-09-04-testnet.json" }),
+  });
+  assert.ok(s.recorded.info.some((m) => m.includes("archived")));
+});
+
+test("a keeper with no archivist behaves exactly as it did before there was one", async () => {
+  const s = sink();
+  const result = await pass(client(), new ConsecutiveFailures("t"), s, NOW, NO_SLEEP);
+  assert.equal(result.action.kind, "close_round");
+  assert.equal(result.txHash, "tx-hash");
+  assert.equal(s.recorded.warn.length, 0);
 });
