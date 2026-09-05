@@ -1,32 +1,32 @@
 {
-  "cursor": "0019401715895762943-4294967295",
+  "cursor": "0019401720190730239-4294967295",
   "rounds": {
     "1": [
       {
         "event": {
           "name": "settled",
           "round": 1,
-          "spot": "1763391",
-          "strike": "1856210",
+          "spot": "1853600",
+          "strike": "1874408",
           "notionalSold": "2000001000",
           "payoutTotal": "0",
-          "premium": "61400030",
+          "premium": "94400047",
           "fee": "0",
-          "pps": "10306232",
+          "pps": "10470819",
           "wclaims": "0"
         },
-        "txHash": "8829215aa503d05104e75a22f81ea524ff20ae518d2b0484106f56847156c87b",
-        "ledger": 4430159
+        "txHash": "9180eb5b14e28baa29111d715845f7c3d1c383afa371f97cef2f27a95ed1eef6",
+        "ledger": 4507695
       },
       {
         "event": {
           "name": "settle_bounty",
           "round": 1,
           "to": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
-          "amount": "153500"
+          "amount": "236000"
         },
-        "txHash": "8829215aa503d05104e75a22f81ea524ff20ae518d2b0484106f56847156c87b",
-        "ledger": 4430159
+        "txHash": "9180eb5b14e28baa29111d715845f7c3d1c383afa371f97cef2f27a95ed1eef6",
+        "ledger": 4507695
       }
     ]
   },
