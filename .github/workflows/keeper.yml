@@ -128,6 +128,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      # `@antares/common` resolves to `dist/*.js` at runtime, not to its sources — so the keeper
+      # cannot import it until it is compiled. A developer's machine hides this: `dist/` is already
+      # there from the last `pnpm -r build` and nothing says the workflow would not have one. A
+      # fresh runner has no `dist/` at all, and the first real run failed here with
+      # `Cannot find module '@antares/common/dist/events.js'`.
+      - run: pnpm --filter @antares/common build
+
       # `deployments/testnet.json` states that it is the only place a contract
       # id may live outside `packages/common/networks.ts`. Pasting the ids here
       # would be the second copy, and it would drift the first time an instance
