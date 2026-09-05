@@ -145,7 +145,6 @@ export function makeVaultReader(options: VaultReaderOptions): VaultReader {
       const v = await simulateCall(server, await account(), passphrase, feedId, "expires", [asset]);
       return v === null || v === undefined ? null : Number(v);
     },
-
   };
 }
 

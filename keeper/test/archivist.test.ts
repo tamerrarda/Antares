@@ -143,10 +143,7 @@ test("a round whose opening was never seen is not written, even though its close
 test("a round watched from its opening is written", async () => {
   const r = root();
   const store = fileStore(r);
-  store.save(
-    VAULT,
-    observe(EMPTY, [at(opened(1), "tx-open"), at(settled(1), "tx-settle")], "c-9", 0, []),
-  );
+  store.save(VAULT, observe(EMPTY, [at(opened(1), "tx-open"), at(settled(1), "tx-settle")], "c-9", 0, []));
   const { rpc } = spyRpc(4_387_212);
   const path = await makeArchivist({ rpc, store, root: r, network: NET }).close(VAULT, view());
   assert.ok(path !== null);

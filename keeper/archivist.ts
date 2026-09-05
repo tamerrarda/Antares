@@ -84,10 +84,7 @@ export function makeArchivist(deps: ArchivistDeps): Archivist {
       // between as lost history. See its own comment — this was measured, not anticipated.
       const from = held.cursor === null ? { startLedger: "oldest" as const } : { cursor: held.cursor };
       const page = await fetchSince(deps.rpc, [vaultId], from);
-      deps.store.save(
-        vaultId,
-        observe(held, page.events, page.cursor, page.missedLedgers, page.skipped),
-      );
+      deps.store.save(vaultId, observe(held, page.events, page.cursor, page.missedLedgers, page.skipped));
     },
 
     async close(vaultId: string, view: EpochView): Promise<string | null> {
