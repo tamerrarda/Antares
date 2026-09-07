@@ -42,6 +42,14 @@ const opened = (round: number): DecodedEvent => ({
   premiumFloorBps: 112,
 });
 
+const lapsed = (round: number): DecodedEvent => ({
+  name: "epoch_lapsed",
+  round,
+  notionalOffered: 2_061_247_530n,
+  pps: 10_306_232n,
+  wclaims: 0n,
+});
+
 const settled = (round: number): DecodedEvent => ({
   name: "settled",
   round,
@@ -169,4 +177,34 @@ test("a round the archive holds nothing for is not written", async () => {
   const { rpc } = spyRpc(4_387_212);
   const a = makeArchivist({ rpc, store: fileStore(r), root: r, network: NET });
   assert.equal(await a.close(VAULT, view({ round: 42 })), null);
+});
+
+test("a round that has opened but not yet ended is silent, not an error", async () => {
+  // The exact state both live instances sat in for ten hours on 2026-09-07: a round that lapsed
+  // when its auction closed unfilled, and which nobody had called in to finalize. The view reads
+  // `Idle` + round 2 + round *1*'s finalize time, so `closed()` says yes and it is not — and
+  // before this check, every pass warned about a vault with nothing wrong with it.
+  const r = root();
+  const store = fileStore(r);
+  store.save(VAULT, observe(EMPTY, [at(opened(2), "tx-open")], "c-9", 0, []));
+  const { rpc } = spyRpc(4_387_212);
+  const a = makeArchivist({ rpc, store, root: r, network: NET });
+  assert.equal(await a.close(VAULT, view({ round: 2, lastFinalizeTime: OPENED - 1 })), null);
+  // Nothing is consumed by the refusal: the opening is still held for when the ending arrives.
+  assert.equal(store.load(VAULT).rounds["2"]?.length, 1);
+});
+
+test("the ending arriving is what makes it writable", async () => {
+  const r = root();
+  const store = fileStore(r);
+  store.save(VAULT, observe(EMPTY, [at(opened(2), "tx-open")], "c-9", 0, []));
+  const { rpc } = spyRpc(4_387_212);
+  const a = makeArchivist({ rpc, store, root: r, network: NET });
+  const v = view({ round: 2, lastFinalizeTime: CLOSED });
+  assert.equal(await a.close(VAULT, v), null, "not yet");
+  store.save(VAULT, observe(store.load(VAULT), [at(lapsed(2), "tx-lapse")], "c-10", 0, []));
+  const path = await a.close(VAULT, v);
+  assert.ok(path !== null, "and now it is");
+  const file = JSON.parse(readFileSync(path, "utf8")) as EvidenceFile;
+  assert.equal(file.epochs[0]!.round, 2);
 });

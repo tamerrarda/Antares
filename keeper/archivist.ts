@@ -35,7 +35,7 @@
  * ending is the same lie with one event in it.
  */
 
-import { hasRound } from "@antares/common/events";
+import { hasRound, isTerminal } from "@antares/common/events";
 
 import { finalize, observe, type WorkingStore } from "./archive.ts";
 import type { EpochView } from "./decide.ts";
@@ -67,11 +67,25 @@ export interface Archivist {
   close(vaultId: string, view: EpochView): Promise<string | null>;
 }
 
-/** True when `view.round` has reached a terminal outcome and no successor has opened over it. */
+/**
+ * True when the vault is between rounds and has closed at least one.
+ *
+ * **This is a necessary condition and not a sufficient one**, which is the correction it carries.
+ * It first read as "`view.round` is over", and `lastFinalizeTime` does not say that: it belongs to
+ * whichever round finalized last, not to the one `view.round` names. A round that opens and then
+ * **lapses lazily** produces exactly the state that breaks the reading — phase `Idle`, the new
+ * round's number, and the *previous* round's finalize time — and both live instances sat in it for
+ * ten hours on 2026-09-07, warning on every pass.
+ *
+ * Nothing wrong was written, because `terminalOf` refuses a round with no terminal event and that
+ * is what the bucket check below now asks for first. But a guard that only holds because a deeper
+ * one caught it is a guard reporting a failure on a healthy vault, and D-92 is the entry about what
+ * a channel of false alarms costs.
+ *
+ * `Phase` collapses Settled/Lapsed/Voided into `Idle` — `views.rs` resolves the effective phase and
+ * the keeper does not re-derive it (D-09's second copy).
+ */
 export function closed(view: EpochView): boolean {
-  // `Phase` collapses Settled/Lapsed/Voided into `Idle` — `views.rs` resolves the effective phase
-  // and the keeper does not re-derive it (D-09's second copy). So `Idle` with a finalize time is
-  // "the round named here is over"; `Idle` with none is a vault that has never closed one.
   return view.phase === "Idle" && view.lastFinalizeTime > 0;
 }
 
@@ -96,6 +110,14 @@ export function makeArchivist(deps: ArchivistDeps): Archivist {
         (l) => l.event.name === "epoch_opened" && hasRound(l.event) && l.event.round === view.round,
       );
       if (!sawOpening) return null;
+      // **The round's own ending, asked for here rather than discovered as an exception.** A lapse
+      // is resolved lazily, so a round can sit finished-but-unfinalized for as long as nobody
+      // calls in — `Idle`, carrying its own number and the *previous* round's finalize time. Until
+      // its terminal event is actually on chain there is nothing to record, and that is a normal
+      // state of a healthy vault rather than a failure of this pass. `terminalOf` still refuses,
+      // and still should: it is the check that cannot be skipped, this is the one that keeps a
+      // waiting vault quiet.
+      if (!bucket.some((l) => isTerminal(l.event))) return null;
 
       const { path } = finalize(deps.root, deps.store, {
         vault: vaultId,
