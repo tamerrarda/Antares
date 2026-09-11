@@ -1,5 +1,5 @@
 {
-  "cursor": "0019881803045142527-4294967295",
+  "cursor": "0019881983433768959-4294967295",
   "rounds": {
     "1": [
       {
@@ -45,6 +45,19 @@
         },
         "txHash": "5f407533825b33b4a39be19b60b53c6323a09a58a0ecefd84e17ae1c5742520c",
         "ledger": 4629087
+      },
+      {
+        "event": {
+          "name": "bid_filled",
+          "round": 4,
+          "bidder": "GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH",
+          "notional": "1000000000",
+          "premiumBps": 306,
+          "premium": "30600000",
+          "notionalSoldAfter": "1000000000"
+        },
+        "txHash": "e54eaa3dc99995ae62338fdbc1c28de10f880c82afed43e9460bf9c9c6eb7f2c",
+        "ledger": 4629128
       }
     ]
   },
