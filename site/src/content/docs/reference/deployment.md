@@ -3,7 +3,7 @@ title: What is deployed
 deck: Every address, hash, parameter and transaction, and how to check each of them without asking us for anything.
 ---
 
-> **Status —** Stellar **testnet** only, one vault, **unaudited**.
+> **Status —** Stellar **testnet** only, three vaults, **unaudited**.
 > [Where this stands](../start/status.md).
 
 Everything below is committed to the repository in
@@ -16,9 +16,15 @@ submission cannot be recovered later at all.
 | | Address | Wasm SHA-256 |
 |---|---|---|
 | **Vault** — `aXLM-E`, 3-day, 3 % OTM | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2` |
-| **Price adapter** — what the vault reads | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
+| **Vault** — `aXLM-C`, 3-day, 2 % OTM | [`CAQY7L34…2J5ENSK6`](https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6) | the same — `7b5f098b…a4a80f2` |
+| **Vault** — `aXLM-A`, 7-day, 3 % OTM | [`CD7QODWT…E462Y7K2R`](https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R) | the same — `7b5f098b…a4a80f2` |
+| **Price adapter** — what all three vaults read | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
 | The CEX & DEX XLM/USD feed — **a third-party contract, not ours** | [`CCYOZJCO…MJRN63`](https://stellar.expert/explorer/testnet/contract/CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63) | — |
 | XLM, native Stellar Asset Contract | [`CDLZFC3S…HHGCYSC`](https://stellar.expert/explorer/testnet/contract/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC) | — |
+
+**The three vaults are the same binary.** They carry one wasm hash between them and read one
+adapter; what separates them is the arguments their constructors took. That is checkable rather
+than asserted: compare the hashes above, and read each vault's `config` for the terms below.
 
 **The adapter is pinned at the vault's construction and is immutable** — there is no setter, so
 changing the price source requires a reviewed code upgrade. The adapter itself has no admin and no
@@ -32,19 +38,35 @@ lets dead-feed, rescale and trap cases be forced, which a live feed cannot be ma
 
 | | |
 |---|---|
-| Symbol | `aXLM-E` |
+| Symbols | `aXLM-E`, `aXLM-C`, `aXLM-A` — one per vault |
 | Name | Antares XLM Vault Share |
 | Decimals | 7 |
 | Interface | SEP-41, implemented inside the vault contract |
 
-The suffix is a constructor argument, and it exists because five concurrent vaults would issue five
+The suffix is a constructor argument, and it exists because concurrent vaults issue
 non-interchangeable tokens. Showing them all as `aXLM` in a wallet would be a way for someone to
-believe they hold something they do not.
+believe they hold something they do not. **A share in one vault is not a share in another**, and
+there is no path between them: they price against different rounds and settle against different
+strikes.
 
 ## Parameters
 
 The shipped set, not a demonstration set. These are the sixteen `EpochParams` fields the
 constructor takes, plus the four constructor arguments that are not `EpochParams` fields.
+
+**The table below is `aXLM-E`'s.** The other two differ in five fields and in nothing else:
+
+| | `aXLM-E` | `aXLM-C` | `aXLM-A` |
+|---|---|---|---|
+| `epoch_duration` | 259 200 — 3 days | 259 200 — 3 days | **604 800 — 7 days** |
+| `strike_bps_otm` | 300 — 3 % | **200 — 2 %** | 300 — 3 % |
+| `premium_start_bps` | 280 | **325** | **500** |
+| `premium_floor_bps` | 55 | **72** | **112** |
+| `allowlist_expires_at` | 2026-09-07T09:11:23Z | 2026-09-11T10:05:35Z | 2026-09-11T10:07:28Z |
+
+A nearer strike and a longer round are both worth more, which is why `aXLM-C` and `aXLM-A` open
+above `aXLM-E`'s band and floor above it too. **All three allowlists have now expired**, and there
+is no setter that can restore one: bidding on every vault is permissionless.
 
 | Parameter | Raw | Means |
 |---|---|---|
@@ -80,16 +102,26 @@ and the feed's own eight conditions ([The price feed](../mechanism/price-feed.md
 ## Deployment transactions
 
 Deployer `antares-testnet` ([`GDFPSLES…EKBQQ`](https://stellar.expert/explorer/testnet/account/GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ)),
-2026-08-24T09:11:48Z, from a **clean tree at commit `87e4224a`**. A deploy from a dirty tree is
-refused before anything is submitted, for exactly the reason that a commit id identifies the code
-that ran only if the tree was clean.
+each run from a **clean tree**. A deploy from a dirty tree is refused before anything is submitted,
+for exactly the reason that a commit id identifies the code that ran only if the tree was clean.
 
-| | Transaction |
-|---|---|
-| Adapter created | [`233c858c…cafb9c`](https://stellar.expert/explorer/testnet/tx/233c858caf45c1b0d2f2df581ce8dbd802f984550a4807e4885d29cdc9cafb9c) |
-| Vault `-E` created | [`9cd2cb41…5b851e`](https://stellar.expert/explorer/testnet/tx/9cd2cb4127b622d75f818298a763b4e778432a5021c3303c363b5ce34c5b851e) |
-| Smoke deposit | [`d2622e59…b5ecb0`](https://stellar.expert/explorer/testnet/tx/d2622e5952c79a5a7f0ce9e77dfe7f40a3fb75e30fb5bb5521cd1c5e15b5ecb0) |
-| Smoke withdrawal request | [`d299d00d…3eb731`](https://stellar.expert/explorer/testnet/tx/d299d00d4487eaa89d985224ea01653c1de35a09b83cb277a5f42921633eb731) |
+The adapter was created once, with `aXLM-E`, and the two later vaults were pointed at it rather than
+at adapters of their own. Each vault's deploy ends with a smoke deposit and a withdrawal request
+against the instance just created, so that no vault is recorded here that has not already taken
+money in and let it back out.
+
+| | Deployed | Commit | Transaction |
+|---|---|---|---|
+| Adapter created | 2026-08-24 | `87e4224a` | [`233c858c…cafb9c`](https://stellar.expert/explorer/testnet/tx/233c858caf45c1b0d2f2df581ce8dbd802f984550a4807e4885d29cdc9cafb9c) |
+| Vault `-E` created | 2026-08-24 | `87e4224a` | [`9cd2cb41…5b851e`](https://stellar.expert/explorer/testnet/tx/9cd2cb4127b622d75f818298a763b4e778432a5021c3303c363b5ce34c5b851e) |
+| — its smoke deposit | | | [`d2622e59…b5ecb0`](https://stellar.expert/explorer/testnet/tx/d2622e5952c79a5a7f0ce9e77dfe7f40a3fb75e30fb5bb5521cd1c5e15b5ecb0) |
+| — its smoke withdrawal request | | | [`d299d00d…3eb731`](https://stellar.expert/explorer/testnet/tx/d299d00d4487eaa89d985224ea01653c1de35a09b83cb277a5f42921633eb731) |
+| Vault `-C` created | 2026-08-28 | `1cbed1eb` | [`3a51bfb5…a0d011`](https://stellar.expert/explorer/testnet/tx/3a51bfb598cdb9d36c457d6ee47cf25d12941fb6b51f0c62328b887907a0d011) |
+| — its smoke deposit | | | [`70d8c592…2b3c07`](https://stellar.expert/explorer/testnet/tx/70d8c592fc5afac529c17d269bf06ce5e6e40ca942821c1ab6e2a607c82b3c07) |
+| — its smoke withdrawal request | | | [`e444da3c…ab774d`](https://stellar.expert/explorer/testnet/tx/e444da3ca8fc7ac5a679129face6bc81acd494374b39b219de6fb2525dab774d) |
+| Vault `-A` created | 2026-08-28 | `cac1632c` | [`9e37530c…b93cc5`](https://stellar.expert/explorer/testnet/tx/9e37530c8585dfc435dfac84b2132ca997ad9ffc33af17e9477de60fcfb93cc5) |
+| — its smoke deposit | | | [`7ed08716…e1f94c`](https://stellar.expert/explorer/testnet/tx/7ed087162da7a784f2c7e74b1ad11f3cc453a7f39bc774ab1b57663f42e1f94c) |
+| — its smoke withdrawal request | | | [`10a2280e…8f5734`](https://stellar.expert/explorer/testnet/tx/10a2280e49bc09c1e28edeb5f71a63e92f7590126c6c9729fb2f5d8eb48f5734) |
 
 ## Toolchain
 

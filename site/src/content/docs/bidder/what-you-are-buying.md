@@ -83,26 +83,26 @@ auction that clears empty costs them nothing.
 
 **The cost is yours and it is real: you may show up and find nothing to buy.**
 
-## One auction runs today; five are designed
+## Three auctions run today; five are designed
 
 The design provides for five instances of the same binary side by side, identical except for their
 terms, each with its own share token and its own auction:
 
 | | Duration | Strike | |
 |---|---|---|---|
-| **A** | 7 days | 3 % out of the money | the mainnet-target configuration |
+| **A** | 7 days | 3 % out of the money | the mainnet-target configuration — **deployed** |
 | **B** | 7 days | 5 % | |
-| **C** | 3 days | 2 % | nearest to the money |
+| **C** | 3 days | 2 % | nearest to the money — **deployed** |
 | **D** | 14 days | 5 % | |
-| **E** | 3 days | 3 % | **the one that is deployed** |
+| **E** | 3 days | 3 % | **deployed** |
 
 The point of five is that one vault answering one set of terms cannot distinguish *"nobody wants to
 sell options on XLM"* from *"nobody wants **these** terms"*. Each carries its own premium band, sized
 to its own fair value, because a set of terms nobody could profitably fill would test nothing.
 
-**Only `aXLM-E` exists on chain today.** If none of the five would be priced attractively for you,
-the useful answer is which one came closest and by how much — see
-[Pricing it yourself](pricing.md#what-we-actually-want-from-you).
+**`aXLM-A`, `aXLM-C` and `aXLM-E` exist on chain today**; `aXLM-B` and `aXLM-D` are design. If none
+of the three would be priced attractively for you, the useful answer is which one came closest and
+by how much — see [Pricing it yourself](pricing.md#what-we-actually-want-from-you).
 
 ## Next
 
