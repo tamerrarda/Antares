@@ -1,0 +1,137 @@
+{
+  "_what": "Closed-epoch evidence written by the keeper (08-OFFCHAIN §1). Carries the tx hashes and event log that a testnet reset destroys (09-DEPLOYMENT §3), the fill index the Claims page needs for rounds older than the ~7-day RPC event window, and σ_realized with the series it was computed from so the Phase-2 clearing gate can be recomputed rather than trusted (D-67).",
+  "network": "testnet",
+  "date": "2026-10-04",
+  "epochs": [
+    {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 4,
+      "outcome": "Unresolved",
+      "openedAt": 1789169022,
+      "expiry": 1789428222,
+      "closedAt": 1791144362,
+      "txHashes": [
+        "5f407533825b33b4a39be19b60b53c6323a09a58a0ecefd84e17ae1c5742520c",
+        "e54eaa3dc99995ae62338fdbc1c28de10f880c82afed43e9460bf9c9c6eb7f2c",
+        "fced3463e858b3420b3310ea097d4602b8899abdcfeb6e32790795b638f9eeec"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 4,
+          "strike": "1813485",
+          "expiry": 1789428222,
+          "openedAt": 1789169022,
+          "auctionEnd": 1789171722,
+          "notionalOffered": "2061247530",
+          "openTwap": "1777927",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "bid_filled",
+          "round": 4,
+          "bidder": "GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH",
+          "notional": "1000000000",
+          "premiumBps": 306,
+          "premium": "30600000",
+          "notionalSoldAfter": "1000000000"
+        },
+        {
+          "name": "epoch_unresolved",
+          "round": 4,
+          "premiumRetained": "30600000",
+          "fee": "0",
+          "pps": "10458849",
+          "wclaims": "0",
+          "oracleAnswered": false
+        },
+        {
+          "name": "settle_bounty",
+          "round": 4,
+          "to": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+          "amount": "76500"
+        }
+      ],
+      "fills": [
+        {
+          "bidder": "GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH",
+          "notional": "1000000000",
+          "premium": "30600000",
+          "txHash": "e54eaa3dc99995ae62338fdbc1c28de10f880c82afed43e9460bf9c9c6eb7f2c"
+        }
+      ],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 4,
+      "outcome": "Unresolved",
+      "openedAt": 1789169317,
+      "expiry": 1789774117,
+      "closedAt": 1791144397,
+      "txHashes": [
+        "4e07abe16201bcfa5a04fb631a16f18eb95992d95432c117a0e75905da5155c6",
+        "8f7eaeb230378dd00bafd4e7d1d6727d593cfb9309db3d284938a7da0a4a1570",
+        "1a6360f7df9d5cd72d47d167c7c8efb3f37cbbfa948667e2ec498d33d3b226eb"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 4,
+          "strike": "1832451",
+          "expiry": 1789774117,
+          "openedAt": 1789169317,
+          "auctionEnd": 1789172017,
+          "notionalOffered": "2094165047",
+          "openTwap": "1779079",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "bid_filled",
+          "round": 4,
+          "bidder": "GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH",
+          "notional": "1000000000",
+          "premiumBps": 498,
+          "premium": "49800000",
+          "notionalSoldAfter": "1000000000"
+        },
+        {
+          "name": "epoch_unresolved",
+          "round": 4,
+          "premiumRetained": "49800000",
+          "fee": "0",
+          "pps": "10719197",
+          "wclaims": "0",
+          "oracleAnswered": false
+        },
+        {
+          "name": "settle_bounty",
+          "round": 4,
+          "to": "GDFPSLESDEPR2XSNASBK3464NLB7HYG6IS2SX2TYCJK7KUPIEWFEKBQQ",
+          "amount": "124500"
+        }
+      ],
+      "fills": [
+        {
+          "bidder": "GCTFTPSKIEAVSLVLYPPWKDPPXPD6TWZB7AP3GTFWSK4TXHUWUUU7HDGH",
+          "notional": "1000000000",
+          "premium": "49800000",
+          "txHash": "8f7eaeb230378dd00bafd4e7d1d6727d593cfb9309db3d284938a7da0a4a1570"
+        }
+      ],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
+    }
+  ]
+}
