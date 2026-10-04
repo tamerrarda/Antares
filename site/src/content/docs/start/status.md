@@ -1,6 +1,6 @@
 ---
 title: Where this stands
-deck: One vault, on testnet, unaudited, and priced by an auction nobody has yet bid into. This page is the single home for that sentence.
+deck: Three vaults, on testnet, unaudited, and priced by auctions no independent party has yet bid into. This page is the single home for that sentence.
 ---
 
 Every other page on this site links here rather than repeating it. If a page describes something
@@ -13,7 +13,7 @@ that is designed rather than deployed, it says so at that point and links back h
 | The contract | **Written, tested and deployed.** What separates it from a mainnet deployment is an audit and a proven counterparty, not a rewrite |
 | Network | **Stellar testnet only.** No mainnet deployment exists |
 | Audit | **None.** No external party has audited this code |
-| Vaults deployed | **One** — `aXLM-E`, a 3-day round struck 3 % out of the money |
+| Vaults deployed | **Three** — `aXLM-E` and `aXLM-C` on 3-day rounds struck 3 % and 2 % out of the money, `aXLM-A` on a 7-day round struck 3 %. One binary, three sets of constructor arguments |
 | Price source | An external CEX & DEX XLM/USD feed — **a third-party contract this project does not control** |
 | Independent counterparties | **None.** The only bidder is a reference bot this project operates |
 | Published yield figures | **None**, deliberately — see [Pricing it yourself](../bidder/pricing.md) |
@@ -29,9 +29,9 @@ it does not mirror the chain**, and nothing here updates itself.
 site is the shipped contract's, checked against the source rather than described from memory. The
 arithmetic is reproducible from figures printed on the same page.
 
-**It does not claim a market.** An auction with nobody in it discovers no price. Until an address
-outside this project fills one, the premium is a number this project paid itself, and it is treated
-as evidence of nothing.
+**It does not claim a market.** An auction only this project bids into discovers no price. Rounds
+have opened, sold and settled, but until an address outside this project fills one, the premium is a
+number this project paid itself, and it is treated as evidence of nothing.
 
 **It does not claim correctness.** See below.
 
@@ -45,7 +45,7 @@ between the two networks is a constructor argument or an admin call. There are n
 conditional compilation and no network branches in the contract, and a static source check refuses
 any that appear.
 
-## One instance is deployed; five are designed
+## Three instances are deployed; five are designed
 
 The design provides for **five instances of the same binary** running side by side on different
 terms — how long a round runs and how far out of the money the strike sits — each with its own share
@@ -53,8 +53,9 @@ token (`aXLM-A` … `aXLM-E`) and its own auction. The reason is honesty about w
 vault answering one set of terms cannot distinguish *"nobody wants to sell options on XLM"* from
 *"nobody wants **these** terms"*.
 
-**Only `aXLM-E` is deployed.** Anywhere this site describes the five, it is describing a design, and
-it says so.
+**Three of the five are deployed** — `aXLM-E`, `aXLM-C` and `aXLM-A`, running the same wasm against
+the same adapter and differing only in the arguments their constructors took. Anywhere this site
+describes `aXLM-B` or `aXLM-D`, it is describing a design, and it says so.
 
 ## The counterparty is us, and it is labelled
 
