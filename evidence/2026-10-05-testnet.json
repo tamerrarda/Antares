@@ -42,6 +42,46 @@
         "skipped": [],
         "complete": true
       }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 5,
+      "outcome": "Lapsed",
+      "openedAt": 1791165137,
+      "expiry": 1791769937,
+      "closedAt": 1791186977,
+      "txHashes": [
+        "c99c90fab8bebe5e2e3d5d46ced753c44f8b6c1cd930d36d6105997f9a50d793",
+        "0ef02c6a7c75002c8f611c1b0c1a00553222f5a7fca4048868aa9be9f3054b58"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 5,
+          "strike": "2317948",
+          "expiry": 1791769937,
+          "openedAt": 1791165137,
+          "auctionEnd": 1791167837,
+          "notionalOffered": "2143840547",
+          "openTwap": "2250435",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 5,
+          "notionalOffered": "2143840547",
+          "pps": "10719197",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
     }
   ]
 }
