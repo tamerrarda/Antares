@@ -1,0 +1,47 @@
+{
+  "_what": "Closed-epoch evidence written by the keeper (08-OFFCHAIN §1). Carries the tx hashes and event log that a testnet reset destroys (09-DEPLOYMENT §3), the fill index the Claims page needs for rounds older than the ~7-day RPC event window, and σ_realized with the series it was computed from so the Phase-2 clearing gate can be recomputed rather than trusted (D-67).",
+  "network": "testnet",
+  "date": "2026-10-05",
+  "epochs": [
+    {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 5,
+      "outcome": "Lapsed",
+      "openedAt": 1791154872,
+      "expiry": 1791414072,
+      "closedAt": 1791165132,
+      "txHashes": [
+        "bb1881e32c56a54456dcf2ef1be619c84eb6efd977849d5487c5ffd7ea410f53",
+        "e6a6b90b53526cdcc3865aa4e173cddb5b862c44f64cb4a7a87f27c17a0e242b"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 5,
+          "strike": "2274974",
+          "expiry": 1791414072,
+          "openedAt": 1791154872,
+          "auctionEnd": 1791157572,
+          "notionalOffered": "2091771030",
+          "openTwap": "2230367",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 5,
+          "notionalOffered": "2091771030",
+          "pps": "10458849",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
+    }
+  ]
+}
