@@ -44,6 +44,46 @@
       }
     },
     {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 8,
+      "outcome": "Lapsed",
+      "openedAt": 1791278537,
+      "expiry": 1791537737,
+      "closedAt": 1791302672,
+      "txHashes": [
+        "326d8832634704fda15b1878976ff86be21ab178a93abe779019fc752ce754c3",
+        "fc68b8bcbf9ba8af1c6cb04fd118d17f7ddda6c932d67573297392524fd9737e"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 8,
+          "strike": "2205226",
+          "expiry": 1791537737,
+          "openedAt": 1791278537,
+          "auctionEnd": 1791281237,
+          "notionalOffered": "2091771030",
+          "openTwap": "2161987",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 8,
+          "notionalOffered": "2091771030",
+          "pps": "10458849",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
+    },
+    {
       "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
       "round": 6,
       "outcome": "Lapsed",
@@ -70,6 +110,46 @@
         {
           "name": "epoch_lapsed",
           "round": 6,
+          "notionalOffered": "2143840547",
+          "pps": "10719197",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 7,
+      "outcome": "Lapsed",
+      "openedAt": 1791278542,
+      "expiry": 1791883342,
+      "closedAt": 1791302677,
+      "txHashes": [
+        "fa93d63003761277b5c0d41d61c891768a112ee452c8812f526d14437bc35efa",
+        "007167b597bd6500b25ca684cbd82f0323ecf42cc5a5a401f7be5e16386ead1f"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 7,
+          "strike": "2226846",
+          "expiry": 1791883342,
+          "openedAt": 1791278542,
+          "auctionEnd": 1791281242,
+          "notionalOffered": "2143840547",
+          "openTwap": "2161987",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 7,
           "notionalOffered": "2143840547",
           "pps": "10719197",
           "wclaims": "0"
