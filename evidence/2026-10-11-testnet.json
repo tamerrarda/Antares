@@ -42,6 +42,86 @@
         "skipped": [],
         "complete": true
       }
+    },
+    {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 19,
+      "outcome": "Lapsed",
+      "openedAt": 1791702872,
+      "expiry": 1791962072,
+      "closedAt": 1791727497,
+      "txHashes": [
+        "2f06df07759edcfbd893977038c897733b03a5de14b716a0b76ebcdafc0abf6c",
+        "99325686245981eff00dc58c82883eda233c149fcb1b606d4ee67d560ada672f"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 19,
+          "strike": "1999217",
+          "expiry": 1791962072,
+          "openedAt": 1791702872,
+          "auctionEnd": 1791705572,
+          "notionalOffered": "2091771030",
+          "openTwap": "1960017",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 19,
+          "notionalOffered": "2091771030",
+          "pps": "10458849",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 17,
+      "outcome": "Lapsed",
+      "openedAt": 1791702877,
+      "expiry": 1792307677,
+      "closedAt": 1791727502,
+      "txHashes": [
+        "e4891d8d9b54c38608bb86ba71693e5d9b3d9d06a688fdd5cefaf26c3fedfed8",
+        "334b1e516be5c4eb4be15f397cca26e0debd3a25cbc987b076353639bd73f818"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 17,
+          "strike": "2018817",
+          "expiry": 1792307677,
+          "openedAt": 1791702877,
+          "auctionEnd": 1791705577,
+          "notionalOffered": "2143840547",
+          "openTwap": "1960017",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 17,
+          "notionalOffered": "2143840547",
+          "pps": "10719197",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
     }
   ]
 }
