@@ -1,5 +1,5 @@
 {
-  "cursor": "0022546177417281535-4294967295",
+  "cursor": "0022552194666463231-4294967295",
   "rounds": {
     "1": [
       {
@@ -27,6 +27,24 @@
         },
         "txHash": "8829215aa503d05104e75a22f81ea524ff20ae518d2b0484106f56847156c87b",
         "ledger": 4430159
+      }
+    ],
+    "35": [
+      {
+        "event": {
+          "name": "epoch_opened",
+          "round": 35,
+          "strike": "1826733",
+          "expiry": 1792529992,
+          "openedAt": 1792270792,
+          "auctionEnd": 1792273492,
+          "notionalOffered": "2091771030",
+          "openTwap": "1790915",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        "txHash": "864c48c953c2b9149c302ae9281e6deaa566e140be0578413d00fcc35c2d5283",
+        "ledger": 5249441
       }
     ]
   },
