@@ -1,5 +1,5 @@
 {
-  "cursor": "0023282420711161855-4294967295",
+  "cursor": "0023294244756127743-4294967295",
   "rounds": {
     "1": [
       {
@@ -27,6 +27,61 @@
         },
         "txHash": "9180eb5b14e28baa29111d715845f7c3d1c383afa371f97cef2f27a95ed1eef6",
         "ledger": 4507695
+      }
+    ],
+    "56": [
+      {
+        "event": {
+          "name": "epoch_opened",
+          "round": 56,
+          "strike": "1751390",
+          "expiry": 1793733340,
+          "openedAt": 1793128540,
+          "auctionEnd": 1793131240,
+          "notionalOffered": "2143840547",
+          "openTwap": "1700379",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        "txHash": "6d473a306c8944354f6a72eeedfb43a58c0b6d71af5779f691605b29aa9cadc2",
+        "ledger": 5420980
+      },
+      {
+        "event": {
+          "name": "deposited",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 56,
+          "amount": "14000000000",
+          "sharesMinted": "0",
+          "instant": false
+        },
+        "txHash": "a40c9d370f12c3828aacad4312aa5ddd1f9c4b95cadc2b81f80d7be5e144d76f",
+        "ledger": 5421071
+      },
+      {
+        "event": {
+          "name": "deposited",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 56,
+          "amount": "10970000000",
+          "sharesMinted": "0",
+          "instant": false
+        },
+        "txHash": "4c32374f78d159418c0a21c89579f5b063e34f468ccdefec88dba62f5da418a0",
+        "ledger": 5421244
+      },
+      {
+        "event": {
+          "name": "bid_filled",
+          "round": 56,
+          "bidder": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "notional": "2143840547",
+          "premiumBps": 299,
+          "premium": "64100832",
+          "notionalSoldAfter": "2143840547"
+        },
+        "txHash": "18ca547950f13616c88e4d9c74ea64241f805a0e240f15b7af4d4ba454733b58",
+        "ledger": 5421260
       }
     ]
   },

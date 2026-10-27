@@ -119,6 +119,95 @@
       }
     },
     {
+      "vault": "CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
+      "round": 3,
+      "outcome": "Lapsed",
+      "openedAt": 1793116085,
+      "expiry": 1793375285,
+      "closedAt": 1793127930,
+      "txHashes": [
+        "72a3fccf48904d0953569a9d5ea62166748b51b701ae5cd469336ba18517762b",
+        "df91ae82fc5c1a3446ba1b80c8b7e153339ea1faf3f8a62c8cba2a7fc4c6f93e",
+        "6a73a9a50392e6429d4c38fbdfd6223f6a2ec84addff5c06fc8c8867f6e38b30",
+        "230edf1323ff4665fc4b66178db37603b90ad16ce1130532e24cc3c7a31eb20e",
+        "7075940df654eef46b4b33771f0fd1694f21e07b46de5b00fec978443d41344b",
+        "14e57ee655a67f2a2c9e76f2d9d918344742f5a031f3e948db04482ce4d8073a"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 3,
+          "strike": "1741019",
+          "expiry": 1793375285,
+          "openedAt": 1793116085,
+          "auctionEnd": 1793118785,
+          "notionalOffered": "1940389383",
+          "openTwap": "1690310",
+          "premiumStartBps": 280,
+          "premiumFloorBps": 55
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 3,
+          "notionalOffered": "1940389383",
+          "pps": "10448758",
+          "wclaims": "0"
+        },
+        {
+          "name": "deposited",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 3,
+          "amount": "1900000000",
+          "sharesMinted": "1818397937",
+          "instant": true
+        },
+        {
+          "name": "withdraw_requested",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 3,
+          "shares": "1700000000"
+        },
+        {
+          "name": "withdraw_claimed",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 3,
+          "shares": "1700000000",
+          "amount": "1776288860"
+        },
+        {
+          "name": "deposited",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 3,
+          "amount": "8000000000",
+          "sharesMinted": "7656412369",
+          "instant": true
+        },
+        {
+          "name": "withdraw_requested",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 3,
+          "shares": "4500000000"
+        },
+        {
+          "name": "withdraw_claimed",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 3,
+          "shares": "4500000000",
+          "amount": "4701941100"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn"
+        ],
+        "complete": false
+      }
+    },
+    {
       "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
       "round": 54,
       "outcome": "Lapsed",
