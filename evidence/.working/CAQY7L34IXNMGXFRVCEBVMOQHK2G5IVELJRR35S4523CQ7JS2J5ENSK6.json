@@ -1,5 +1,5 @@
 {
-  "cursor": "0023516109881737215-4294967295",
+  "cursor": "0023525769263185919-4294967295",
   "rounds": {
     "1": [
       {
@@ -56,74 +56,6 @@
         },
         "txHash": "614c28abc35a4e94a2527f42e53a72ba7ca74618fef2d4706f0f4c6ad7862f4a",
         "ledger": 5404167
-      }
-    ],
-    "63": [
-      {
-        "event": {
-          "name": "epoch_opened",
-          "round": 63,
-          "strike": "1734020",
-          "expiry": 1793387140,
-          "openedAt": 1793127940,
-          "auctionEnd": 1793130640,
-          "notionalOffered": "4632922030",
-          "openTwap": "1700020",
-          "premiumStartBps": 325,
-          "premiumFloorBps": 72
-        },
-        "txHash": "290ec4cc7a2189a386051b5626ecbc1be6c7d68a2bb9f05cd9d072033026073f",
-        "ledger": 5420860
-      },
-      {
-        "event": {
-          "name": "deposited",
-          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
-          "round": 63,
-          "amount": "19000000000",
-          "sharesMinted": "0",
-          "instant": false
-        },
-        "txHash": "10cee22a971854b838984842e4a0f9b09ee88e47dbe7cbd2e552417fc0087a87",
-        "ledger": 5421078
-      },
-      {
-        "event": {
-          "name": "bid_filled",
-          "round": 63,
-          "bidder": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
-          "notional": "1000000000",
-          "premiumBps": 168,
-          "premium": "16800000",
-          "notionalSoldAfter": "1000000000"
-        },
-        "txHash": "0cfd82b96010b4c7b15a20d636774f8771de2a96a7e7970e13c175ffbc43114e",
-        "ledger": 5421196
-      },
-      {
-        "event": {
-          "name": "deposited",
-          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
-          "round": 63,
-          "amount": "11000000000",
-          "sharesMinted": "0",
-          "instant": false
-        },
-        "txHash": "123180cc048e706f8c3248d6b6ffc1e46c33e1f0f7a3100034a589b2d406e7e9",
-        "ledger": 5421241
-      },
-      {
-        "event": {
-          "name": "bid_filled",
-          "round": 63,
-          "bidder": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
-          "notional": "2500000000",
-          "premiumBps": 141,
-          "premium": "35250000",
-          "notionalSoldAfter": "3500000000"
-        },
-        "txHash": "38d7c3d3bc1e8deabb8d43494b7030e45c09838e4857239f1f8a16d819e5e1f5",
-        "ledger": 5421253
       }
     ]
   },
