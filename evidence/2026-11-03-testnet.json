@@ -88,6 +88,92 @@
         ],
         "complete": false
       }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 56,
+      "outcome": "Settled",
+      "openedAt": 1793128540,
+      "expiry": 1793733340,
+      "closedAt": 1793735530,
+      "txHashes": [
+        "6d473a306c8944354f6a72eeedfb43a58c0b6d71af5779f691605b29aa9cadc2",
+        "a40c9d370f12c3828aacad4312aa5ddd1f9c4b95cadc2b81f80d7be5e144d76f",
+        "4c32374f78d159418c0a21c89579f5b063e34f468ccdefec88dba62f5da418a0",
+        "18ca547950f13616c88e4d9c74ea64241f805a0e240f15b7af4d4ba454733b58",
+        "6c2a4f050aeeb5e3960bc1ebc95065b6757def2a301071926a89ba40b9646ff3"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 56,
+          "strike": "1751390",
+          "expiry": 1793733340,
+          "openedAt": 1793128540,
+          "auctionEnd": 1793131240,
+          "notionalOffered": "2143840547",
+          "openTwap": "1700379",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "deposited",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 56,
+          "amount": "14000000000",
+          "sharesMinted": "0",
+          "instant": false
+        },
+        {
+          "name": "deposited",
+          "user": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "round": 56,
+          "amount": "10970000000",
+          "sharesMinted": "0",
+          "instant": false
+        },
+        {
+          "name": "bid_filled",
+          "round": 56,
+          "bidder": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "notional": "2143840547",
+          "premiumBps": 299,
+          "premium": "64100832",
+          "notionalSoldAfter": "2143840547"
+        },
+        {
+          "name": "settled",
+          "round": 56,
+          "spot": "1636032",
+          "strike": "1751390",
+          "notionalSold": "2143840547",
+          "payoutTotal": "0",
+          "premium": "64100832",
+          "fee": "0",
+          "pps": "11038900",
+          "wclaims": "0"
+        },
+        {
+          "name": "settle_bounty",
+          "round": 56,
+          "to": "GBEBVL3GJJIBSYJSRDVPZJH3P2JKRAMKKCNXC4JQR6AODTLI37WLUS6B",
+          "amount": "160252"
+        }
+      ],
+      "fills": [
+        {
+          "bidder": "GDG6YRFJVVS6C6P2SUNIPBPFO3EJMRFEHY6RKVPPU7Y4PK47LJOG4JID",
+          "notional": "2143840547",
+          "premium": "64100832",
+          "txHash": "18ca547950f13616c88e4d9c74ea64241f805a0e240f15b7af4d4ba454733b58"
+        }
+      ],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [],
+        "complete": true
+      }
     }
   ]
 }
