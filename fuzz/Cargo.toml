@@ -28,7 +28,7 @@ antares-vault = { path = "../contracts/antares-vault" }
 # test environment: an `Env`, a registered vault, a real SAC and a settable price source. Same
 # reasoning as the vault's own dev-dependencies — the mock is what makes the vault registrable at
 # all, because `__constructor` calls `supports_round`.
-soroban-sdk = { version = "=27.0.6", features = ["testutils"] }
+soroban-sdk = { version = "=29.0.1", features = ["testutils"] }
 mock-price-source = { path = "../contracts/mock-price-source" }
 
 [[bin]]

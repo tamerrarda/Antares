@@ -304,8 +304,8 @@ Every version is pinned exactly, never by range or channel.
 |---|---|
 | Rust | `1.95.0` — in `rust-toolchain.toml`, by exact version rather than `stable` |
 | Build target | `wasm32v1-none` |
-| `soroban-sdk` | `=27.0.6` |
-| `stellar-cli` | `27.1.0` |
+| `soroban-sdk` | `=29.0.1` |
+| `stellar-cli` | `30.0.1` |
 | Node / pnpm | 22 / 11 |
 
 ```bash

@@ -17,9 +17,12 @@ publish = false
 
 [workspace.dependencies]
 # Exact, with the `=`, per D-23. A caret range reproduces no byte, and D-50's
-# gate has nothing else to stand on. Verified 2026-08-18: 27.0.6 is crates.io's
-# max stable.
-soroban-sdk = "=27.0.6"
+# gate has nothing else to stand on. Verified 2026-11-07: 29.0.1 is crates.io's
+# max stable; 30.0.0-rc.1 is published but a release candidate is not a thing
+# this file pins, because D-23 asks for an exact *stable* version and a public
+# wasm hash should not rest on one. The CLI is pinned separately, at 30.0.1 —
+# ci.yml says why the two do not share a major.
+soroban-sdk = "=29.0.1"
 
 [profile.release]
 opt-level = "z"

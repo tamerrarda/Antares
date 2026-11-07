@@ -80,15 +80,25 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   # D-23: the exact patch version, pinned in CI as well as in the README.
-  # "27.x" is a range and a range reproduces no byte, which is the whole of
-  # D-50's gate. Measured 2026-08-18: 27.1.0, released 2026-07-31.
-  STELLAR_CLI_VERSION: "27.1.0"
-  STELLAR_CLI_SHA256: "9915fe63753d7154c26bb9e6410cf1d1ff9727a9b378e663c2790ab7a266af94"
+  # "30.x" is a range and a range reproduces no byte, which is the whole of
+  # D-50's gate. Measured 2026-11-07: 30.0.1, released 2026-11-03.
+  #
+  # **Why the CLI is a major ahead of soroban-sdk, which is pinned at =29.0.1.**
+  # There is no stellar-cli 29 — the published line runs 27.1.0, 28.0.0, 28.1.0,
+  # 30.0.1 — so "match the SDK" is not a choice this field has. The two pins
+  # answer different questions anyway: soroban-sdk fixes the host env the
+  # deployed wasm is compiled against, while the CLI is the tool that submits to
+  # a live network and must parse that network's XDR. Testnet is on protocol 30
+  # (stellar-core 30.0.0), and a 27.1.0 CLI carries stellar-xdr 27.0.0, which
+  # cannot read a protocol-30 ledger header. So the CLI tracks the network and
+  # the SDK tracks crates.io's max stable, and they are pinned separately.
+  STELLAR_CLI_VERSION: "30.0.1"
+  STELLAR_CLI_SHA256: "48c70074020e09af0a3ebbd2bf62d53c9aec47935e49a112d3cd90fb4e37658f"
   # The same release for aarch64, because the reproducible job now builds on both
-  # architectures. Measured against the published asset on 2026-08-28; the x86_64
+  # architectures. Measured against the published asset on 2026-11-07; the x86_64
   # line above was re-derived the same way and matched, which is how this one is
   # known to have been obtained correctly rather than pasted from somewhere.
-  STELLAR_CLI_SHA256_ARM: "750a8dcda225fab33c87fa0d0dc79936266ed62cd316245fba234f18aab385bd"
+  STELLAR_CLI_SHA256_ARM: "145785bb4bfd9711a7af1b4cf13a38ae31034421401a5fed061be35baf01373a"
   WASM_HARD_LIMIT_BYTES: "65536" # 64 KB — the protocol's limit; hard fail
   WASM_WARN_BYTES: "49152" # 48 KB — warn, per 06-TEST-PLAN §8
   # NOTE: RUSTFLAGS is deliberately NOT set here. `stellar contract build` passes

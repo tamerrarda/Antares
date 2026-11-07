@@ -16,7 +16,7 @@
 //! `Round`, settle at a chosen price, or block the unpausable set — is structural
 //! here rather than policy: no such code path exists in this file or any other.
 
-use soroban_sdk::{contractimpl, Address, BytesN, Env};
+use soroban_sdk::{contractimpl, Address, BytesN, ContractExecutable, Env};
 
 use crate::errors::Error;
 use crate::events::{
@@ -322,8 +322,14 @@ impl AntaresVault {
         ctx.config.admin.require_auth();
 
         let app_version = storage::get_app_version(&env);
+        // `ContractExecutable::Wasm` and never `ExternalRef` (soroban-sdk 29). An
+        // external ref would read the executable from an entry a named *owner*
+        // controls, which hands that owner the power to change this vault's code
+        // without this function being called at all. The admin surface's standing
+        // claim is that an upgrade is one explicit, auth'd, event-emitting call —
+        // so the hash goes in directly.
         env.deployer()
-            .update_current_contract_wasm(new_wasm_hash.clone());
+            .update_current_contract(ContractExecutable::Wasm(new_wasm_hash.clone()));
         storage::set_state(&env, &ctx.state);
         storage::bump_instance(&env, ctx.rent);
 

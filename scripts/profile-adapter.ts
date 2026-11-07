@@ -40,6 +40,8 @@ import { RECORD_CAP_TICKS, reachSeconds } from "@antares/common/oracle";
 
 import { networkLimits } from "@antares/common/limits";
 
+import { readPins } from "./lib/toolchain.ts";
+
 // ---------------------------------------------------------------------------------------------
 // Constants owned by the design. Restated only so the profile can build an honest anchor grid; if
 // one disagrees with its document, the document wins.
@@ -665,6 +667,11 @@ async function main(): Promise<void> {
             profiledAtCommit: process.env["COMMIT"]?.trim() ?? "(not supplied)",
             stellarCli: process.env["STELLAR_CLI_VERSION"]?.trim() ?? "(not supplied)",
             rustc: process.env["RUSTC_VERSION"]?.trim() ?? "(not supplied)",
+            // Read from Cargo.toml rather than taken from the environment, because this one has
+            // a single home and no reason to be passed in. It is recorded because the adapter
+            // has no `upgrade`: the bytes serving are frozen at the SDK that built them, and
+            // `wasm.test.ts`'s byte gate cannot state its precondition without knowing which.
+            sorobanSdk: readPins(new URL("../", import.meta.url).pathname).sorobanSdk,
             node: process.version,
           },
           deployment: {

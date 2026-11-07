@@ -13,6 +13,7 @@ import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 
 import { failedIds } from "@antares/common/checks";
+import { readPins } from "../lib/toolchain.ts";
 import {
   ADAPTER_SURFACE,
   WasmError,
@@ -143,6 +144,8 @@ test("checkWasmHash states D-50 as a comparison", () => {
 
 const WASM_DIR = new URL("../../target/wasm32v1-none/release/", import.meta.url).pathname;
 const built = (name: string): string => `${WASM_DIR}${name}.wasm`;
+const ROOT = new URL("../../", import.meta.url).pathname;
+const record = (name: string): string => `${ROOT}deployments/${name}.json`;
 
 test("the real adapter's surface is exactly the interface", (t) => {
   if (!existsSync(built("reflector_adapter"))) {
@@ -168,21 +171,74 @@ test("mock-price-source is REFUSED by the surface check, and that is the check w
   assert.match(checks.find((c) => c.id === "adapter.no_extra_exports")!.note!, /set_price/);
 });
 
+/** What `profile-adapter.ts` writes, of the parts D-50's gate is stated against. */
+interface AdapterRecord {
+  readonly toolchain: { readonly stellarCli: string; readonly sorobanSdk?: string };
+  readonly deployment: { readonly wasmSha256OnChain: string; readonly wasmSha256Local: string };
+}
+
+test("the adapter record establishes D-50's gate, and the vaults are bound to what it profiles", (t) => {
+  if (!existsSync(record("adapter-testnet")) || !existsSync(record("testnet"))) {
+    t.skip("needs deployments/adapter-testnet.json and deployments/testnet.json");
+    return;
+  }
+  const adapter = JSON.parse(readFileSync(record("adapter-testnet"), "utf8")) as AdapterRecord;
+
+  // Not a tautology, and true whatever the pins say: the two hashes were measured from
+  // independent sources at deploy time — one from bytes fetched back off the network, one from
+  // the bytes this repository built — so an unequal pair means the record never was a proof.
+  assert.equal(
+    adapter.deployment.wasmSha256OnChain,
+    adapter.deployment.wasmSha256Local,
+    "the adapter record disagrees with itself — it never established D-50's gate",
+  );
+
+  // The vaults name their adapter in a constructor argument and `admin.rs` gives it no setter,
+  // so the binding can never be repointed. If these two files disagree, the profile describes a
+  // contract nothing uses — the one way this gate could pass while meaning nothing.
+  const vaults = JSON.parse(readFileSync(record("testnet"), "utf8")) as {
+    readonly oracleWasmHash: string;
+  };
+  assert.equal(
+    vaults.oracleWasmHash,
+    adapter.deployment.wasmSha256OnChain,
+    "the adapter the vaults are bound to is not the one this record profiles",
+  );
+});
+
+// **The byte comparison is conditional, and the condition is the toolchain.** The adapter carries
+// no `upgrade` — 04-ORACLE's immutability is the whole point of it — so the bytes serving on
+// testnet are frozen at the toolchain that built them, and no later pin can reproduce them. Left
+// unconditional, this assertion would report every toolchain bump as a reproducibility failure,
+// permanently and for a reason that has nothing to do with reproducibility. So it states its
+// precondition instead and skips when it is unmet, which also means it re-arms by itself: pin the
+// workspace back to the deployed versions, or deploy a new adapter and re-profile it, and the
+// comparison runs again. A record that does not say which soroban-sdk built it cannot meet the
+// precondition at all — the SDK is the larger input to the bytes, and an unstated one is not a
+// match, only an unknown.
 test("the local adapter build is byte-identical to the wasm serving on testnet (D-50)", (t) => {
-  const record = new URL("../../deployments/adapter-testnet.json", import.meta.url).pathname;
-  if (!existsSync(built("reflector_adapter")) || !existsSync(record)) {
+  if (!existsSync(built("reflector_adapter")) || !existsSync(record("adapter-testnet"))) {
     t.skip("needs both the built adapter and deployments/adapter-testnet.json");
     return;
   }
-  const recorded = JSON.parse(readFileSync(record, "utf8")) as {
-    deployment: { wasmSha256OnChain: string };
-  };
-  // Not a tautology: the recorded hash was measured by fetching the code back off the network
-  // (profile-adapter.ts), and this one is computed from bytes this checkout produced. Equal means
-  // D-50's gate holds end to end for the artefact actually serving.
+  const adapter = JSON.parse(readFileSync(record("adapter-testnet"), "utf8")) as AdapterRecord;
+  const pins = readPins(ROOT);
+  const deployedCli = /\b(\d+\.\d+\.\d+)\b/.exec(adapter.toolchain.stellarCli)?.[1];
+  const deployedSdk = adapter.toolchain.sorobanSdk;
+
+  if (deployedCli !== pins.stellarCli || deployedSdk !== pins.sorobanSdk) {
+    t.skip(
+      `the deployed adapter was built with soroban-sdk ${deployedSdk ?? "(unrecorded)"} and ` +
+        `stellar-cli ${deployedCli ?? "(unrecorded)"}; this checkout pins ${pins.sorobanSdk} and ` +
+        `${pins.stellarCli}. The adapter has no \`upgrade\`, so those bytes cannot be rebuilt ` +
+        `from here — re-arm this by re-profiling a newly deployed adapter.`,
+    );
+    return;
+  }
+
   assert.equal(
     sha256(readFileSync(built("reflector_adapter"))),
-    recorded.deployment.wasmSha256OnChain,
+    adapter.deployment.wasmSha256OnChain,
     "the local build no longer reproduces the deployed adapter — D-50's gate is red",
   );
 });
