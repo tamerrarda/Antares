@@ -15,9 +15,9 @@ submission cannot be recovered later at all.
 
 | | Address | Wasm SHA-256 |
 |---|---|---|
-| **Vault** — `aXLM-E`, 3-day, 3 % OTM | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2` |
-| **Vault** — `aXLM-C`, 3-day, 2 % OTM | [`CAQY7L34…2J5ENSK6`](https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6) | the same — `7b5f098b…a4a80f2` |
-| **Vault** — `aXLM-A`, 7-day, 3 % OTM | [`CD7QODWT…E462Y7K2R`](https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R) | the same — `7b5f098b…a4a80f2` |
+| **Vault** — `aXLM-E`, 3-day, 3 % OTM | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a` |
+| **Vault** — `aXLM-C`, 3-day, 2 % OTM | [`CAQY7L34…2J5ENSK6`](https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6) | the same — `ab1b08d2…db9c622a` |
+| **Vault** — `aXLM-A`, 7-day, 3 % OTM | [`CD7QODWT…E462Y7K2R`](https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R) | the same — `ab1b08d2…db9c622a` |
 | **Price adapter** — what all three vaults read | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
 | The CEX & DEX XLM/USD feed — **a third-party contract, not ours** | [`CCYOZJCO…MJRN63`](https://stellar.expert/explorer/testnet/contract/CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63) | — |
 | XLM, native Stellar Asset Contract | [`CDLZFC3S…HHGCYSC`](https://stellar.expert/explorer/testnet/contract/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC) | — |
@@ -30,6 +30,13 @@ than asserted: compare the hashes above, and read each vault's `config` for the 
 changing the price source requires a reviewed code upgrade. The adapter itself has no admin and no
 upgrade path at all; its exported surface is `__constructor`, `reading`, `spot_check`,
 `supports_round`, asserted at deploy.
+
+**That immutability has a cost, and it is visible in the table above.** The three vaults were
+upgraded in place on 2026-11-07 when the pinned toolchain moved to `soroban-sdk 29.0.1`; the adapter
+could not follow, because an upgrade is the one thing it does not export. Its row therefore still
+carries the hash of a `soroban-sdk 27.0.6` build, and reproducing *it* needs that toolchain rather
+than the one pinned now. Nothing about the adapter's behaviour changed — it is the same bytes that
+have been serving since 2026-08-24.
 
 A mock price source exists in the repository and is **deployed nowhere.** It is the test double that
 lets dead-feed, rescale and trap cases be forced, which a live feed cannot be made to do on demand.
@@ -122,6 +129,15 @@ money in and let it back out.
 | Vault `-A` created | 2026-08-28 | `cac1632c` | [`9e37530c…b93cc5`](https://stellar.expert/explorer/testnet/tx/9e37530c8585dfc435dfac84b2132ca997ad9ffc33af17e9477de60fcfb93cc5) |
 | — its smoke deposit | | | [`7ed08716…e1f94c`](https://stellar.expert/explorer/testnet/tx/7ed087162da7a784f2c7e74b1ad11f3cc453a7f39bc774ab1b57663f42e1f94c) |
 | — its smoke withdrawal request | | | [`10a2280e…8f5734`](https://stellar.expert/explorer/testnet/tx/10a2280e49bc09c1e28edeb5f71a63e92f7590126c6c9729fb2f5d8eb48f5734) |
+| Vault `-E` upgraded | 2026-11-07 | `2938b7e` | [`78e92351…d87b01`](https://stellar.expert/explorer/testnet/tx/78e923510954250521e18c8ce2979dc20c0b938fa275a02cfa4db34330d87b01) |
+| Vault `-C` upgraded | 2026-11-07 | `2938b7e` | [`8b69fb0c…dcb413`](https://stellar.expert/explorer/testnet/tx/8b69fb0c1bdded3c4868603fc9a5464825246808908e0d84926afa8f94dcb413) |
+| Vault `-A` upgraded | 2026-11-07 | `2938b7e` | [`01cff384…ec7a71`](https://stellar.expert/explorer/testnet/tx/01cff384ac25bb8dbde7e65eff0a5e5993998a2de27990918e8b1cd964ec7a71) |
+
+The three upgrades replaced the executable and nothing else, and that is asserted rather than
+trusted: `config()` is compared field by field across the call, the phase and round number must not
+move, and the new code is fetched back off the network and hashed locally rather than taken from the
+upload's own report. Twenty gates ran before anything was signed and fifty-seven assertions after.
+Rounds stood at 22, 77 and 61 on both sides, and every balance survived.
 
 ## Toolchain
 
@@ -131,8 +147,8 @@ Every version is pinned exactly, never by range or channel.
 |---|---|
 | Rust | `1.95.0` |
 | Build target | `wasm32v1-none` |
-| `soroban-sdk` | `=27.0.6` |
-| `stellar-cli` | `27.1.0` |
+| `soroban-sdk` | `=29.0.1` |
+| `stellar-cli` | `30.0.1` |
 | Node | `v22.18.0` |
 | Build host | `darwin-arm64` |
 
@@ -143,14 +159,18 @@ stellar contract build --out-dir out      # deployable wasm
 
 ## Reproducing the hashes
 
-Build the repository at commit `87e4224a` and compare.
-`stellar contract fetch --id <address> --network testnet` returns the deployed bytes.
+Build the repository at commit `2938b7e` for the three vaults, or `87e4224a` for the adapter, and
+compare. `stellar contract fetch --id <address> --network testnet` returns the deployed bytes. Two
+commits because the vaults were upgraded and the adapter cannot be.
 
 **One caveat, and it is ours rather than yours: the hash reproduces against a host, not against a
 toolchain.**
 
-Measured on 2026-08-21: `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` build the vault to the
-same **65 374 bytes** and two different SHA-256s. Section by section they agree everywhere it is
+Measured on 2026-08-21, on the `soroban-sdk 27.0.6` build, which was **65 374 bytes**; the vault is
+**63 555 bytes** since the 29.0.1 bump, spec shaking having dropped eleven spec types that no
+function signature referenced. The finding is about hosts and survives the size change.
+`aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` built that vault to the same byte count and
+two different SHA-256s. Section by section they agree everywhere it is
 possible to disagree about meaning — `import`, `export`, `data` and all four custom sections
 including `contractspecv0` are byte-identical, and `stellar contract info interface` returns the same
 **42 functions** — while `type`, `function` and `code` differ at identical sizes, because the type
@@ -170,7 +190,14 @@ the SHA-256 not to.
 
 CI's reproducible-build job proves a narrower property than its name suggests: it builds twice on one
 runner at deliberately different path lengths, which shows the output does not depend on where the
-source sits, and says nothing about which machine compiled it.
+source sits, and says nothing about which machine compiled it. Since 2026-08-28 it also builds the
+same commit on x86_64 and aarch64 Linux and prints both hashes, which separates the two variables the
+2026-08-21 measurement moved at once.
+
+**That separation has an answer, measured 2026-11-07:** the hashes differ across x86_64 and aarch64
+Linux too. So the divergence is the **architecture**, not the operating system, and pinning a Linux
+container would not be a sufficient remedy — a byte-for-byte reproduction has to name the platform.
+This is why every recorded hash sits next to a build host.
 
 ## The measured feed profile
 

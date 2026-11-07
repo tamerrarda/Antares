@@ -27,7 +27,9 @@ import { createHash } from "node:crypto";
  * What a call costs, off the simulation that was going to happen anyway.
  *
  * **There is no `--sim-only`.** 00-ROADMAP §, 07-SECURITY §5 and DEV3.md all say to profile with
- * that flag; it appears nowhere in the codebase and the pinned CLI 27.1.0 marks it deprecated.
+ * that flag; it appears nowhere in the codebase and the pinned CLI 30.0.1 marks it deprecated,
+ * pointing at `--send=no` instead. Re-measured against 30.0.1 on 2026-11-07, because the number
+ * moved with D-23's toolchain bump and a re-stated version is worth nothing without a re-check.
  * `--send=no` prints the return value and nothing else — no fee, no instruction count. The
  * authoritative source is the RPC simulation response, which this module already receives and used
  * to throw away.
