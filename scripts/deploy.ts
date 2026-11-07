@@ -1173,7 +1173,15 @@ const RECORD_PREAMBLE =
   "describe the MOST RECENT run; each instance carries its own copy of the three, because once the " +
   "file holds instances from more than one run the top-level values are wrong for the older ones. " +
   "An instance carried forward from a run that predates those fields is stamped with the header " +
-  "this file held before the merge, which is the last moment that header still described it.";
+  "this file held before the merge, which is the last moment that header still described it." +
+  " scripts/upgrade.ts also writes this file, and that is the one thing its name does not say: " +
+  "it replaces vaultWasmHash on the instances it upgraded, stamps each with upgradedAt plus the " +
+  "tree and toolchain that built the new code, appends its transactions, and adds an entry to " +
+  "upgrades. The upgrades array is the audit trail a hash change would otherwise erase — a reader " +
+  "who finds an instance serving code that no deploy in this file installed has nowhere else to " +
+  "look. An upgrade never touches vaultId, params or anything else about the instance, because " +
+  "upgrade() replaces the executable and nothing more; the script asserts that field by field " +
+  "rather than trusting it.";
 
 // =================================================================================================
 // The chain client step 5 runs against

@@ -1,5 +1,5 @@
 {
-  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT \u00a72). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run \u2014 deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent \u2014 a profile stamped that way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain describe the MOST RECENT run; each instance carries its own copy of the three, because once the file holds instances from more than one run the top-level values are wrong for the older ones.",
+  "_what": "Written by scripts/deploy.ts step 6 (09-DEPLOYMENT \u00a72). This file is the ONLY place a contract id is allowed to live outside packages/common/networks.ts, and every other tool reads its addresses from here. sourceTree names the code that ran and says whether the tree was clean: a commit id identifies the code that ran ONLY if it was, and a deploy from a dirty tree is refused at step 0 for exactly that reason. One tree rather than two commit fields, because this script builds the wasm during the same run \u2014 deployments/adapter-testnet.json separates them because it profiles a contract deployed earlier, where they are genuinely different trees. economicallyMeaningless marks a --fast-test instance and is permanent \u2014 a profile stamped that way can never be presented as demand evidence (D-57). Instances ACCUMULATE: a run with --only merges its instance into whatever this file already held, keyed by tokenSuffix, and appends its transactions rather than replacing them. The top-level deployedAt, sourceTree and toolchain describe the MOST RECENT run; each instance carries its own copy of the three, because once the file holds instances from more than one run the top-level values are wrong for the older ones. scripts/upgrade.ts also writes this file, and that is the one thing its name does not say: it replaces vaultWasmHash on the instances it upgraded, stamps each with upgradedAt plus the tree and toolchain that built the new code, appends its transactions, and adds an entry to upgrades. The upgrades array is the audit trail a hash change would otherwise erase \u2014 a reader who finds an instance serving code that no deploy in this file installed has nowhere else to look. An upgrade never touches vaultId, params or anything else about the instance, because upgrade() replaces the executable and nothing more; the script asserts that field by field rather than trusting it.",
   "network": "testnet",
   "deployedAt": "2026-08-28T10:07:55.563Z",
   "deployerIdentity": "antares-testnet",
@@ -21,7 +21,7 @@
   "oracleId": "CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z",
   "oracleWasmHash": "d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d",
   "reflectorId": "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
-  "vaultWasmHash": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
+  "vaultWasmHash": "ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a",
   "transactions": [
     {
       "label": "create:oracle",
@@ -72,6 +72,21 @@
       "label": "smoke:request_withdraw",
       "hash": "10a2280e49bc09c1e28edeb5f71a63e92f7590126c6c9729fb2f5d8eb48f5734",
       "explorer": "https://stellar.expert/explorer/testnet/tx/10a2280e49bc09c1e28edeb5f71a63e92f7590126c6c9729fb2f5d8eb48f5734"
+    },
+    {
+      "label": "upgrade:vault-E",
+      "hash": "78e923510954250521e18c8ce2979dc20c0b938fa275a02cfa4db34330d87b01",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/78e923510954250521e18c8ce2979dc20c0b938fa275a02cfa4db34330d87b01"
+    },
+    {
+      "label": "upgrade:vault-C",
+      "hash": "8b69fb0c1bdded3c4868603fc9a5464825246808908e0d84926afa8f94dcb413",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/8b69fb0c1bdded3c4868603fc9a5464825246808908e0d84926afa8f94dcb413"
+    },
+    {
+      "label": "upgrade:vault-A",
+      "hash": "01cff384ac25bb8dbde7e65eff0a5e5993998a2de27990918e8b1cd964ec7a71",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/01cff384ac25bb8dbde7e65eff0a5e5993998a2de27990918e8b1cd964ec7a71"
     }
   ],
   "instances": [
@@ -79,7 +94,7 @@
       "tokenSuffix": "-E",
       "vaultId": "CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
       "createTx": "9cd2cb4127b622d75f818298a763b4e778432a5021c3303c363b5ce34c5b851e",
-      "vaultWasmHash": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
+      "vaultWasmHash": "ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a",
       "params": {
         "epoch_duration": 259200,
         "auction_duration": 2700,
@@ -106,24 +121,25 @@
       "explorer": "https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
       "deployedAt": "2026-08-24T09:11:48.782Z",
       "sourceTree": {
-        "commit": "87e4224a6b408acf3d1db98480d5c2d1e8e49244",
+        "commit": "2938b7ec6e5c865fde823d247201e05a164170c2",
         "dirty": false,
         "dirtyPaths": []
       },
       "toolchain": {
         "rust": "1.95.0",
-        "stellarCli": "27.1.0",
-        "sorobanSdk": "=27.0.6",
+        "stellarCli": "30.0.1",
+        "sorobanSdk": "=29.0.1",
         "target": "wasm32v1-none",
         "node": "v22.18.0",
         "buildHost": "darwin-arm64"
-      }
+      },
+      "upgradedAt": "2026-11-07T11:29:52.777Z"
     },
     {
       "tokenSuffix": "-C",
       "vaultId": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
       "createTx": "3a51bfb598cdb9d36c457d6ee47cf25d12941fb6b51f0c62328b887907a0d011",
-      "vaultWasmHash": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
+      "vaultWasmHash": "ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a",
       "params": {
         "epoch_duration": 259200,
         "auction_duration": 2700,
@@ -150,24 +166,25 @@
       "explorer": "https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
       "deployedAt": "2026-08-28T10:06:09.249Z",
       "sourceTree": {
-        "commit": "1cbed1eb678f0813d6839a5d5114a8b4f0f37943",
+        "commit": "2938b7ec6e5c865fde823d247201e05a164170c2",
         "dirty": false,
         "dirtyPaths": []
       },
       "toolchain": {
         "rust": "1.95.0",
-        "stellarCli": "27.1.0",
-        "sorobanSdk": "=27.0.6",
+        "stellarCli": "30.0.1",
+        "sorobanSdk": "=29.0.1",
         "target": "wasm32v1-none",
         "node": "v22.18.0",
         "buildHost": "darwin-arm64"
-      }
+      },
+      "upgradedAt": "2026-11-07T11:29:52.777Z"
     },
     {
       "tokenSuffix": "-A",
       "vaultId": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
       "createTx": "9e37530c8585dfc435dfac84b2132ca997ad9ffc33af17e9477de60fcfb93cc5",
-      "vaultWasmHash": "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2",
+      "vaultWasmHash": "ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a",
       "params": {
         "epoch_duration": 604800,
         "auction_duration": 2700,
@@ -194,18 +211,59 @@
       "explorer": "https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
       "deployedAt": "2026-08-28T10:07:55.562Z",
       "sourceTree": {
-        "commit": "cac1632c30a95a91e7798901b4d1f2c6d8640b26",
+        "commit": "2938b7ec6e5c865fde823d247201e05a164170c2",
         "dirty": false,
         "dirtyPaths": []
       },
       "toolchain": {
         "rust": "1.95.0",
-        "stellarCli": "27.1.0",
-        "sorobanSdk": "=27.0.6",
+        "stellarCli": "30.0.1",
+        "sorobanSdk": "=29.0.1",
         "target": "wasm32v1-none",
         "node": "v22.18.0",
         "buildHost": "darwin-arm64"
-      }
+      },
+      "upgradedAt": "2026-11-07T11:29:52.777Z"
+    }
+  ],
+  "upgrades": [
+    {
+      "upgradedAt": "2026-11-07T11:29:52.777Z",
+      "fromWasmHash": [
+        "7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2"
+      ],
+      "toWasmHash": "ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a",
+      "instances": [
+        {
+          "tokenSuffix": "-E",
+          "status": "upgraded",
+          "tx": "78e923510954250521e18c8ce2979dc20c0b938fa275a02cfa4db34330d87b01"
+        },
+        {
+          "tokenSuffix": "-C",
+          "status": "upgraded",
+          "tx": "8b69fb0c1bdded3c4868603fc9a5464825246808908e0d84926afa8f94dcb413"
+        },
+        {
+          "tokenSuffix": "-A",
+          "status": "upgraded",
+          "tx": "01cff384ac25bb8dbde7e65eff0a5e5993998a2de27990918e8b1cd964ec7a71"
+        }
+      ],
+      "sourceTree": {
+        "commit": "2938b7ec6e5c865fde823d247201e05a164170c2",
+        "dirty": false,
+        "dirtyPaths": []
+      },
+      "toolchain": {
+        "rust": "1.95.0",
+        "stellarCli": "30.0.1",
+        "sorobanSdk": "=29.0.1",
+        "target": "wasm32v1-none",
+        "node": "v22.18.0",
+        "buildHost": "darwin-arm64"
+      },
+      "verdict": "PASS"
     }
   ]
 }
