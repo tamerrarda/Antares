@@ -1,89 +1,88 @@
 {
   "tool": "scripts/verify-environment.ts",
-  "generated": "2026-08-19T06:54:08.840Z",
-  "finished": "2026-08-19T06:54:26.676Z",
+  "generated": "2026-11-07T12:16:44.798Z",
+  "finished": "2026-11-07T12:18:34.580Z",
   "mode": "full",
   "network": "testnet",
   "rpc": "https://soroban-testnet.stellar.org",
-  "protocolVersion": 27,
-  "rpcVersion": "28.0.0-e29c911f2a720e2bf05028014c00492450547ccc",
+  "protocolVersion": 30,
+  "rpcVersion": "30.0.0-13e53516633c3ce1281c7edbacb607107d3a4e55",
   "oracle": {
     "id": "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
     "asset": "Other(\"XLM\")",
     "resolution": 300,
     "decimals": 14,
-    "version": 6,
-    "lastTimestamp": 1787122200
+    "version": 7,
+    "lastTimestamp": 1794053700
   },
   "measurements": {
     "reachableDepthTicks": 255,
     "reachableDepthSeconds": 76500,
     "requiredDepthSeconds": 76500,
-    "tickCompletenessGaps": [],
-    "unionOfSweeps": {
-      "spanSeconds": 107100,
-      "points": 358,
-      "gaps": 0,
-      "completeness": 1,
-      "runs": [
-        {
-          "at": 1787091600,
-          "ticks": 255
-        },
-        {
-          "at": 1787122200,
-          "ticks": 255
-        }
-      ]
-    },
+    "tickCompletenessGaps": [
+      166,
+      168,
+      173,
+      177,
+      180,
+      181,
+      184,
+      185,
+      186,
+      188,
+      189,
+      194
+    ],
+    "unionOfSweeps": null,
     "sevenPointCostByAnchorAge": [
       {
         "ageSeconds": 300,
-        "totalCpu": 11868789,
-        "totalFee": 100614,
-        "maxCpu": 1704906
+        "totalCpu": 6204975,
+        "totalFee": 48013,
+        "maxCpu": 893411
       },
       {
         "ageSeconds": 7200,
-        "totalCpu": 11925918,
-        "totalFee": 100899,
-        "maxCpu": 1704906
+        "totalCpu": 6249743,
+        "totalFee": 48147,
+        "maxCpu": 893411
       },
       {
         "ageSeconds": 28800,
-        "totalCpu": 11924514,
-        "totalFee": 100898,
-        "maxCpu": 1703502
+        "totalCpu": 6250432,
+        "totalFee": 48148,
+        "maxCpu": 893411
       },
       {
         "ageSeconds": 50400,
-        "totalCpu": 11925918,
-        "totalFee": 100899,
-        "maxCpu": 1704906
+        "totalCpu": 5939120,
+        "totalFee": 47046,
+        "maxCpu": 893411
       },
       {
         "ageSeconds": 72600,
-        "totalCpu": 11925918,
-        "totalFee": 100899,
-        "maxCpu": 1704906
+        "totalCpu": 6252499,
+        "totalFee": 48151,
+        "maxCpu": 893411
       }
     ],
     "pricesCollapseAt": 20,
-    "expires": 1788706882
+    "expires": 103725075999222
   },
   "checks": [
     {
       "id": "E-1",
       "what": "RPC ledgerRetentionWindow covers the UI live-window assumption",
-      "status": "PASS",
-      "measured": "120960 ledgers spanning 605804 s = 168 h 16 m; assumption 604800 s = 168 h 00 m",
+      "status": "FAIL",
+      "measured": "120960 ledgers spanning 604796 s = 167 h 59 m; assumption 604800 s = 168 h 00 m",
       "note": "Events vanish past this window; anything older must come from views or the archive. DEV3's Claims page rests on it."
     },
     {
       "id": "E-2",
-      "what": "network protocolVersion matches the SDK the wasm was built against",
+      "what": "network protocolVersion is at or above the protocol the wasm was built against",
       "status": "PASS",
-      "measured": "live 27; expected 27 (soroban-sdk =27.0.6, D-23)"
+      "measured": "live 30; build targets 27 (soroban-sdk =27.0.6, D-23) — ahead, which is expected: deployed contracts stay compatible across an upgrade, but the recorded resource profile was measured on the older protocol and metering can move with one. Re-run scripts/profile-resources.ts so the recorded numbers describe the live network.",
+      "note": "Asserted as a FLOOR, per 09-DEPLOYMENT: testnet upgrades before mainnet, so a network ahead of the build is the normal state and the check exists to catch the opposite — a build that needs a protocol the network does not have yet. It was written as an equality until 2026-08-28 and refused a deploy the day testnet moved to 28, against a wasm the network was still running happily. Its row in 06-TEST-PLAN is the only one in that table with no stated reason, which is how an equality nobody argued for survived next to a design that says otherwise."
     },
     {
       "id": "E-3",
@@ -96,14 +95,14 @@
       "id": "E-4",
       "what": "resolution(), decimals(), history_retention_period(), version()",
       "status": "PASS",
-      "measured": "resolution = 300 s; decimals = 14; advertised retention = 86400 s = 24 h 00 m; version = 6",
+      "measured": "resolution = 300 s; decimals = 14; advertised retention = 86400 s = 24 h 00 m; version = 7",
       "note": "decimals is configuration, not a constant — the adapter normalizes against the live value and pins it per round (D-68)."
     },
     {
       "id": "E-5",
       "what": "the unit of resolution() and of PriceData.timestamp is SECONDS, asserted rather than assumed",
       "status": "PASS",
-      "measured": "last_timestamp = 1787122200; ledger closeTime = 1787122444; |difference| = 244 s; resolution = 300",
+      "measured": "last_timestamp = 1794053700; ledger closeTime = 1794053806; |difference| = 106 s; resolution = 300",
       "note": "A millisecond feed would put last_timestamp about 1000x above the ledger clock. This is D-49 applied to the one value every other row takes for granted."
     },
     {
@@ -116,15 +115,15 @@
     {
       "id": "E-7",
       "what": "tick completeness across the feed's reachable depth",
-      "status": "PASS",
-      "measured": "100.00 % over 256 grid points (268 probed); 0 gap(s)",
+      "status": "INFO",
+      "measured": "95.31 % over 256 grid points (268 probed); 12 gap(s) at ticks [166,168,173,177,180,181,184,185,186,188,189,194]",
       "note": "D-65 requires all 3 short samples, so a single gap now voids a round that used to settle. The window is the reachable depth and not \"24 h\": a point query older than the cap returns None BY THE CAP, not by a gap, so a retrospective 24-hour sweep would score its oldest stretch as 100 % missing. Run this twice, >= 3 h apart, and report the union for coverage beyond one depth."
     },
     {
       "id": "E-8",
       "what": "seven-point battery cost, and that it does NOT vary with the anchor's age",
-      "status": "PASS",
-      "measured": "age 300 s = 0 h 05 m -> 11868789 CPU insn, 100614 stroops; age 7200 s = 2 h 00 m -> 11925918 CPU insn, 100899 stroops; age 28800 s = 8 h 00 m -> 11924514 CPU insn, 100898 stroops; age 50400 s = 14 h 00 m -> 11925918 CPU insn, 100899 stroops; age 72600 s = 20 h 10 m -> 11925918 CPU insn, 100899 stroops  | spread 0.48 %",
+      "status": "FAIL",
+      "measured": "age 300 s = 0 h 05 m -> 6204975 CPU insn, 48013 stroops; age 7200 s = 2 h 00 m -> 6249743 CPU insn, 48147 stroops; age 28800 s = 8 h 00 m -> 6250432 CPU insn, 48148 stroops; age 50400 s = 14 h 00 m -> 5939120 CPU insn, 47046 stroops; age 72600 s = 20 h 10 m -> 6252499 CPU insn, 48151 stroops  | spread 5.28 %",
       "note": "D-64's residual rests entirely on this constancy: budget exhaustion is then a never-worked-at-all failure rather than a latent time bomb. Phase 1 measures per-call cost and their sum as a LOWER BOUND — the authoritative aggregate is Phase 3's resource profile against the real adapter (DEV2.md §3.2)."
     },
     {
@@ -138,7 +137,7 @@
       "id": "E-10",
       "what": "feed expires() outlives epoch_duration + unresolved_after (supports_round condition 7)",
       "status": "PASS",
-      "measured": "expires = 1788706882 -> runway 1584438 s = 440 h 07 m; round_span 680400 s = 189 h 00 m",
+      "measured": "expires = 103725075999222 -> runway 103723281945416 s = 28812022762 h 36 m; round_span 680400 s = 189 h 00 m",
       "note": "Sponsored feeds die on a schedule (04-ORACLE §5). This is the exact span condition 7 enforces on-chain; the older \"+ oracle_dead_after\" form was weaker than the gate, so a deploy passed and the first open_epoch refused."
     },
     {
@@ -150,11 +149,10 @@
     },
     {
       "id": "E-12",
-      "what": "the union of two sweeps spans more than 24 h, with the gap rate over that union",
-      "status": "PASS",
-      "measured": "union spans 107100 s = 29 h 45 m over 358 answering grid points; 0 gap(s); completeness 100.00 %",
-      "note": "One sweep can only see the reachable depth, so a single call can never cover 24 h — the oldest stretch of a 24-hour window is missing BY THE CAP, not by any gap. Two sweeps far enough apart cover it between them, and this row is the union computed from both records rather than a claim about them."
+      "what": "the union of two sweeps spans more than 24 h",
+      "status": "INFO",
+      "measured": "not computed — pass --union-with <prior --full record> to close 06-TEST-PLAN §7b's union row"
     }
   ],
-  "verdict": "PASS"
+  "verdict": "FAIL"
 }
