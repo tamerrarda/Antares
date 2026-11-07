@@ -1,0 +1,137 @@
+{
+  "_what": "Closed-epoch evidence written by the keeper (08-OFFCHAIN §1). Carries the tx hashes and event log that a testnet reset destroys (09-DEPLOYMENT §3), the fill index the Claims page needs for rounds older than the ~7-day RPC event window, and σ_realized with the series it was computed from so the Phase-2 clearing gate can be recomputed rather than trusted (D-67).",
+  "network": "testnet",
+  "date": "2026-11-07",
+  "epochs": [
+    {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 77,
+      "outcome": "Lapsed",
+      "openedAt": 1794014871,
+      "expiry": 1794274071,
+      "closedAt": 1794036626,
+      "txHashes": [
+        "41739c3f34d9d383b3c07ffeaa11a54bed9a0deeaf0b62ea167ab3a172f92552",
+        "e850b3cf28292ef50e766b880a17dfa207446ce54b5f52e1fd798dd4096ab054"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 77,
+          "strike": "1568219",
+          "expiry": 1794274071,
+          "openedAt": 1794014871,
+          "auctionEnd": 1794017571,
+          "notionalOffered": "4684841905",
+          "openTwap": "1537470",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 77,
+          "notionalOffered": "4684841905",
+          "pps": "10576058",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn",
+          "upgraded"
+        ],
+        "complete": false
+      }
+    },
+    {
+      "vault": "CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
+      "round": 22,
+      "outcome": "Lapsed",
+      "openedAt": 1794014836,
+      "expiry": 1794274036,
+      "closedAt": 1794036601,
+      "txHashes": [
+        "5edc40b18ce316afafb84c29256005d172ae37fd1d9dc1e807a9c0be51bc3e30",
+        "60936d0205a32c2d5d08f182b7157dd23b240c591e756cd24bce55a3b929bb99"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 22,
+          "strike": "1583594",
+          "expiry": 1794274036,
+          "openedAt": 1794014836,
+          "auctionEnd": 1794017536,
+          "notionalOffered": "5362159423",
+          "openTwap": "1537470",
+          "premiumStartBps": 280,
+          "premiumFloorBps": 55
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 22,
+          "notionalOffered": "5362159423",
+          "pps": "10448758",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn",
+          "upgraded"
+        ],
+        "complete": false
+      }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 61,
+      "outcome": "Lapsed",
+      "openedAt": 1794036656,
+      "expiry": 1794641456,
+      "closedAt": 1794050976,
+      "txHashes": [
+        "32cb5fe158227c99d53cbc10dd5fa48c2c9a4ba7174c0db2c1f0662ffd5933ee",
+        "01cff384ac25bb8dbde7e65eff0a5e5993998a2de27990918e8b1cd964ec7a71"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 61,
+          "strike": "1583845",
+          "expiry": 1794641456,
+          "openedAt": 1794036656,
+          "auctionEnd": 1794039356,
+          "notionalOffered": "2207781127",
+          "openTwap": "1537714",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 61,
+          "notionalOffered": "2207781127",
+          "pps": "11038900",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "upgraded"
+        ],
+        "complete": false
+      }
+    }
+  ]
+}
