@@ -9,7 +9,7 @@
 [advisories]
 yanked = "deny"
 
-# One accepted advisory, triaged in writing rather than waved through by
+# Two accepted advisories, each triaged in writing rather than waved through by
 # widening a setting. Everything not listed here still fails the build.
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = """
@@ -23,6 +23,26 @@ suppressed every future transitive advisory of the same class along with it.
 Re-check when soroban-sdk moves off it; if this ever becomes a
 vulnerability advisory rather than an unmaintained one, it stops being ignored
 here and becomes a finding.
+""" },
+    { id = "RUSTSEC-2026-0387", reason = """
+`crypto-bigint 0.5.5` has timing variability in operations that are supposed to
+be constant-time. Unlike the advisory above this IS a vulnerability advisory, so
+it is accepted on scope rather than on class, and the scope was measured rather
+than assumed: `cargo tree --target wasm32v1-none -p antares-vault` does not
+contain crypto-bigint at all. It arrives only in the HOST build —
+soroban-env-host → k256/p256 → ecdsa → elliptic-curve → crypto-bigint — which is
+the native test host `cargo test` links, not the wasm the vault deploys. No byte
+of it is in the shipped artefact, so there is no signature this contract makes
+whose timing could leak through it.
+Nothing to upgrade on our side either: the fix is `>=0.7.6` and the version is
+chosen by elliptic-curve, four levels up our only dependency. It was already in
+the lockfile at soroban-sdk 27.0.6 — the advisory was published 2026-10-23 and
+is what changed, not the graph.
+**Remove this entry when soroban-sdk ships an env-host built on
+elliptic-curve >= 0.14 / crypto-bigint >= 0.7.6**, and re-check it the moment
+anything in this repository starts verifying a signature inside the contract
+rather than in a test — that would put the code in the wasm and this reasoning
+would no longer hold.
 """ },
 ]
 
