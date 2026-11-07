@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@antares/common": "workspace:*",
-    "@stellar/stellar-sdk": "^16.2.0"
+    "@stellar/stellar-sdk": "^16.4.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

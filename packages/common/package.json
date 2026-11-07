@@ -59,6 +59,6 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^16.2.0"
+    "@stellar/stellar-sdk": "^16.4.1"
   }
 }
