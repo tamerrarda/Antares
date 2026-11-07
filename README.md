@@ -200,7 +200,7 @@ this repository at the commit named.
 
 | | Address | Wasm SHA-256 |
 |---|---|---|
-| **Vault** (`aXLM-E`, 3-day, 3 % OTM) | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `7b5f098bddd47b4b9cf8ff22b75a0ead4c41ccd741c61c8ac3dabb579a4a80f2` |
+| **Vault** (`aXLM-E`, 3-day, 3 % OTM) | [`CCYAHS4D…LBVEA`](https://stellar.expert/explorer/testnet/contract/CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA) | `ab1b08d222510521da614713c495069f0acb4d8b92409a72a642829adb9c622a` |
 | **Vault** (`aXLM-C`, 3-day, 2 % OTM) | [`CAQY7L34…2J5ENSK6`](https://stellar.expert/explorer/testnet/contract/CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6) | *the same* |
 | **Vault** (`aXLM-A`, 7-day, 3 % OTM) | [`CD7QODWT…462Y7K2R`](https://stellar.expert/explorer/testnet/contract/CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R) | *the same* |
 | **Price adapter** (what all three read) | [`CBR3GSAZ…BCEN5Z`](https://stellar.expert/explorer/testnet/contract/CBR3GSAZUOFGWP5IUSIJP5ESUZPDIO42WAZ5VIFSNYZURH2VVSBCEN5Z) | `d88120b0da3250edea169996ce1840c9138a8c72c2866e846173d0d92f33242d` |
@@ -215,6 +215,22 @@ because a commit id identifies the code that ran only if the tree was clean. Thr
 wasm hash is not a contradiction: the later two changed the deploy script, never the contract, and
 the hash column is what proves it.
 
+**All three were upgraded in place on 2026-11-07**, from commit `2938b7e`, when the pinned toolchain
+moved to `soroban-sdk 29.0.1` and `stellar-cli 30.0.1` — the hash in the table above is that build,
+not the one they were deployed with. The ids did not move and neither did anything else: `upgrade`
+replaces the executable and touches configuration nowhere, and `scripts/upgrade.ts` asserts that
+rather than trusting it — `config()` compared field by field across the call, the phase and round
+number unchanged, and the new code fetched back off the network and hashed locally rather than taken
+from the upload's own report. Twenty gates before anything was signed, fifty-seven assertions after.
+Every position, balance and round of history survived; rounds stood at 22, 77 and 61 on both sides of
+it. The `upgrades` array in the record is the trail.
+
+**The price adapter was not upgraded, and cannot be.** It exports no `upgrade` — that immutability is
+the point of it — and each vault names its adapter in a constructor argument with no setter, so no
+admin can repoint a vault at a different price source. The consequence is that the adapter still
+serves bytes built with `soroban-sdk 27.0.6`, and the hash in its row is unchanged. Reproducing *it*
+needs that toolchain, not the one pinned now.
+
 The full record — constructor arguments, all sixteen round parameters, the toolchain and the build host
 — is in [`deployments/testnet.json`](deployments/testnet.json), written by the deploy script as it
 submits rather than by hand.
@@ -224,12 +240,15 @@ submits rather than by hand.
 
 <br>
 
-Build at commit `87e4224a` and compare; `stellar contract fetch --id <address> --network testnet`
-returns the deployed bytes.
+Build at commit `2938b7e` for the three vaults, or `87e4224a` for the adapter, and compare;
+`stellar contract fetch --id <address> --network testnet` returns the deployed bytes. Two commits
+because the vaults were upgraded and the adapter cannot be — see above.
 
-**The hash reproduces against a host, not against a toolchain.** Measured 2026-08-21:
-`aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` build the vault to the same **65 374 bytes** and
-two different SHA-256s. Section by section they agree everywhere it is possible to disagree about
+**The hash reproduces against a host, not against a toolchain.** Measured 2026-08-21 on the
+`soroban-sdk 27.0.6` build, which was **65 374 bytes**; the vault is **63 555 bytes** since the 29.0.1
+bump, spec shaking having dropped eleven spec types no function signature referenced. The finding is
+about hosts and survives the size change. `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` built
+that vault to the same byte count and two different SHA-256s. Section by section they agree everywhere it is possible to disagree about
 meaning — `import`, `export`, `data` and all four custom sections including `contractspecv0` are
 byte-identical, and `stellar contract info interface` returns the same **42 functions** — while `type`,
 `function` and `code` differ at identical sizes, because the type table is emitted in a different order
@@ -248,6 +267,12 @@ same commit on x86_64 and aarch64 Linux and prints both hashes**, which separate
 the measurement above moved at once — the operating system and the architecture. That comparison
 reports rather than blocks: the answer decides which remedy this needs, and a job that failed on a
 finding already published here would be a red branch teaching people to ignore red branches.
+
+**The answer, measured 2026-11-07:** the hashes differ across x86_64 and aarch64 Linux too. So the
+divergence is the **architecture**, not the operating system, and pinning a Linux container is not a
+sufficient remedy — a byte-for-byte reproduction has to name the platform. That is why
+`toolchain.buildHost` is recorded next to every hash, and why `bindings.wasm_recorded` compares hashes
+only when the recorded host matches the running one and says so plainly when it does not.
 
 </details>
 
