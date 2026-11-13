@@ -48,6 +48,50 @@
       }
     },
     {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 88,
+      "outcome": "Lapsed",
+      "openedAt": 1794488093,
+      "expiry": 1794747293,
+      "closedAt": 1794515589,
+      "txHashes": [
+        "9adde91f06bd560664b50c5641b0cde7e47c98c04c183c61f91bf45e27659b3a",
+        "f72b78c6027ec4b4a2214267d0dd7ca0c7fef11e3a63743c3e116e3eda89126c"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 88,
+          "strike": "1479567",
+          "expiry": 1794747293,
+          "openedAt": 1794488093,
+          "auctionEnd": 1794490793,
+          "notionalOffered": "4684841905",
+          "openTwap": "1450556",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 88,
+          "notionalOffered": "4684841905",
+          "pps": "10576058",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn",
+          "upgraded"
+        ],
+        "complete": false
+      }
+    },
+    {
       "vault": "CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
       "round": 32,
       "outcome": "Lapsed",
@@ -92,6 +136,50 @@
       }
     },
     {
+      "vault": "CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
+      "round": 33,
+      "outcome": "Lapsed",
+      "openedAt": 1794488088,
+      "expiry": 1794747288,
+      "closedAt": 1794515584,
+      "txHashes": [
+        "eb365171db7704e5bd8511c280b5b13714337880144791eaec7c78768ec7fa01",
+        "2b86a92f47e4b2a159de16667d6b1fea9e03d91827530b1a6139f4797df314d6"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 33,
+          "strike": "1494072",
+          "expiry": 1794747288,
+          "openedAt": 1794488088,
+          "auctionEnd": 1794490788,
+          "notionalOffered": "5362159423",
+          "openTwap": "1450556",
+          "premiumStartBps": 280,
+          "premiumFloorBps": 55
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 33,
+          "notionalOffered": "5362159423",
+          "pps": "10448758",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn",
+          "upgraded"
+        ],
+        "complete": false
+      }
+    },
+    {
       "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
       "round": 69,
       "outcome": "Lapsed",
@@ -118,6 +206,48 @@
         {
           "name": "epoch_lapsed",
           "round": 69,
+          "notionalOffered": "2207781127",
+          "pps": "11038900",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "upgraded"
+        ],
+        "complete": false
+      }
+    },
+    {
+      "vault": "CD7QODWTVHCRIIBK62LWPA2UEVRX7N7MX6RYIL3I3CYAU2CE462Y7K2R",
+      "round": 70,
+      "outcome": "Lapsed",
+      "openedAt": 1794488098,
+      "expiry": 1795092898,
+      "closedAt": 1794515594,
+      "txHashes": [
+        "bfff4f0b351ba3d584a14bb17536661d59278076a61c0f6eec70b7f193525339",
+        "c763672bf8e3d1670683f4c8ee4b0a2fa9f3d62eee77a623d27af82d67740733"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 70,
+          "strike": "1494072",
+          "expiry": 1795092898,
+          "openedAt": 1794488098,
+          "auctionEnd": 1794490798,
+          "notionalOffered": "2207781127",
+          "openTwap": "1450556",
+          "premiumStartBps": 500,
+          "premiumFloorBps": 112
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 70,
           "notionalOffered": "2207781127",
           "pps": "11038900",
           "wclaims": "0"
