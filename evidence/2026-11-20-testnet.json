@@ -1,0 +1,95 @@
+{
+  "_what": "Closed-epoch evidence written by the keeper (08-OFFCHAIN §1). Carries the tx hashes and event log that a testnet reset destroys (09-DEPLOYMENT §3), the fill index the Claims page needs for rounds older than the ~7-day RPC event window, and σ_realized with the series it was computed from so the Phase-2 clearing gate can be recomputed rather than trusted (D-67).",
+  "network": "testnet",
+  "date": "2026-11-20",
+  "epochs": [
+    {
+      "vault": "CAQY7L34IXNMGXFRVCEBVMOQHK2G5IVELJRR35S4523CQ7JS2J5ENSK6",
+      "round": 100,
+      "outcome": "Lapsed",
+      "openedAt": 1795130555,
+      "expiry": 1795389755,
+      "closedAt": 1795147570,
+      "txHashes": [
+        "3b513bc2e82ee9a991c35e505c5cfe6dbc6dec71e463b009a5506db107118ad4",
+        "63267e7348823f4f214240db0031fdaab39f4796e0cb74ee028698b74c119ada"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 100,
+          "strike": "1351925",
+          "expiry": 1795389755,
+          "openedAt": 1795130555,
+          "auctionEnd": 1795133255,
+          "notionalOffered": "4684841905",
+          "openTwap": "1325417",
+          "premiumStartBps": 325,
+          "premiumFloorBps": 72
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 100,
+          "notionalOffered": "4684841905",
+          "pps": "10576058",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn",
+          "upgraded"
+        ],
+        "complete": false
+      }
+    },
+    {
+      "vault": "CCYAHS4DJLGNDU7GTSDUJL4ZZ2X6VZI7IPHJM2W2SNVA6RDALEALBVEA",
+      "round": 46,
+      "outcome": "Lapsed",
+      "openedAt": 1795130550,
+      "expiry": 1795389750,
+      "closedAt": 1795147565,
+      "txHashes": [
+        "44677824ffb31ec8b4e3110f5ba6ba875ce335f1b9fc3539fb4ee742ee2001fc",
+        "83a4f72541c13342cd6bec868a9183f58ad234f02ad0c1942f46f4823f72bd9f"
+      ],
+      "events": [
+        {
+          "name": "epoch_opened",
+          "round": 46,
+          "strike": "1365179",
+          "expiry": 1795389750,
+          "openedAt": 1795130550,
+          "auctionEnd": 1795133250,
+          "notionalOffered": "5362159423",
+          "openTwap": "1325417",
+          "premiumStartBps": 280,
+          "premiumFloorBps": 55
+        },
+        {
+          "name": "epoch_lapsed",
+          "round": 46,
+          "notionalOffered": "5362159423",
+          "pps": "10448758",
+          "wclaims": "0"
+        }
+      ],
+      "fills": [],
+      "sigmaRealized": null,
+      "historyGaps": {
+        "missedLedgers": 0,
+        "skipped": [
+          "mint",
+          "burn",
+          "upgraded"
+        ],
+        "complete": false
+      }
+    }
+  ]
+}
